@@ -32,8 +32,10 @@ async function main() {
   // El modelo viene dentro del paquete; por defecto lo busca en
   // ./node_modules del directorio actual, que acá no existe (se instala
   // aparte, con caché). Se le pasa la ruta real.
-  const pkgDir = path.dirname(require.resolve('@imgly/background-removal-node/package.json'));
-  const config = { publicPath: `file://${path.join(pkgDir, 'dist')}/`, output: { format: 'image/png' } };
+  // El archivo principal del paquete vive en dist/, junto a resources.json.
+  const distDir = path.dirname(require.resolve('@imgly/background-removal-node'));
+  console.log(`Modelo en: ${distDir}`);
+  const config = { publicPath: `file://${distDir}/`, output: { format: 'image/png' } };
   fs.rmSync(path.join(OUT, 'failed.json'), { force: true });
 
   const players = readJson(path.join(ROOT, 'data', 'players.json'), {});
