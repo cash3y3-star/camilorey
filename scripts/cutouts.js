@@ -29,11 +29,16 @@ async function main() {
   const { removeBackground } = require('@imgly/background-removal-node');
   const sharp = require('sharp');
   fs.mkdirSync(OUT, { recursive: true });
+  // El modelo viene dentro del paquete; por defecto lo busca en
+  // ./node_modules del directorio actual, que acá no existe (se instala
+  // aparte, con caché). Se le pasa la ruta real.
+  const pkgDir = path.dirname(require.resolve('@imgly/background-removal-node/package.json'));
+  const config = { publicPath: `file://${path.join(pkgDir, 'dist')}/`, output: { format: 'image/png' } };
+  fs.rmSync(path.join(OUT, 'failed.json'), { force: true });
 
   const players = readJson(path.join(ROOT, 'data', 'players.json'), {});
   const matches = readJson(path.join(ROOT, 'data', 'matches.json'), {});
   const picks = readJson(path.join(ROOT, 'data', 'picks.json'), {});
-  const failed = new Set(readJson(path.join(OUT, 'failed.json'), []));
 
   // Orden: primero los que tienen pick pendiente, después los de partidos
   // recientes/próximos, al final el resto.
@@ -50,25 +55,26 @@ async function main() {
     for (const pid of [m.a, m.b]) score.set(pid, Math.max(score.get(pid) || 0, 2));
   }
   const todo = Object.entries(players)
-    .filter(([id, p]) => p.av && !failed.has(id) && !fs.existsSync(path.join(OUT, `${id}.webp`)))
+    .filter(([id, p]) => p.av && !fs.existsSync(path.join(OUT, `${id}.webp`)))
     .sort((a, b) => (score.get(Number(b[0])) || 0) - (score.get(Number(a[0])) || 0))
     .slice(0, MAX_PER_RUN);
 
   console.log(`Jugadores sin recorte: ${todo.length} a procesar en esta corrida`);
   let ok = 0;
+  let fails = 0;
   for (const [id, p] of todo) {
     try {
-      const blob = await removeBackground(p.av, { output: { format: 'image/png' } });
+      const blob = await removeBackground(p.av, config);
       const png = Buffer.from(await blob.arrayBuffer());
       await sharp(png).trim({ threshold: 1 }).resize({ height: 420, withoutEnlargement: true }).webp({ quality: 82 }).toFile(path.join(OUT, `${id}.webp`));
       ok++;
       console.log(`  ✓ ${p.n} (${id})`);
     } catch (e) {
-      failed.add(id);
       console.error(`  ✗ ${p.n} (${id}): ${e.message}`);
+      // Si fallan los 3 primeros es un problema general (no de una foto): cortar.
+      if (++fails >= 3 && ok === 0) throw new Error('El recortador no funciona, se detiene la corrida');
     }
   }
-  fs.writeFileSync(path.join(OUT, 'failed.json'), JSON.stringify([...failed]));
   console.log(`Recortes nuevos: ${ok}`);
 }
 
