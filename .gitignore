@@ -1,4 +1,5 @@
 # Estado y datos generados: viven en la rama "state" y en GitHub Pages
 data/
 site/data/
+site/cutouts/
 node_modules/

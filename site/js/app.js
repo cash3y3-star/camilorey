@@ -5,10 +5,10 @@
 // Cuenta y visitas: js/firebase.js (opcional).
 // ============================================================
 
-import { icon, hydrateIcons } from './icons.js';
-import { onLive, currentLive, findLive } from './live.js';
-import * as FB from './firebase.js';
-import { TELEGRAM_URL, SUPPORT_EMAIL } from './config.js';
+import { icon, hydrateIcons } from './icons.js?v=__V__';
+import { onLive, currentLive, findLive } from './live.js?v=__V__';
+import * as FB from './firebase.js?v=__V__';
+import { TELEGRAM_URL, SUPPORT_EMAIL } from './config.js?v=__V__';
 
 const TZ = 'America/Bogota';
 const $view = document.getElementById('view');
@@ -341,31 +341,31 @@ function followCard(p) {
       ? '<span class="fc-st miss" title="Fallado">✕</span>'
       : lv
       ? '<span class="fc-st live" title="En vivo"><i></i></span>'
-      : `<span class="fc-st wait" title="Pendiente">${icon('clock')}</span>`;
+      : '';
   const pillCls = p.res === 'hit' ? 'win' : p.res === 'miss' ? 'loss' : 'pend';
-  const progress = favSets == null ? 0 : Math.min(100, (favSets / 3) * 100);
   const tn = (p.tn || '').replace(/^Tournament\s*/i, '');
+  const score = favSets != null ? `<span class="fc-score ${lv ? 'live' : ''}">${favSets}-${rivSets}${lv ? ` · ${esc(lv.ptsHome)}:${esc(lv.ptsAway)}` : ''}</span>` : '';
+  // Foto: recorte sin fondo si existe; si no, la foto original encuadrada.
+  const photo = fav.cut
+    ? `<img class="fc-cut" src="${esc(fav.cut)}" alt="" loading="lazy">`
+    : fav.av
+    ? `<img class="fc-raw" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : '';
   return `
-  <article class="fcard" data-open="${p.id}" data-match="${p.id}">
+  <article class="fcard ${p.res === 'hit' ? 'is-hit' : p.res === 'miss' ? 'is-miss' : ''}" data-open="${p.id}" data-match="${p.id}">
     <div class="fc-photo">
       <span class="fc-ini">${esc(initials(fav.n))}</span>
-      ${
-        fav.av
-          ? `<img class="fc-bg" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
-             <img class="fc-img" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
-          : ''
-      }
+      ${photo}
+      <button class="fc-heart ${isFollowed(p.id) ? 'on' : ''}" data-follow="${p.id}" aria-label="Dejar de seguir">${icon('heart')}</button>
       ${status}
-      <span class="fc-tag">CR</span>
+      <span class="fc-tag">CZ</span>
     </div>
     <div class="fc-body">
-      <small class="fc-league">${esc(p.ph ? `${p.ph} · ${tn}` : tn)}</small>
+      <small class="fc-league">${esc(p.ph ? `${p.ph} · ${tn}` : `Tournament ${tn}`)}</small>
       <b class="fc-name">${esc(fav.n)}</b>
-      <small class="fc-sub">${esc(fav.n)} vs ${esc(riv.n)}</small>
-      <small class="fc-sub">${esc(dayLabel(dayKey(p.at)))} · ${fmtTime(p.at)}${p.o ? ` · cuota ${odds(p.o)}` : ''}</small>
-      <span class="fc-pill ${pillCls}"><i></i>GANA · ${p.c}%</span>
-      <div class="fc-bar"><span style="width:${progress}%"></span></div>
-      <div class="fc-sets"><span>${favSets == null ? '0' : favSets}${rivSets != null ? ` <em>- ${rivSets} sets</em>` : ''}</span>${lv ? `<span class="fc-live">${esc(lv.ptsHome)}:${esc(lv.ptsAway)}</span>` : ''}</div>
+      <small class="fc-sub">vs ${esc(riv.n)} · ${fmtTime(p.at)}${dayKey(p.at) !== todayKey() ? ` · ${esc(dayLabel(dayKey(p.at)))}` : ''}</small>
+      <div class="fc-row"><span class="fc-pill ${pillCls}">${esc(fav.n.toUpperCase())} GANA</span>${score}</div>
+      <div class="fc-conf"><div class="fc-bar"><span style="width:${((p.c - 50) / 30) * 100}%"></span></div><b>${p.c}</b></div>
     </div>
   </article>`;
 }
@@ -1008,8 +1008,21 @@ setInterval(async () => {
   window.scrollTo(0, y);
 }, 60000);
 
+// Botón "Entrar" visible arriba cuando no hay sesión; con sesión, el
+// ícono de perfil muestra la inicial o la foto de la cuenta.
+function renderAuthHeader() {
+  const btn = document.getElementById('btn-login');
+  const prof = document.getElementById('btn-profile');
+  btn.hidden = !FB.enabled || Boolean(account);
+  prof.innerHTML = account
+    ? `<span class="me-dot">${account.photoURL ? `<img src="${esc(account.photoURL)}" alt="" referrerpolicy="no-referrer">` : esc(initials(account.displayName || account.email))}</span>`
+    : icon('user');
+}
+renderAuthHeader();
+
 FB.onAuth(async (u) => {
   account = u;
+  renderAuthHeader();
   if (u) {
     const remote = await FB.loadFollows().catch(() => null);
     if (remote) {

@@ -60,7 +60,11 @@ svg { display: block; }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -0.02em; font-size: 19px; }
 .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--red); color: #fff; font-size: 13px; font-weight: 900; letter-spacing: 0; }
 .brand-name b { color: var(--red-2); font-weight: 800; }
-.topbar-actions { display: flex; gap: 6px; }
+.topbar-actions { display: flex; gap: 6px; align-items: center; }
+.login-btn { padding: 8px 14px; border-radius: 999px; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
+.login-btn:hover { background: var(--red-2); }
+.me-dot { width: 30px; height: 30px; border-radius: 50%; background: var(--red); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 800; overflow: hidden; }
+.me-dot img { width: 100%; height: 100%; object-fit: cover; }
 .icon-btn { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; }
 .icon-btn:hover { background: var(--card); }
 .icon-btn .dot { position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
@@ -239,36 +243,48 @@ details.faq p { margin: 0; padding: 0 14px 14px; font-size: 13px; color: var(--m
 .chip-btn .icon { width: 16px; height: 16px; }
 .fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (min-width: 900px) { .fgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.fcard { background: var(--card); border: 1px solid var(--line); border-radius: 22px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+/* Tarjeta estilo "CZECH IA AGENTS": jugador recortado sobre fondo oscuro
+   con la marca de agua en diagonal. */
+.fcard { background: #151517; border: 1.5px solid #26262a; border-radius: 22px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; color: #f5f5f6; }
+.fcard.is-hit { border-color: rgba(34, 197, 94, 0.7); }
+.fcard.is-miss { border-color: rgba(239, 68, 68, 0.6); }
 .fcard:active { transform: scale(0.99); }
-.fc-photo { position: relative; height: 150px; background: radial-gradient(ellipse at 50% 30%, #2a0b08, var(--card-2) 70%); display: grid; place-items: end center; overflow: hidden; }
-/* Fondo: la misma foto difuminada y oscurecida; encima, la foto completa más chica. */
-.fc-photo .fc-bg { position: absolute; inset: -20px; width: calc(100% + 40px); height: calc(100% + 40px); object-fit: cover; filter: blur(18px) saturate(1.2) brightness(0.45); transform: scale(1.1); }
-.fc-photo .fc-img { position: relative; z-index: 1; height: 82%; aspect-ratio: 1; width: auto; object-fit: cover; border-radius: 18px 18px 0 0; box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.35); -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent); mask-image: linear-gradient(180deg, #000 72%, transparent); }
-.fc-ini { position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; font-weight: 900; color: var(--faint); }
-.fc-st { position: absolute; z-index: 2; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 16px; color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
+.fc-photo {
+  position: relative; height: 172px; overflow: hidden; display: grid; place-items: end center;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='90'%3E%3Ctext x='0' y='55' transform='rotate(-22 85 45)' fill='%23ffffff' fill-opacity='0.07' font-family='Arial Black,Arial,sans-serif' font-weight='900' font-size='15' letter-spacing='1'%3ECAMILOREY%3C/text%3E%3C/svg%3E"),
+    radial-gradient(ellipse at 50% 45%, #3a0906 0%, #1a0605 45%, #0b0b0c 100%);
+}
+.fc-cut { position: relative; z-index: 1; height: 96%; width: auto; max-width: 100%; object-fit: contain; object-position: bottom; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.6)); }
+.fc-raw { position: relative; z-index: 1; height: 88%; aspect-ratio: 1; width: auto; object-fit: cover; border-radius: 16px 16px 0 0; -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent); mask-image: linear-gradient(180deg, #000 75%, transparent); }
+.fc-ini { position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; font-weight: 900; color: #3f3f46; }
+.fc-heart { position: absolute; z-index: 2; top: 10px; left: 10px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(10, 10, 11, 0.75); color: #a1a1aa; }
+.fc-heart .icon { width: 18px; height: 18px; }
+.fc-heart.on { color: var(--red-2); }
+.fc-heart.on svg { fill: currentColor; }
+.fc-st { position: absolute; z-index: 2; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 15px; color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
 .fc-st.hit { background: var(--win); }
 .fc-st.miss { background: var(--loss); }
-.fc-st.wait { background: var(--card); border: 1px solid var(--line); color: var(--muted); }
-.fc-st.wait .icon { width: 17px; height: 17px; }
 .fc-st.live { background: var(--red); }
 .fc-st.live i { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: pulse 1.4s infinite; box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
-.fc-tag { position: absolute; z-index: 2; left: 12px; bottom: 10px; font-size: 9px; font-weight: 900; padding: 3px 5px; border-radius: 5px; background: var(--red); color: #fff; }
-.fc-body { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
-.fc-league { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-name { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-sub { font-size: 11.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-pill { align-self: center; display: inline-flex; align-items: center; gap: 6px; margin: 10px 0 8px; padding: 7px 12px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 0.02em; text-align: center; border: 1.5px solid; }
-.fc-pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-.fc-pill.pend { color: var(--red-2); border-color: rgba(255, 42, 31, 0.45); background: var(--red-soft); }
-.fc-pill.win { color: var(--win); border-color: rgba(34, 197, 94, 0.45); background: var(--win-soft); }
-.fc-pill.loss { color: var(--loss); border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.1); }
-.fc-bar { height: 6px; border-radius: 99px; background: var(--card-2); overflow: hidden; margin-top: auto; }
-.fc-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--red), var(--red-2)); border-radius: 99px; }
-.fc-sets { display: flex; justify-content: space-between; margin-top: 6px; font-size: 13px; font-weight: 800; color: var(--win); font-variant-numeric: tabular-nums; }
-.fc-sets em { font-style: normal; color: var(--muted); font-weight: 600; font-size: 11px; }
-.fc-live { color: var(--red-2); font-family: var(--mono); }
-@media (max-width: 380px) { .fc-name { font-size: 16px; } .fc-photo { height: 128px; } .fc-pill { font-size: 10px; padding: 6px 9px; } }
+.fc-tag { position: absolute; z-index: 2; left: 10px; bottom: 10px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 800; background: rgba(10, 10, 11, 0.85); color: #f5f5f6; }
+.fc-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.fc-league { font-size: 10.5px; font-weight: 600; color: #8b8b93; text-transform: uppercase; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-name { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-sub { font-size: 12px; color: #9a9aa2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin: 8px 0 12px; min-width: 0; }
+.fc-row .fc-pill { max-width: 100%; }
+.fc-pill { display: inline-block; padding: 6px 10px; border-radius: 8px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fc-pill.pend { color: #4ade80; background: rgba(34, 197, 94, 0.12); }
+.fc-pill.win { color: #fff; background: var(--win); }
+.fc-pill.loss { color: #fff; background: var(--loss); }
+.fc-score { font-size: 12px; font-weight: 800; color: #d4d4d8; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fc-score.live { color: var(--red-2); font-family: var(--mono); }
+.fc-conf { display: flex; align-items: center; gap: 10px; margin-top: auto; }
+.fc-bar { flex: 1; height: 5px; border-radius: 99px; background: #2a2a2f; overflow: hidden; }
+.fc-bar span { display: block; height: 100%; min-width: 6%; background: linear-gradient(90deg, var(--red), #ff6b1a); border-radius: 99px; }
+.fc-conf b { font-size: 12px; color: #a1a1aa; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 380px) { .fc-name { font-size: 16px; } .fc-photo { height: 148px; } }
 
 /* ---------- análisis IA ---------- */
 .analysis { border: 1px solid rgba(225, 6, 0, 0.35); background: linear-gradient(180deg, var(--red-soft), transparent 70%), var(--card); border-radius: 16px; padding: 14px; }

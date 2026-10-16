@@ -32,8 +32,10 @@ jobs:
       # sobrescribe en cada corrida para que el repo no crezca.
       - name: Traer estado
         run: |
-          mkdir -p data
+          mkdir -p data site/cutouts
           git fetch origin state --depth=1 && git --work-tree=data checkout origin/state -- . || echo "Sin estado previo"
+          git fetch origin cutouts --depth=1 && git --work-tree=site/cutouts checkout origin/cutouts -- . || echo "Sin recortes todavía"
+          git reset -q
           ls -la data || true
 
       - uses: actions/setup-node@v4
@@ -52,6 +54,11 @@ jobs:
           git add -A
           git commit -q -m "estado $(date -u +%FT%TZ)"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state
+
+      # Número de versión en los archivos: el navegador descarga siempre la
+      # versión recién publicada en vez de una copia vieja.
+      - name: Marcar versión
+        run: sed -i "s/__V__/${GITHUB_SHA::8}/g" site/index.html site/js/*.js
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

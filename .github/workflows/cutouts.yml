@@ -1,0 +1,59 @@
+name: Recortar fotos de jugadores
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cutouts
+  cancel-in-progress: false
+
+jobs:
+  cutouts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Traer estado y recortes existentes
+        run: |
+          mkdir -p data site/cutouts
+          git fetch origin state --depth=1 && git --work-tree=data checkout origin/state -- . || echo "Sin estado"
+          git fetch origin cutouts --depth=1 && git --work-tree=site/cutouts checkout origin/cutouts -- . || echo "Sin recortes previos"
+          ls site/cutouts | wc -l
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cutouts-node
+          key: cutouts-node-v1
+
+      - name: Instalar recortador
+        run: |
+          mkdir -p ~/.cache/cutouts-node
+          cd ~/.cache/cutouts-node
+          [ -d node_modules/@imgly ] || npm install --no-audit --no-fund @imgly/background-removal-node@1.4.5 sharp@0.33.5
+
+      - name: Recortar
+        env:
+          NODE_PATH: /home/runner/.cache/cutouts-node/node_modules
+        run: node scripts/cutouts.js
+
+      - name: Guardar recortes
+        run: |
+          cd site/cutouts
+          git init -q -b cutouts
+          git config user.name "camilorey-bot"
+          git config user.email "camilorey-bot@users.noreply.github.com"
+          git fetch -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" cutouts && git reset -q --soft FETCH_HEAD || true
+          git add -A
+          git diff --cached --quiet && { echo "Sin recortes nuevos"; exit 0; }
+          git commit -q -m "recortes $(date -u +%FT%TZ)"
+          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" cutouts

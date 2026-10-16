@@ -23,7 +23,7 @@
       document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
-  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/app.css?v=__V__" />
 </head>
 <body>
   <header class="topbar">
@@ -31,6 +31,7 @@
       <span class="brand-mark">CR</span><span class="brand-name">Camilo<b>Rey</b></span>
     </a>
     <div class="topbar-actions">
+      <a class="login-btn" id="btn-login" href="#/login" hidden>Entrar</a>
       <button class="icon-btn" id="btn-notif" aria-label="Notificaciones"><span data-icon="bell"></span><i class="dot" hidden></i></button>
       <button class="icon-btn" id="btn-profile" aria-label="Perfil"><span data-icon="user"></span></button>
     </div>
@@ -56,6 +57,6 @@
 
   <div class="toast" id="toast" hidden></div>
 
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=__V__"></script>
 </body>
 </html>

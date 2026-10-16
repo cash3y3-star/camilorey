@@ -12,7 +12,7 @@
 // en los contadores y que cada usuario lea/escriba su propio documento.
 // ============================================================
 
-import { FIREBASE_CONFIG } from './config.js';
+import { FIREBASE_CONFIG } from './config.js?v=__V__';
 
 const V = '10.12.2';
 let fb = null; // { auth, db, m: {módulos} }
