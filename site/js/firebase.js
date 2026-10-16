@@ -97,6 +97,29 @@ async function ensureUserDoc(u) {
   }
 }
 
+// Perfil editable (nombre y foto). La foto se guarda como imagen pequeña
+// (data URL JPEG ~15 KB) dentro de users/{uid}: Firebase Storage exige
+// plan de pago, Firestore no.
+export async function loadProfile() {
+  if (!currentUser) return null;
+  const f = await load();
+  const snap = await f.F.getDoc(f.F.doc(f.db, 'users', currentUser.uid));
+  const d = snap.data() || {};
+  return { name: d.name || currentUser.displayName || '', photo: d.photo || null };
+}
+
+export async function saveProfile({ name, photo }) {
+  if (!currentUser) return;
+  const f = await load();
+  const patch = {};
+  if (name != null) {
+    patch.name = name;
+    await f.A.updateProfile(currentUser, { displayName: name });
+  }
+  if (photo !== undefined) patch.photo = photo;
+  await f.F.setDoc(f.F.doc(f.db, 'users', currentUser.uid), patch, { merge: true });
+}
+
 export async function loadFollows() {
   if (!currentUser) return null;
   const f = await load();

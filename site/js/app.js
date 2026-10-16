@@ -21,6 +21,32 @@ let follows = new Set(readLocal('cr_follows', []));
 let liveUnsub = null;
 let sheetUnsub = null;
 let account = null;
+let profile = null; // { name, photo } editable, guardado en Firestore
+
+const userName = () => profile?.name || account?.displayName || account?.email?.split('@')[0] || 'Usuario';
+const userPhoto = () => profile?.photo || account?.photoURL || null;
+function userAvatar(size) {
+  const ph = userPhoto();
+  return ph ? `<img src="${esc(ph)}" alt="" referrerpolicy="no-referrer">` : esc(initials(userName()));
+}
+
+// Recorta al centro y achica la imagen elegida a 256x256 JPEG (~15 KB).
+function resizePhoto(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const S = 256;
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const c = document.createElement('canvas');
+      c.width = c.height = S;
+      c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, S, S);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 // ---------------- utilidades ----------------
 
@@ -202,7 +228,7 @@ function errorBox() {
 
 function viewInicio() {
   const s = data.stats;
-  const name = account?.displayName?.split(' ')[0];
+  const name = account ? userName().split(' ')[0] : null;
   const streak = s?.streak || 0;
   const streakTxt = streak > 0 ? `${streak}W 🔥` : streak < 0 ? `${-streak}L` : '—';
   const pend = data.picks;
@@ -545,7 +571,7 @@ function viewPerfil() {
   <div class="subhead"><a class="back" href="#/inicio">${icon('left')} Atrás</a><h1>Perfil</h1></div>
   ${
     u
-      ? `<a class="usercard" href="#/cuenta"><div class="av">${u.photoURL ? `<img src="${esc(u.photoURL)}" alt="" referrerpolicy="no-referrer">` : esc(initials(u.displayName || u.email))}</div><div style="flex:1;min-width:0"><b>${esc(u.displayName || 'Usuario')}</b><small>${esc(u.email || '')}</small><small>Miembro desde ${esc(new Date(u.metadata?.creationTime || Date.now()).toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }))}</small></div>${icon('chev')}</a>`
+      ? `<a class="usercard" href="#/cuenta"><div class="av">${userAvatar()}</div><div style="flex:1;min-width:0"><b>${esc(userName())}</b><small>${esc(u.email || '')}</small><small>Miembro desde ${esc(new Date(u.metadata?.creationTime || Date.now()).toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }))}</small></div>${icon('chev')}</a>`
       : FB.enabled
       ? `<div class="usercard"><div class="av">${icon('user')}</div><div style="flex:1"><b>Invitado</b><small>Inicia sesión para guardar tus picks seguidos</small></div></div>
          <a class="btn primary" style="margin-top:10px" href="#/login">Iniciar sesión o crear cuenta</a>`
@@ -568,9 +594,26 @@ function viewCuenta() {
   if (!u) return viewLogin();
   return `
   <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Info de cuenta</h1></div>
-  <div style="display:grid;place-items:center;margin:10px 0 18px"><div class="usercard" style="background:none;border:0;padding:0"><div class="av" style="width:84px;height:84px;font-size:32px">${u.photoURL ? `<img src="${esc(u.photoURL)}" alt="" referrerpolicy="no-referrer">` : esc(initials(u.displayName || u.email))}</div></div></div>
+  <div class="photo-edit">
+    <label class="pe-av" title="Cambiar foto">
+      <span class="av">${userAvatar()}</span>
+      <span class="pe-cam">${icon('camera')}</span>
+      <input type="file" id="photo-input" accept="image/*" hidden>
+    </label>
+    <label for="photo-input" class="textlink" style="cursor:pointer">Cambiar foto</label>
+    ${profile?.photo ? '<button class="textlink" id="btn-photo-del" style="color:var(--muted);font-size:12px">Quitar foto</button>' : ''}
+  </div>
   <div class="list">
-    <div class="row"><span class="ic">${icon('user')}</span><span class="tx"><small>Nombre</small><b>${esc(u.displayName || '—')}</b></span></div>
+    <div class="row" id="name-row">
+      <span class="ic">${icon('user')}</span>
+      <span class="tx"><small>Nombre completo</small><b>${esc(userName())}</b></span>
+      <button class="mini-btn" id="btn-name-edit">Editar</button>
+    </div>
+    <form class="row" id="name-form" hidden>
+      <span class="ic">${icon('user')}</span>
+      <input name="name" maxlength="40" value="${esc(userName())}" class="inline-input" autocomplete="name" required>
+      <button class="mini-btn red" type="submit">Guardar</button>
+    </form>
     <div class="row"><span class="ic">${icon('mail')}</span><span class="tx"><small>Correo</small><b>${esc(u.email || '—')}</b></span></div>
     <div class="row"><span class="ic">${icon('calendar')}</span><span class="tx"><small>Miembro desde</small><b>${esc(new Date(u.metadata?.creationTime || Date.now()).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }))}</b></span></div>
     <div class="row"><span class="ic">${icon('shield')}</span><span class="tx"><small>ID de usuario</small><b style="font-family:var(--mono);font-size:12px">${esc(u.uid)}</b></span></div>
@@ -936,6 +979,61 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !$sheet.hidden) closeSheet();
 });
 
+// ---------- editar perfil (nombre y foto) ----------
+document.addEventListener('click', async (ev) => {
+  const t = ev.target.closest('button');
+  if (!t) return;
+  if (t.id === 'btn-name-edit') {
+    document.getElementById('name-row').hidden = true;
+    const form = document.getElementById('name-form');
+    form.hidden = false;
+    form.querySelector('input').focus();
+  }
+  if (t.id === 'btn-photo-del') {
+    await FB.saveProfile({ photo: null });
+    profile = { ...profile, photo: null };
+    renderAuthHeader();
+    route();
+    toast('Foto quitada');
+  }
+});
+
+document.addEventListener('submit', async (ev) => {
+  if (ev.target.id !== 'name-form') return;
+  ev.preventDefault();
+  const name = String(new FormData(ev.target).get('name') || '').trim().slice(0, 40);
+  if (!name) return;
+  const btn = ev.target.querySelector('button');
+  btn.disabled = true;
+  try {
+    await FB.saveProfile({ name });
+    profile = { ...profile, name };
+    renderAuthHeader();
+    route();
+    toast('Nombre actualizado');
+  } catch (e) {
+    toast(FB.errorText(e));
+    btn.disabled = false;
+  }
+});
+
+document.addEventListener('change', async (ev) => {
+  if (ev.target.id !== 'photo-input' || !ev.target.files?.[0]) return;
+  const file = ev.target.files[0];
+  if (!file.type.startsWith('image/')) return toast('Elige una imagen');
+  toast('Subiendo foto...');
+  try {
+    const photo = await resizePhoto(file);
+    await FB.saveProfile({ photo });
+    profile = { ...profile, photo };
+    renderAuthHeader();
+    route();
+    toast('Foto actualizada');
+  } catch (e) {
+    toast(e.message || 'No se pudo cambiar la foto');
+  }
+});
+
 // Banca personal: guarda y recalcula solo la lista (sin perder el foco).
 document.addEventListener('input', (ev) => {
   if (ev.target.id !== 'bank-input') return;
@@ -1014,14 +1112,13 @@ function renderAuthHeader() {
   const btn = document.getElementById('btn-login');
   const prof = document.getElementById('btn-profile');
   btn.hidden = !FB.enabled || Boolean(account);
-  prof.innerHTML = account
-    ? `<span class="me-dot">${account.photoURL ? `<img src="${esc(account.photoURL)}" alt="" referrerpolicy="no-referrer">` : esc(initials(account.displayName || account.email))}</span>`
-    : icon('user');
+  prof.innerHTML = account ? `<span class="me-dot">${userAvatar()}</span>` : icon('user');
 }
 renderAuthHeader();
 
 FB.onAuth(async (u) => {
   account = u;
+  profile = u ? await FB.loadProfile().catch(() => null) : null;
   renderAuthHeader();
   if (u) {
     const remote = await FB.loadFollows().catch(() => null);
