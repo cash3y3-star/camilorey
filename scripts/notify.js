@@ -170,4 +170,15 @@ async function runNotifications(state, helpers) {
   console.log(`Push: ${events.length} eventos, ${sent} notificaciones enviadas`);
 }
 
-module.exports = { runNotifications, botToken, toFs };
+// Número REAL de cuentas registradas (documentos de usuario). Reemplaza al
+// contador incremental, que sumaba de más.
+async function countUsers() {
+  if (!process.env.BOT_EMAIL) return null;
+  try {
+    return (await listUsers(await botToken())).length;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { runNotifications, botToken, toFs, countUsers };

@@ -611,7 +611,7 @@ async function renderAdminPanel() {
     const [days, c] = await Promise.all([FB.visitsByDay(14), FB.getCounters()]);
     const max = Math.max(1, ...days.map((x) => x.count));
     if (vbox)
-      vbox.innerHTML = `<div class="card pad"><div class="tiles" style="margin:0 0 12px"><div class="tile"><div class="overline">Hoy</div><div class="val">${fmtInt(c.today)}</div></div><div class="tile"><div class="overline">Total</div><div class="val">${fmtInt(c.total)}</div></div><div class="tile"><div class="overline">Usuarios</div><div class="val">${fmtInt(c.users)}</div></div></div>
+      vbox.innerHTML = `<div class="card pad"><div class="tiles" style="margin:0 0 12px"><div class="tile"><div class="overline">Hoy</div><div class="val">${fmtInt(c.today)}</div></div><div class="tile"><div class="overline">Total</div><div class="val">${fmtInt(c.total)}</div></div><div class="tile"><div class="overline">Usuarios</div><div class="val">${(data.stats?.users ?? '—')}</div></div></div>
         <div class="bars">${days.map((x) => `<div class="b" title="${x.d}: ${x.count}"><i class="h" style="height:${(x.count / max) * 100}px;background:var(--red)"></i></div>`).join('')}</div>
         <div class="bars-x"><span>${esc(days[0].d.slice(5))}</span><span>${esc(days[days.length - 1].d.slice(5))}</span></div></div>`;
   } catch (e) {
@@ -1768,7 +1768,7 @@ async function renderCounter() {
   try {
     if (Date.now() - counterCache.at > 5 * 60e3) counterCache = { at: Date.now(), c: await FB.getCounters() };
     const c = counterCache.c;
-    if (c) el.innerHTML = `${icon('eye', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:13px;height:13px;vertical-align:-2px"')} ${fmtInt(c.today)} visitas hoy · ${fmtInt(c.total)} en total · ${fmtInt(c.users)} usuarios`;
+    if (c) el.innerHTML = `${icon('eye', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:13px;height:13px;vertical-align:-2px"')} ${fmtInt(c.today)} visitas hoy · ${fmtInt(c.total)} en total · ${(data.stats?.users ?? '—')} usuarios`;
   } catch {}
 }
 

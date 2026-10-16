@@ -702,7 +702,8 @@ function writeSite(meta) {
     featured: featuredStats(resolved, d),
     champions: champs,
     hot,
-    tipster: meta.tipster || null
+    tipster: meta.tipster || null,
+    users: meta.users ?? null
   });
   writePlayers(new Set([...calendar.flatMap((m) => [m.a.id, m.b.id]), ...pendingView.flatMap((p) => [p.a.id, p.b.id]), ...champs.flatMap((c) => [c.champ.id, c.rival.id]), ...hot.map((h) => h.p.id)]), byPlayer);
 }
@@ -1041,7 +1042,7 @@ async function run() {
 
   totals.oddsBackfilled = backfillOdds(rushbet);
   prune();
-  writeSite({ model: modelInfo, tipster: await tipsterStats() });
+  writeSite({ model: modelInfo, tipster: await tipsterStats(), users: await require('./notify').countUsers() });
   try {
     const featured = Object.values(state.picks).find((p) => p.ft);
     await require('./notify').runNotifications(state, { name: (id) => state.players[id]?.n || '?', featuredId: featured?.id || null });

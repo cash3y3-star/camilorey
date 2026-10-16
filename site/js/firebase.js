@@ -78,22 +78,22 @@ export async function getCounters() {
   if (!enabled) return null;
   const f = await load();
   const { doc, getDoc } = f.F;
-  const [t, d, u] = await Promise.all([
-    getDoc(doc(f.db, 'stats', 'visits')),
-    getDoc(doc(f.db, 'stats', `visits-${bogotaDay()}`)),
-    getDoc(doc(f.db, 'stats', 'users'))
-  ]);
-  return { total: t.data()?.count || 0, today: d.data()?.count || 0, users: u.data()?.count || 0 };
+  const [t, d] = await Promise.all([getDoc(doc(f.db, 'stats', 'visits')), getDoc(doc(f.db, 'stats', `visits-${bogotaDay()}`))]);
+  // El número de usuarios ya no sale de un contador (sumaba de más): lo
+  // cuenta GitHub Actions con las cuentas reales y viene en stats.json.
+  return { total: t.data()?.count || 0, today: d.data()?.count || 0 };
 }
 
 async function ensureUserDoc(u) {
   const f = await load();
-  const { doc, getDoc, setDoc, increment } = f.F;
+  const { doc, getDoc, setDoc } = f.F;
   const ref = doc(f.db, 'users', u.uid);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
     await setDoc(ref, { name: u.displayName || '', email: u.email || '', created: new Date().toISOString(), follows: [] });
-    await setDoc(doc(f.db, 'stats', 'users'), { count: increment(1) }, { merge: true });
+  } else if (!snap.data().email && u.email) {
+    // El correo se usa para Premium y notificaciones: que nunca falte.
+    await setDoc(ref, { email: u.email, created: snap.data().created || new Date().toISOString() }, { merge: true });
   }
 }
 
