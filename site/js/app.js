@@ -149,11 +149,26 @@ async function toggleFollow(id) {
 
 // ---------------- piezas ----------------
 
+// Cruce partido en vivo (Rushbet) ↔ partido nuestro. Dos jugadores pueden
+// enfrentarse VARIAS veces el mismo día (grupos y después 3er puesto o
+// final), así que no basta con los nombres: solo cuentan partidos que no
+// hayan terminado, y si hay más de uno, el de hora más cercana a ahora.
+function ourMatchForLive(e) {
+  const now = Date.now();
+  const byId = new Map();
+  for (const x of [...data.calendar.matches, ...data.picks]) if (x.st !== 'f') byId.set(x.id, x);
+  const cands = [...byId.values()].filter((x) => findLive([e], x.a.n, x.b.n));
+  if (!cands.length) return null;
+  cands.sort((x, y) => Math.abs(new Date(x.at).getTime() - now) - Math.abs(new Date(y.at).getTime() - now));
+  const best = cands[0];
+  return data.calendar.matches.find((x) => x.id === best.id) || best;
+}
+
 function liveFor(m) {
-  if (m.st === 'f') return null;
-  const started = m.st === 'l' || new Date(m.at).getTime() <= Date.now();
-  if (!started) return null;
-  return findLive(currentLive().all, m.a.n, m.b.n);
+  if (!m || m.st === 'f') return null;
+  const e = currentLive().all.find((ev) => findLive([ev], m.a.n, m.b.n));
+  if (!e || ourMatchForLive(e)?.id !== m.id) return null;
+  return findLive([e], m.a.n, m.b.n);
 }
 
 function midBlock(m) {
@@ -296,7 +311,7 @@ function renderLiveHome(state) {
   }
   box.innerHTML = list
     .map((e) => {
-      const m = ours.find((x) => findLive([e], x.a.n, x.b.n));
+      const m = ourMatchForLive(e);
       return liveCard(e, m);
     })
     .join('');
@@ -456,7 +471,7 @@ function renderLivePage(state) {
   if (!box || !state.at) return;
   // Solo la Liga Pro Checa.
   const ours = data.calendar.matches;
-  let list = state.liga.map((e) => ({ e, m: ours.find((x) => findLive([e], x.a.n, x.b.n)) }));
+  let list = state.liga.map((e) => ({ e, m: ourMatchForLive(e) }));
   if (ui.liveFilter === 'pick') list = list.filter((x) => x.m?.pick);
   document.getElementById('live-count').textContent = `Liga Pro Checa · ${state.liga.length} ${state.liga.length === 1 ? 'partido' : 'partidos'} en juego · se actualiza cada 2 s`;
   if (!list.length) {

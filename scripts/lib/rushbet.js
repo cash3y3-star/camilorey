@@ -73,14 +73,22 @@ function findOdds(events, playerAName, playerBName, scheduledAtIso) {
   const sigB = ourNameSignature(playerBName);
   const targetTime = new Date(scheduledAtIso).getTime();
 
+  // Los mismos dos jugadores pueden cruzarse varias veces el mismo día
+  // (grupos y después 3er puesto/final): se elige el evento de hora más
+  // cercana, no el primero que caiga dentro de la tolerancia.
+  let best = null;
+  let bestDiff = Infinity;
   for (const e of events) {
-    if (Math.abs(new Date(e.start).getTime() - targetTime) > MATCH_TOLERANCE_MS) continue;
+    const diff = Math.abs(new Date(e.start).getTime() - targetTime);
+    if (diff > MATCH_TOLERANCE_MS || diff >= bestDiff) continue;
     const homeSig = kambiNameSignature(e.homeName);
     const awaySig = kambiNameSignature(e.awayName);
-    if (homeSig === sigA && awaySig === sigB) return { oddsA: e.oddsHome, oddsB: e.oddsAway };
-    if (homeSig === sigB && awaySig === sigA) return { oddsA: e.oddsAway, oddsB: e.oddsHome };
+    if (homeSig === sigA && awaySig === sigB) best = { oddsA: e.oddsHome, oddsB: e.oddsAway };
+    else if (homeSig === sigB && awaySig === sigA) best = { oddsA: e.oddsAway, oddsB: e.oddsHome };
+    else continue;
+    bestDiff = diff;
   }
-  return null;
+  return best;
 }
 
 async function fetchLiveTableTennis() {
