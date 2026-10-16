@@ -666,8 +666,39 @@ function writeSite(meta) {
     series,
     pendingCount: pendingView.length,
     model: meta.model,
-    featured: featuredStats(resolved, d)
+    featured: featuredStats(resolved, d),
+    champions: champions(now)
   });
+}
+
+// Campeones de los torneos terminados en las últimas 30 horas: el ganador,
+// su rival en la final, el marcador y la hora (para Inicio).
+function champions(now) {
+  const since = new Date(now - 30 * 3600e3).toISOString();
+  const out = [];
+  for (const [id, t] of Object.entries(state.tournaments)) {
+    if (t.st !== 'f' || !t.w) continue;
+    const ms = Object.values(state.matches)
+      .filter((m) => m.t === Number(id) && m.st === 'f')
+      .sort((a, b) => (a.at < b.at ? -1 : 1));
+    if (!ms.length) continue;
+    const final = ms.find((m) => phaseOf(m) === 'Final') || [...ms].reverse().find((m) => m.a === t.w || m.b === t.w);
+    if (!final || final.at < since) continue;
+    const wonFinal = final.w === t.w;
+    const rival = final.a === t.w ? final.b : final.a;
+    out.push({
+      t: Number(id),
+      tn: (t.n || '').replace(/^Tournament\s*/i, ''),
+      at: final.at,
+      champ: playerRef(t.w),
+      rival: playerRef(rival),
+      score: final.a === t.w ? `${final.sa}-${final.sb}` : `${final.sb}-${final.sa}`,
+      isFinal: phaseOf(final) === 'Final' && wonFinal,
+      wins: ms.filter((m) => m.w === t.w).length,
+      played: ms.filter((m) => m.a === t.w || m.b === t.w).length
+    });
+  }
+  return out.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 12);
 }
 
 // Estadísticas SOLO de los picks destacados (p.dst), para Inicio.

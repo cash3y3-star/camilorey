@@ -325,6 +325,33 @@ function viewInicio() {
   ${footer()}`;
 }
 
+// Campeones (ganadores de la final) de los torneos de las últimas horas.
+function championsHtml() {
+  const list = data.stats?.champions || [];
+  if (!list.length) return '';
+  return `
+  <div class="section-h"><h2>👑 Campeones</h2><span class="badge">${list.length}</span></div>
+  <div class="fgrid">${list
+    .map((c) => {
+      const photo = c.champ.cut
+        ? `<img class="fc-cut" src="${esc(c.champ.cut)}" alt="" loading="lazy">`
+        : c.champ.av
+        ? `<img class="fc-raw" src="${esc(c.champ.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+        : `<span class="fc-ini">${esc(initials(c.champ.n))}</span>`;
+      return `<article class="fcard champ">
+        <div class="fc-photo">${photo}<span class="crown">👑</span><span class="fc-flag"><svg viewBox="0 0 30 20"><rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0 15 10 0 20z" fill="#11457e"/></svg></span></div>
+        <div class="fc-body">
+          <small class="fc-league">${esc(c.tn)}</small>
+          <b class="fc-name">${esc(c.champ.n)}</b>
+          <small class="fc-sub">${c.isFinal ? 'Final' : 'Último partido'} vs ${esc(c.rival.n)}</small>
+          <span class="fc-pill champ-pill">🏆 CAMPEÓN · ${esc(c.score)}</span>
+          <small class="fc-sub" style="margin-top:4px">${esc(dayLabel(dayKey(c.at)))} · ${fmtTime(c.at)} · ${c.wins}/${c.played} ganados</small>
+        </div>
+      </article>`;
+    })
+    .join('')}</div>`;
+}
+
 // Actualiza un contenedor de tarjetas en vivo sin redibujarlo: si siguen
 // los mismos partidos, solo cambia las partes marcadas con data-u (números
 // y saque). Si cambió la lista de partidos, ahí sí lo redibuja entero.
@@ -356,9 +383,15 @@ function renderLiveHome(state) {
   const list = state.liga.length ? state.liga : [];
   if (!state.at) return;
   if (!list.length) {
-    box.innerHTML = '<div class="note">No hay partidos de la Liga Pro Checa en vivo en este momento.</div>';
+    // Sin partidos en vivo: los campeones de los torneos recientes.
+    const html = `<div class="note">No hay partidos de la Liga Pro Checa en vivo en este momento.</div>${championsHtml()}`;
+    if (box.dataset.html !== html) {
+      box.innerHTML = html;
+      box.dataset.html = html; // no se redibuja cada 2 s (las fotos no parpadean)
+    }
     return;
   }
+  delete box.dataset.html;
   patchLive(box, list.map((e) => liveCard(e, ourMatchForLive(e))).join(''));
 }
 
