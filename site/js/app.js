@@ -1607,7 +1607,8 @@ function h2hFull(m, redraw) {
   const list = d.l
     .filter((x) => x.at < m.at)
     .map((x) => ({ at: x.at, tn: x.tn, ph: x.ph, w: x.w, sa: m.a.id === lo ? x.s[0] : x.s[1], sb: m.a.id === lo ? x.s[1] : x.s[0] }));
-  return { list, from: d.from };
+  const [y, mo, da] = (d.from || '2026-01-01').split('-');
+  return { list, full: d.full !== false, since: `${da}/${mo}/${y}` };
 }
 
 function h2hListHtml(m, winsA, total, label) {
@@ -1678,9 +1679,11 @@ function openMatch(id) {
           ? (() => {
               const full = h2hFull(m, draw);
               if (full) {
-                if (!full.list.length) return '<p class="note">Sin enfrentamientos directos en 2026.</p>';
+                const span = full.full ? 'en 2026' : `desde el ${full.since}`;
+                const loading = full.full ? '' : `<p class="note" style="margin-top:8px">${icon('info')} Se está cargando el historial completo de 2026 desde tt.league-pro; los enfrentamientos anteriores al ${full.since} aparecerán en las próximas horas.</p>`;
+                if (!full.list.length) return `<p class="note">Sin enfrentamientos directos ${span}.</p>${loading}`;
                 const wA = full.list.filter((x) => x.w === m.a.id).length;
-                return h2hListHtml({ ...m, h2hL: full.list }, wA, full.list.length, `${full.list.length} enfrentamientos en 2026`);
+                return h2hListHtml({ ...m, h2hL: full.list }, wA, full.list.length, `${full.list.length} enfrentamientos ${span}`) + loading;
               }
               return h2hTotal ? h2hListHtml(m, h2hWinsA, h2hTotal) : '<p class="note">Sin enfrentamientos directos registrados.</p>';
             })()

@@ -771,6 +771,18 @@ const h2hPairs = new Set();
 function writeH2H() {
   const dir = path.join(OUT_DIR, 'h2h');
   fs.rmSync(dir, { recursive: true, force: true });
+  // Desde qué día el historial está completo sin huecos (mientras se carga
+  // el año, la ficha lo dice en vez de afirmar "en 2026").
+  let from = null;
+  for (let k = 2; ; k++) {
+    const day = new Date(Date.now() - k * 86400e3).toISOString().slice(0, 10);
+    if (day < HISTORY_FROM) {
+      from = HISTORY_FROM;
+      break;
+    }
+    if (!state.history[day]) break;
+    from = day;
+  }
   for (const key of h2hPairs) {
     const [lo, hi] = key.split('-').map(Number);
     const l = h2hMatches(lo, hi).map((x) => ({
@@ -780,7 +792,7 @@ function writeH2H() {
       w: x.w,
       s: x.a === lo ? [x.sa, x.sb] : [x.sb, x.sa] // sets: [del id menor, del id mayor]
     }));
-    writeJson(path.join(dir, `${key}.json`), { from: HISTORY_FROM, l });
+    writeJson(path.join(dir, `${key}.json`), { from: from || HISTORY_FROM, full: from === HISTORY_FROM, l });
   }
 }
 
