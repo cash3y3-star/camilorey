@@ -16,7 +16,7 @@ const $sheet = document.getElementById('sheet');
 const $sheetBody = $sheet.querySelector('.sheet-body');
 
 const data = { stats: null, picks: [], results: [], calendar: { days: [], matches: [] }, bankroll: null, loaded: false, error: null };
-const ui = { day: 1, calFilter: 'all', calView: 'next', pickFilter: 'all', resRange: 'd30', formTab: 'L5', followRange: 'd7', liveFilter: 'all' };
+const ui = { day: 1, calFilter: 'all', calView: 'next', pickFilter: 'all', resRange: 'd30', formTab: 'L5', followRange: 'd7', liveFilter: 'all', bankTab: 'mine' };
 let follows = new Set(readLocal('cr_follows', []));
 let liveUnsub = null;
 let sheetUnsub = null;
@@ -116,8 +116,7 @@ async function getJson(name) {
 async function loadData() {
   try {
     const [stats, picks, results, calendar] = await Promise.all([getJson('stats'), getJson('picks'), getJson('results'), getJson('calendar')]);
-    const bankroll = await getJson('bankroll').catch(() => null);
-    Object.assign(data, { stats, picks, results, calendar, bankroll, loaded: true, error: null });
+    Object.assign(data, { stats, picks, results, calendar, loaded: true, error: null });
   } catch (e) {
     data.error = e.message;
     data.loaded = true;
@@ -264,7 +263,6 @@ function viewInicio() {
   })();
   const next = upcomingPicks();
   const featured = next.find((p) => p.ft) || next.slice().sort((a, b) => b.c - a.c)[0];
-  const upcoming = next.filter((p) => p !== featured).slice(0, 4);
 
   return `
   <section class="hero">
@@ -287,9 +285,7 @@ function viewInicio() {
 
   <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/envivo">Ver todo</a></div>
   <div id="live-home">${skeleton(1)}</div>
-
-  <div class="section-h"><h2>${icon('flame')} Próximos picks</h2><a class="link" href="#/picks">Ver todos</a></div>
-  ${!data.loaded ? skeleton(2) : upcoming.length ? `<div class="grid-2">${upcoming.map((p) => matchCard(p, p)).join('')}</div>` : empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.')}
+  ${data.loaded && !featured ? empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.') : ''}
   ${footer()}`;
 }
 
@@ -577,73 +573,162 @@ function bankChart(series, start) {
   <div class="bars-x"><span>${esc(pts[1].d.slice(5))}</span><span>${esc(pts[pts.length - 1].d.slice(5))}</span></div>`;
 }
 
-function myStakesHtml() {
-  const b = data.bankroll;
-  const bank = Number(readLocal('cr_bank', 0)) || 0;
-  const stakeById = new Map((b?.pendingStakes || []).map((s) => [s.id, s.stake]));
-  const list = data.picks.filter((p) => stakeById.has(p.id) && new Date(p.at) > Date.now()).slice(0, 12);
-  if (!bank) return '<div class="stake-row"><span class="who"><small>Escribe tu banca arriba para ver cuánto apostar en cada pick.</small></span></div>';
-  if (!list.length) return '<div class="stake-row"><span class="who"><small>No hay picks con cuota por jugar en este momento.</small></span></div>';
-  const factor = bank / (b?.start || 2000000);
-  return list
-    .map((p) => {
-      const fav = p.fav === p.a.id ? p.a : p.b;
-      const st = Math.round((stakeById.get(p.id) * factor) / 100) * 100;
-      return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}</small></span><span class="amt">${cop(st)}<small>gana ${cop(st * (p.o - 1))}</small></span></div>`;
-    })
-    .join('');
+// ---------- Mi Bankroll (Kelly) — para cada usuario ----------
+// Misma fórmula del sitio anterior: f* = (b·p − q) / b, con p = confianza,
+// b = cuota − 1, ajustada por el nivel de riesgo. Tope de 10% de la banca
+// por apuesta (Kelly puro puede pedir montos muy altos con cuotas altas).
+const RISK = {
+  seguro: { label: 'Seguro', sub: '¼ Kelly', m: 0.25 },
+  equilibrado: { label: 'Equilibrado', sub: '½ Kelly', m: 0.5 },
+  agresivo: { label: 'Agresivo', sub: 'Kelly completo', m: 1 }
+};
+const KELLY_CAP = 0.1;
+
+function kellyFraction(confidence, o, multiplier) {
+  if (!o || o <= 1) return 0;
+  const p = confidence / 100;
+  const b = o - 1;
+  const f = (b * p - (1 - p)) / b;
+  return Math.max(0, Math.min(KELLY_CAP, f * multiplier));
+}
+
+function bankSettings() {
+  return profile?.bank || readLocal('cr_kelly', null);
+}
+
+async function saveBankSettings(s) {
+  writeLocal('cr_kelly', s);
+  if (account) {
+    profile = { ...(profile || {}), bank: s };
+    FB.saveBankSettings(s).catch(() => {});
+  }
+}
+
+// Simula la banca del usuario apostando con Kelly en los picks que SIGUE,
+// en orden cronológico. Los pendientes reciben el monto sugerido con el
+// saldo actual.
+function userBank() {
+  const s = bankSettings();
+  if (!s?.start) return null;
+  const m = (RISK[s.risk] || RISK.equilibrado).m;
+  const map = allById();
+  const items = [...follows].map((id) => map.get(id)).filter((p) => p && p.c).sort((a, b) => (a.at < b.at ? -1 : 1));
+  let bal = s.start;
+  let peak = bal;
+  let dd = 0;
+  let staked = 0;
+  let bets = 0;
+  let hits = 0;
+  const rows = [];
+  const pending = [];
+  const byDay = new Map();
+  for (const p of items) {
+    const f = kellyFraction(p.c, p.o, m);
+    if (p.res === 'hit' || p.res === 'miss') {
+      if (!f) {
+        rows.push({ p, stake: 0, profit: 0, bal, skip: true });
+        continue;
+      }
+      const stake = Math.round((bal * f) / 100) * 100;
+      const profit = p.res === 'hit' ? Math.round(stake * (p.o - 1)) : -stake;
+      bal += profit;
+      staked += stake;
+      bets++;
+      if (p.res === 'hit') hits++;
+      peak = Math.max(peak, bal);
+      dd = Math.max(dd, peak - bal);
+      rows.push({ p, stake, profit, bal, f });
+      byDay.set(dayKey(p.at), bal);
+    } else pending.push({ p, f });
+  }
+  return {
+    s,
+    bal,
+    profit: bal - s.start,
+    staked,
+    roi: staked ? Math.round(((bal - s.start) / staked) * 1000) / 10 : null,
+    bets,
+    hits,
+    dd,
+    rows: rows.reverse(),
+    pend: pending.map((x) => ({ ...x, stake: Math.round((bal * x.f) / 100) * 100 })),
+    series: [...byDay.entries()].map(([d, b]) => ({ d, bal: b }))
+  };
+}
+
+function kellySettingsHtml() {
+  const s = bankSettings() || { start: '', risk: 'equilibrado' };
+  return `<div class="card pad">
+    <label class="field"><span>Banca inicial (COP)</span><input id="kelly-start" inputmode="numeric" placeholder="Ej: 500000" value="${s.start || ''}"></label>
+    <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Nivel de riesgo</span>
+    <div class="seg seg-full">${Object.entries(RISK)
+      .map(([k, r]) => `<button data-risk="${k}" class="${(s.risk || 'equilibrado') === k ? 'on' : ''}">${r.label}<em>${r.sub}</em></button>`)
+      .join('')}</div>
+  </div>`;
+}
+
+function kellyBodyHtml() {
+  const u = userBank();
+  if (!u) return `<div class="note" style="margin-top:12px">Escribe tu banca inicial arriba para empezar. Después toca el ♥ en los picks que quieras seguir: tu banca se ajusta sola con cada resultado.</div>`;
+  const pendList = u.pend.filter((x) => new Date(x.p.at).getTime() > Date.now() - 3 * 3600e3);
+  return `
+  <div class="bank-hero" style="margin-top:12px">
+    <div class="overline">Mi banca actual</div>
+    <div class="big">${cop(u.bal)}</div>
+    <div class="delta ${u.profit >= 0 ? 'pos-t' : 'neg-t'}">${signed(u.profit)} · ROI ${pct(u.roi)}</div>
+    <div style="font-size:12px;color:#a1a1aa;margin-top:6px">Inició con ${cop(u.s.start)} · ${RISK[u.s.risk || 'equilibrado'].label} (${RISK[u.s.risk || 'equilibrado'].sub})</div>
+  </div>
+  <div class="tiles">
+    <div class="tile"><div class="overline">Apuestas</div><div class="val">${u.bets}</div><div class="hint">${u.hits} ganadas</div></div>
+    <div class="tile"><div class="overline">Efectividad</div><div class="val">${u.bets ? pct(Math.round((u.hits / u.bets) * 1000) / 10) : '—'}</div></div>
+    <div class="tile"><div class="overline">Máx. caída</div><div class="val neg" style="font-size:17px">${u.dd ? '−' + cop(u.dd) : '—'}</div></div>
+  </div>
+  ${u.series.length ? `<div class="card pad" style="margin-top:12px"><div class="overline">Evolución de mi banca</div>${bankChart(u.series, u.s.start)}</div>` : ''}
+
+  <div class="section-h"><h2>${icon('clock')} Por apostar</h2><span class="badge">${pendList.length}</span></div>
+  <div class="list">${
+    pendList.length
+      ? pendList
+          .map(({ p, f, stake }) => {
+            const fav = p.fav === p.a.id ? p.a : p.b;
+            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}</small></span>${
+              f
+                ? `<span class="amt">${cop(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${cop(stake * (p.o - 1))}</small></span>`
+                : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small></span>`
+            }</div>`;
+          })
+          .join('')
+      : '<div class="stake-row"><span class="who"><small>No tienes picks seguidos por jugar. Toca el ♥ en un pick para agregarlo.</small></span></div>'
+  }</div>
+
+  <div class="section-h"><h2>${icon('chart')} Mi historial</h2><span class="badge">${u.rows.length}</span></div>
+  <div class="list">${
+    u.rows.length
+      ? u.rows
+          .slice(0, 60)
+          .map(({ p, stake, profit, bal, skip }) => {
+            const fav = p.fav === p.a.id ? p.a : p.b;
+            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${p.res === 'hit' ? '✓' : '✗'} ${esc(fav.n)}</b><small>${esc(dayLabel(dayKey(p.at)))} · ${p.c}% · cuota ${odds(p.o)}${skip ? ' · no se apostó' : ` · ${cop(stake)}`}</small></span><span class="amt ${profit > 0 ? 'pos-t' : profit < 0 ? 'neg-t' : ''}">${skip ? '—' : signed(profit)}<small style="color:var(--muted)">${cop(bal)}</small></span></div>`;
+          })
+          .join('')
+      : '<div class="stake-row"><span class="who"><small>Cuando terminen los partidos que sigues, aquí ves cuánto ganaste o perdiste en cada uno.</small></span></div>'
+  }</div>
+  <p class="note" style="margin-top:14px">${icon('info', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:14px;height:14px;vertical-align:-2px"')} <b>Criterio de Kelly:</b> calcula qué porcentaje de tu banca apostar según la confianza del pick y la cuota. Si la cuota no paga lo suficiente para esa probabilidad, sugiere <b>no apostar</b>. Tope: 10% de la banca por apuesta. Es una simulación con los picks que sigues; apuesta con responsabilidad.</p>`;
 }
 
 function viewBankroll() {
-  const b = data.bankroll;
-  const s = data.stats;
-  const r = s?.[ui.resRange];
-  const bank = Number(readLocal('cr_bank', 0)) || '';
-  if (!data.loaded) return `<h1 class="page-title">Bankroll</h1>${skeleton(3)}`;
+  if (!data.loaded) return `<h1 class="page-title">Mi Bankroll</h1>${skeleton(3)}`;
+  const admin = isAdmin();
+  if (!admin) ui.bankTab = 'mine';
   return `
-  <h1 class="page-title">Bankroll</h1>
-  <div class="page-sub"><i class="live-dot"></i>Banca simulada de CamiloRey · se actualiza sola</div>
+  <h1 class="page-title">${ui.bankTab === 'system' ? 'Bankroll del sistema' : 'Mi Bankroll'}</h1>
+  <div class="page-sub"><i class="live-dot"></i>${ui.bankTab === 'system' ? 'Banca simulada de CamiloRey · solo admin' : 'Kelly sobre los picks que sigues'}</div>
+  ${admin ? `<div class="seg seg-full" style="margin-bottom:14px"><button data-bt="mine" class="${ui.bankTab === 'mine' ? 'on' : ''}">Mi bankroll</button><button data-bt="system" class="${ui.bankTab === 'system' ? 'on' : ''}">🔒 Sistema</button></div>` : ''}
   ${
-    b
-      ? `<div class="bank-hero">
-      <div class="overline">Banca actual</div>
-      <div class="big">${cop(b.balance)}</div>
-      <div class="delta ${b.profit >= 0 ? 'pos-t' : 'neg-t'}">${signed(b.profit)} · ROI ${pct(b.roi)}</div>
-      <div style="font-size:12px;color:#a1a1aa;margin-top:6px">Inició con ${cop(b.start)} · ${b.bets} apuestas · ${b.hits} ganadas</div>
-    </div>
-    <div class="tiles">
-      <div class="tile"><div class="overline">Apostado</div><div class="val" style="font-size:17px">${cop(b.staked)}</div></div>
-      <div class="tile"><div class="overline">Efectividad</div><div class="val">${b.bets ? pct(Math.round((b.hits / b.bets) * 1000) / 10) : '—'}</div></div>
-      <div class="tile"><div class="overline">Máx. caída</div><div class="val neg" style="font-size:17px">${b.maxDrawdown ? '−' + cop(b.maxDrawdown) : '—'}</div></div>
-    </div>
-    ${b.series.length ? `<div class="card pad" style="margin-top:12px"><div class="overline">Evolución de la banca</div>${bankChart(b.series, b.start)}</div>` : '<div class="note" style="margin-top:12px">El gráfico aparece cuando se resuelvan los primeros picks con cuota.</div>'}`
-      : '<div class="note">El bankroll se calcula en la próxima actualización (cada ~10 min).</div>'
-  }
-
-  <div class="section-h"><h2>${icon('wallet')} Tu banca</h2></div>
-  <div class="card pad">
-    <label class="field" style="margin:0"><span>¿Con cuánto dinero juegas? (COP)</span>
-      <div class="money-input"><input id="bank-input" inputmode="numeric" placeholder="Ej: 500000" value="${bank}"></div></label>
-    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Te sugerimos cuánto apostar en cada pick con la misma proporción del bankroll de CamiloRey (5% a 12,5% según la confianza). Se guarda solo en este dispositivo.</p>
-  </div>
-  <div class="list" id="my-stakes" style="margin-top:10px">${myStakesHtml()}</div>
-
-  <div class="section-h"><h2>${icon('chart')} Efectividad</h2></div>
-  <div class="toolbar"><div class="seg">
-    <button data-rr="d7" class="${ui.resRange === 'd7' ? 'on' : ''}">7 días</button>
-    <button data-rr="d30" class="${ui.resRange === 'd30' ? 'on' : ''}">30 días</button>
-    <button data-rr="all" class="${ui.resRange === 'all' ? 'on' : ''}">Todo</button>
-  </div></div>
-  <div class="tiles" style="margin-top:0">
-    <div class="tile"><div class="overline">Efectividad</div><div class="val">${pct(r?.pct)}</div><div class="hint">${r ? `${r.hit} ✓ · ${r.miss} ✗` : ''}</div></div>
-    <div class="tile"><div class="overline">Unidades</div><div class="val ${r?.units > 0 ? 'pos' : r?.units < 0 ? 'neg' : ''}">${r ? (r.units > 0 ? '+' : '') + String(r.units).replace('.', ',') : '—'}</div><div class="hint">stake fijo 1u</div></div>
-    <div class="tile"><div class="overline">ROI</div><div class="val ${r?.roi > 0 ? 'pos' : r?.roi < 0 ? 'neg' : ''}">${pct(r?.roi)}</div><div class="hint">${r?.staked || 0} con cuota</div></div>
-  </div>
-
-  ${
-    isAdmin()
-      ? `<div class="section-h"><h2>🔒 Historial de apuestas</h2><span class="badge red">Solo admin</span></div><div id="admin-ledger">${skeleton(2)}</div>`
-      : ''
+    ui.bankTab === 'system'
+      ? `<div id="admin-system">${skeleton(3)}</div>`
+      : `${FB.enabled && !account ? '<div class="banner" style="margin:0 0 12px"><span>Inicia sesión para guardar tu banca y tus seguidos en todos tus dispositivos</span><a class="textlink" href="#/login">Entrar</a></div>' : ''}
+         ${kellySettingsHtml()}<div id="kelly-body">${kellyBodyHtml()}</div>`
   }
   ${footer()}`;
 }
@@ -652,25 +737,39 @@ function isAdmin() {
   return Boolean(account?.email && account.email.toLowerCase() === ADMIN_EMAIL);
 }
 
-// Carga el historial privado (Firestore admin/ledger) y lo pinta.
+// Bankroll del sistema + historial apuesta por apuesta (solo admin, desde
+// Firestore admin/ledger — las reglas rechazan a cualquier otra cuenta).
 async function renderAdminLedger() {
-  const box = document.getElementById('admin-ledger');
+  const box = document.getElementById('admin-system');
   if (!box || !isAdmin()) return;
   try {
-    const { rows, updatedAt } = await FB.loadAdminLedger();
-    if (!rows.length) {
-      box.innerHTML = empty('wallet', 'Aún no hay apuestas resueltas', 'Cuando terminen los partidos con pick y cuota, cada apuesta aparece aquí con su ganancia o pérdida.');
-      return;
-    }
-    box.innerHTML = `<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
-      ${rows
-        .map(
-          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a)} vs ${esc(x.b)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(x.fav)} <span class="conf">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${cop(x.stake)}</td><td class="num ${x.profit >= 0 ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ ' : '✗ '}${signed(x.profit)}</td><td class="num">${cop(x.bal)}</td></tr>`
-        )
-        .join('')}
-      </tbody></table></div><p class="foot" style="margin-top:8px">${rows.length} apuestas · actualizado ${updatedAt ? fmtTime(updatedAt) : '—'}</p>`;
+    const { rows, summary: b, updatedAt } = await FB.loadAdminLedger();
+    const hero = b
+      ? `<div class="bank-hero">
+        <div class="overline">Banca del sistema</div>
+        <div class="big">${cop(b.balance)}</div>
+        <div class="delta ${b.profit >= 0 ? 'pos-t' : 'neg-t'}">${signed(b.profit)} · ROI ${pct(b.roi)}</div>
+        <div style="font-size:12px;color:#a1a1aa;margin-top:6px">Inició con ${cop(b.start)} · ${b.bets} apuestas · ${b.hits} ganadas</div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><div class="overline">Apostado</div><div class="val" style="font-size:17px">${cop(b.staked)}</div></div>
+        <div class="tile"><div class="overline">Efectividad</div><div class="val">${b.bets ? pct(Math.round((b.hits / b.bets) * 1000) / 10) : '—'}</div></div>
+        <div class="tile"><div class="overline">Máx. caída</div><div class="val neg" style="font-size:17px">${b.maxDrawdown ? '−' + cop(b.maxDrawdown) : '—'}</div></div>
+      </div>
+      ${b.series?.length ? `<div class="card pad" style="margin-top:12px"><div class="overline">Evolución de la banca</div>${bankChart(b.series, b.start)}</div>` : ''}`
+      : '<div class="note">El resumen aparece en la próxima actualización (cada ~10 min).</div>';
+    const table = rows.length
+      ? `<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
+        ${rows
+          .map(
+            (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a)} vs ${esc(x.b)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(x.fav)} <span class="conf">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${cop(x.stake)}</td><td class="num ${x.profit >= 0 ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ ' : '✗ '}${signed(x.profit)}</td><td class="num">${cop(x.bal)}</td></tr>`
+          )
+          .join('')}
+        </tbody></table></div><p class="foot" style="margin-top:8px">${rows.length} apuestas · actualizado ${updatedAt ? fmtTime(updatedAt) : '—'}</p>`
+      : empty('wallet', 'Aún no hay apuestas resueltas', 'Cuando terminen los partidos con pick y cuota, cada apuesta aparece aquí.');
+    box.innerHTML = `${hero}<div class="section-h"><h2>🔒 Historial de apuestas</h2><span class="badge red">Solo admin</span></div>${table}`;
   } catch (e) {
-    box.innerHTML = `<div class="note">No se pudo cargar el historial (${esc(e.code || e.message)}). Revisa que las reglas de Firestore estén actualizadas.</div>`;
+    box.innerHTML = `<div class="note">No se pudo cargar el bankroll del sistema (${esc(e.code || e.message)}).</div>`;
   }
 }
 
@@ -822,6 +921,31 @@ function footer() {
 
 // ---------------- hoja del partido ----------------
 
+// Enfrentamientos directos en lista, estilo Sofascore: fecha y torneo a la
+// izquierda, los dos jugadores con su marcador en sets, el ganador en negrita.
+function h2hListHtml(m, winsA, total) {
+  const list = m.h2hL || [];
+  const fmtD = (iso) => new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ }).format(new Date(iso));
+  const rows = list.length
+    ? list
+        .map((x) => {
+          const aw = x.sa > x.sb;
+          return `<div class="h2h-row">
+            <div class="h2h-date">${fmtD(x.at)}<small>${esc(x.ph ? `${x.ph} · ${x.tn}` : x.tn)}</small></div>
+            <div class="h2h-names"><div class="${aw ? 'w' : ''}">${esc(m.a.n)}</div><div class="${aw ? '' : 'w'}">${esc(m.b.n)}</div></div>
+            <div class="h2h-score"><div class="${aw ? 'w' : ''}">${x.sa ?? '-'}<span class="h2h-res ${aw ? 'w' : 'l'}">${aw ? 'G' : 'P'}</span></div><div class="${aw ? '' : 'w'}">${x.sb ?? '-'}<span class="h2h-res ${aw ? 'l' : 'w'}">${aw ? 'P' : 'G'}</span></div></div>
+          </div>`;
+        })
+        .join('')
+    : (m.h2h || '')
+        .split('')
+        .map((c) => `<div class="h2h-row"><div class="h2h-date">—</div><div class="h2h-names"><div class="${c === 'A' ? 'w' : ''}">${esc(m.a.n)}</div><div class="${c === 'A' ? '' : 'w'}">${esc(m.b.n)}</div></div><div class="h2h-score"><div>${c === 'A' ? 'G' : 'P'}</div><div>${c === 'A' ? 'P' : 'G'}</div></div></div>`)
+        .join('');
+  return `
+    <div class="h2h-sum"><b>${winsA}</b><span class="lbl">Últimos ${total} enfrentamientos<br>${esc(m.a.n)} · ${esc(m.b.n)}</span><b>${total - winsA}</b></div>
+    <div class="h2h-list">${rows}</div>`;
+}
+
 function openMatch(id) {
   const m = allById().get(Number(id));
   if (!m) return;
@@ -861,7 +985,7 @@ function openMatch(id) {
       ${
         tab === 'H2H'
           ? h2hTotal
-            ? `<div class="formrow"><span class="who">${esc(m.a.n)}</span>${formDots((m.h2h || '').split('').map((c) => (c === 'A' ? 'W' : 'L')).join(''), 10, 'form lg')}<span class="rec">${h2hWinsA}-${h2hTotal - h2hWinsA}</span></div><p class="note" style="margin-top:8px">${esc(m.a.n)} ganó ${h2hWinsA} de los últimos ${h2hTotal} cruces contra ${esc(m.b.n)} (más reciente a la izquierda).</p>`
+            ? h2hListHtml(m, h2hWinsA, h2hTotal)
             : '<p class="note">Sin enfrentamientos directos registrados.</p>'
           : [m.a, m.b]
               .map((p, i) => {
@@ -1021,6 +1145,18 @@ document.addEventListener('click', async (ev) => {
     ui.day += Number(t.dataset.day);
     return route();
   }
+  if (t.dataset.risk) {
+    const cur = bankSettings() || { start: 0 };
+    await saveBankSettings({ ...cur, risk: t.dataset.risk });
+    document.querySelectorAll('[data-risk]').forEach((b) => b.classList.toggle('on', b === t));
+    const box = document.getElementById('kelly-body');
+    if (box) box.innerHTML = kellyBodyHtml();
+    return;
+  }
+  if (t.dataset.bt) {
+    ui.bankTab = t.dataset.bt;
+    return route();
+  }
   if (t.dataset.lf) {
     ui.liveFilter = t.dataset.lf;
     document.querySelectorAll('[data-lf]').forEach((b) => b.classList.toggle('on', b === t));
@@ -1155,13 +1291,16 @@ document.addEventListener('change', async (ev) => {
   }
 });
 
-// Banca personal: guarda y recalcula solo la lista (sin perder el foco).
+// Mi Bankroll: guarda la banca inicial y recalcula sin perder el foco.
 document.addEventListener('input', (ev) => {
-  if (ev.target.id !== 'bank-input') return;
-  const digits = ev.target.value.replace(/\D/g, '').slice(0, 13);
-  writeLocal('cr_bank', Number(digits) || 0);
-  const box = document.getElementById('my-stakes');
-  if (box) box.innerHTML = myStakesHtml();
+  if (ev.target.id !== 'kelly-start') return;
+  const start = Number(ev.target.value.replace(/\D/g, '').slice(0, 13)) || 0;
+  const cur = bankSettings() || { risk: 'equilibrado' };
+  clearTimeout(ev.target._t);
+  writeLocal('cr_kelly', { ...cur, start });
+  const box = document.getElementById('kelly-body');
+  if (box) box.innerHTML = kellyBodyHtml();
+  ev.target._t = setTimeout(() => saveBankSettings({ ...cur, start }), 800);
 });
 
 document.addEventListener('submit', async (ev) => {

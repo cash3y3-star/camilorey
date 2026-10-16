@@ -105,7 +105,7 @@ export async function loadProfile() {
   const f = await load();
   const snap = await f.F.getDoc(f.F.doc(f.db, 'users', currentUser.uid));
   const d = snap.data() || {};
-  return { name: d.name || currentUser.displayName || '', photo: d.photo || null };
+  return { name: d.name || currentUser.displayName || '', photo: d.photo || null, bank: d.bank || null };
 }
 
 export async function saveProfile({ name, photo }) {
@@ -125,9 +125,20 @@ export async function saveProfile({ name, photo }) {
 export async function loadAdminLedger() {
   const f = await load();
   const snap = await f.F.getDoc(f.F.doc(f.db, 'admin', 'ledger'));
-  if (!snap.exists()) return { updatedAt: null, rows: [] };
+  if (!snap.exists()) return { updatedAt: null, summary: null, rows: [] };
   const d = snap.data();
-  return { updatedAt: d.updatedAt, rows: JSON.parse(d.data || '[]') };
+  const parsed = JSON.parse(d.data || '[]');
+  // Formato actual { summary, ledger }; el primero era solo la lista.
+  return Array.isArray(parsed)
+    ? { updatedAt: d.updatedAt, summary: null, rows: parsed }
+    : { updatedAt: d.updatedAt, summary: parsed.summary || null, rows: parsed.ledger || [] };
+}
+
+// Configuración del "Mi Bankroll" (Kelly) de cada usuario: { start, risk }.
+export async function saveBankSettings(bank) {
+  if (!currentUser) return;
+  const f = await load();
+  await f.F.setDoc(f.F.doc(f.db, 'users', currentUser.uid), { bank }, { merge: true });
 }
 
 export async function loadFollows() {

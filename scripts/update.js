@@ -426,7 +426,16 @@ function detailView(m) {
     ...matchView(m),
     fa: formBefore(m.a, m.at),
     fb: formBefore(m.b, m.at),
-    h2h: h2h.map((x) => (x.w === m.a ? 'A' : 'B')).join('')
+    h2h: h2h.map((x) => (x.w === m.a ? 'A' : 'B')).join(''),
+    // Lista de enfrentamientos (estilo Sofascore): fecha, torneo y sets
+    // desde el punto de vista del jugador A de ESTE partido.
+    h2hL: h2h.map((x) => ({
+      at: x.at,
+      tn: (state.tournaments[x.t]?.n || '').replace(/^Tournament\s*/i, ''),
+      ph: phaseOf(x),
+      sa: x.a === m.a ? x.sa : x.sb,
+      sb: x.a === m.a ? x.sb : x.sa
+    }))
   };
 }
 
@@ -608,7 +617,9 @@ function writeSite(meta) {
   // Serie diaria (saldo al cierre de cada día).
   const balByDay = new Map();
   for (const b of ledger) balByDay.set(bogotaDay(b.at), b.bal);
-  writeJson(path.join(OUT_DIR, 'bankroll.json'), {
+  // El bankroll del sistema es SOLO para el admin: no se publica en
+  // site/data, va completo a Firestore (ver pushPrivateLedger).
+  systemBankroll = {
     start: BANK_START,
     balance,
     profit: balance - BANK_START,
@@ -617,11 +628,8 @@ function writeSite(meta) {
     bets: ledger.length,
     hits: ledger.filter((b) => b.res === 'hit').length,
     maxDrawdown,
-    series: [...balByDay.entries()].map(([d, bal]) => ({ d, bal })),
-    // El historial apuesta por apuesta NO va en este archivo público: solo lo
-    // ve el admin, desde Firestore (ver pushPrivateLedger).
-    pendingStakes: pendingView.filter((p) => p.o).map((p) => ({ id: p.id, stake: computeStake(p.c) }))
-  });
+    series: [...balByDay.entries()].map(([d, bal]) => ({ d, bal }))
+  };
   privateLedger = ledger
     .slice(-1000)
     .reverse()
@@ -664,6 +672,7 @@ function writeSite(meta) {
 const FIREBASE_PROJECT = 'camilorey-1399c';
 const FIREBASE_API_KEY = 'AIzaSyAjEK6Ca7_NEDiPMJv9iqwNLx1DY8WOog0';
 let privateLedger = null;
+let systemBankroll = null;
 
 async function pushPrivateLedger() {
   const botKey = process.env.FIRESTORE_BOT_KEY;
@@ -673,7 +682,7 @@ async function pushPrivateLedger() {
     fields: {
       botKey: { stringValue: botKey },
       updatedAt: { stringValue: new Date().toISOString() },
-      data: { stringValue: JSON.stringify(privateLedger) }
+      data: { stringValue: JSON.stringify({ summary: systemBankroll, ledger: privateLedger }) }
     }
   };
   try {
