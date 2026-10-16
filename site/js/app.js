@@ -1611,6 +1611,42 @@ function h2hFull(m, redraw) {
   return { list, full: d.full !== false, since: `${da}/${mo}/${y}` };
 }
 
+// L5 / L10 estilo Sofascore: últimos partidos de cada jugador ANTES de este
+// partido, con fecha, torneo, rival y marcador (data/players/{id}.json).
+const playerCache = new Map();
+function playerLast(pid, beforeIso, redraw) {
+  if (!playerCache.has(pid)) {
+    playerCache.set(pid, undefined);
+    getJson(`players/${pid}`)
+      .then((d) => playerCache.set(pid, d))
+      .catch(() => playerCache.set(pid, null))
+      .finally(() => $sheet._redraw === redraw && redraw());
+    return null;
+  }
+  const d = playerCache.get(pid);
+  return d ? (d.last || []).filter((x) => x.at < beforeIso) : null;
+}
+
+function formListHtml(p, f, n, last) {
+  const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ }).format(new Date(iso));
+  const list = (last || []).slice(0, n);
+  const w = list.length ? list.filter((x) => x.w).length : f.slice(0, n).split('').filter((c) => c === 'W').length;
+  const total = list.length || f.slice(0, n).length;
+  const head = `<div class="formrow" style="margin:14px 0 4px"><span class="who" style="width:auto;flex:1;font-size:13px">${esc(p.n)}</span><span class="rec">${w}G-${total - w}P</span></div><div style="margin-bottom:8px">${formDots(f, n, 'form lg')}</div>`;
+  if (!list.length) return head;
+  const rows = list
+    .map((x) => {
+      const [s1, s2] = String(x.s || '-').split('-');
+      return `<div class="h2h-row" data-player="${x.op.id}" style="cursor:pointer">
+        <div class="h2h-date">${fmtD(x.at)}<small>${esc(x.ph ? `${x.ph} · ${x.tn}` : x.tn)}</small></div>
+        <div class="h2h-names"><div class="${x.w ? 'w' : ''}">${esc(p.n)}</div><div class="${x.w ? '' : 'w'}">${esc(x.op.n)}</div></div>
+        <div class="h2h-score"><div class="${x.w ? 'w' : ''}">${s1 ?? '-'}<span class="h2h-res ${x.w ? 'w' : 'l'}">${x.w ? 'G' : 'P'}</span></div><div class="${x.w ? '' : 'w'}">${s2 ?? '-'}<span class="h2h-res ${x.w ? 'l' : 'w'}">${x.w ? 'P' : 'G'}</span></div></div>
+      </div>`;
+    })
+    .join('');
+  return `${head}<div class="h2h-list">${rows}</div>`;
+}
+
 function h2hListHtml(m, winsA, total, label) {
   const list = m.h2hL || [];
   const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ }).format(new Date(iso));
@@ -1687,13 +1723,7 @@ function openMatch(id) {
               }
               return h2hTotal ? h2hListHtml(m, h2hWinsA, h2hTotal) : '<p class="note">Sin enfrentamientos directos registrados.</p>';
             })()
-          : [m.a, m.b]
-              .map((p, i) => {
-                const f = (i ? m.fb : m.fa) || '';
-                const w = f.slice(0, n).split('').filter((c) => c === 'W').length;
-                return `<div class="formrow"><span class="who">${esc(p.n)}</span>${formDots(f, n, 'form lg')}<span class="rec">${w}W-${f.slice(0, n).length - w}L</span></div>`;
-              })
-              .join('')
+          : [m.a, m.b].map((p, i) => formListHtml(p, (i ? m.fb : m.fa) || '', n, playerLast(p.id, m.at, draw))).join('')
       }
     </div>
     ${

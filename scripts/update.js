@@ -869,7 +869,7 @@ function writePlayers(ids, byPlayer) {
       all: { w: list.filter((m) => m.w === pid).length, l: list.filter((m) => m.w !== pid).length },
       titles: { count: titles.length, recent: titles.slice(0, 6) },
       rivals,
-      last: list.slice(0, 20).map((m) => {
+      last: list.slice(0, 30).map((m) => { // 30: alcanza para L10 de partidos de ayer
         const isA = m.a === pid;
         return {
           id: m.id,
