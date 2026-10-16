@@ -343,9 +343,10 @@ function championsHtml() {
         <div class="fc-body">
           <small class="fc-league">${esc(c.tn)}</small>
           <b class="fc-name">${esc(c.champ.n)}</b>
-          <small class="fc-sub">${c.isFinal ? 'Final' : 'Último partido'} vs ${esc(c.rival.n)}</small>
-          <span class="fc-pill champ-pill">🏆 CAMPEÓN · ${esc(c.score)}</span>
-          <small class="fc-sub" style="margin-top:4px">${esc(dayLabel(dayKey(c.at)))} · ${fmtTime(c.at)} · ${c.wins}/${c.played} ganados</small>
+          <span class="fc-pill champ-pill">🏆 CAMPEÓN</span>
+          <small class="fc-sub"><b style="color:var(--text)">${c.isFinal ? 'Final' : 'Último'} ${esc(c.score)}</b> vs ${esc(c.rival.n)}</small>
+          <small class="fc-sub">${esc(dayLabel(dayKey(c.at)))} · ${new Intl.DateTimeFormat(LOC(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ }).format(new Date(c.at))}</small>
+          <small class="fc-sub">Ganó ${c.wins} de ${c.played}</small>
         </div>
       </article>`;
     })
