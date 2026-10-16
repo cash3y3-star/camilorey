@@ -492,6 +492,19 @@ async function backfill(daysBack) {
     }
     saveState(); // guarda por día: si se corta, se retoma sin repetir
   }
+  // Con historial nuevo cambian racha/H2H/forma: los picks de partidos que
+  // todavía no empiezan se borran para que la próxima corrida los
+  // recalcule con todo el historial. Nunca se tocan picks ya jugados.
+  let reset = 0;
+  for (const [id, p] of Object.entries(state.picks)) {
+    const m = state.matches[id];
+    if (p.res === 'pending' && m && m.st === 's' && new Date(m.at).getTime() > Date.now() + 5 * 60e3) {
+      delete state.picks[id];
+      reset++;
+    }
+  }
+  saveState();
+  if (reset) console.log(`Picks pendientes a recalcular: ${reset}`);
   console.log('Backfill listo:', totals, 'partidos en estado:', Object.keys(state.matches).length);
 }
 
