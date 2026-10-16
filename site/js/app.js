@@ -279,14 +279,15 @@ function viewInicio() {
   </div>
   ${s?.d7?.hit + s?.d7?.miss ? `<div class="banner"><span>⭐ CamiloRey acertó <b>${s.d7.hit}/${s.d7.hit + s.d7.miss}</b> en los últimos 7 días</span><a class="textlink" href="#/bankroll">Ver</a></div>` : ''}
 
-  <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/envivo">Ver todo</a></div>
-  <div id="live-home">${skeleton(1)}</div>
-
   ${
     featured
       ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div>${matchCard(featured, featured)}`
       : ''
   }
+
+  <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/envivo">Ver todo</a></div>
+  <div id="live-home">${skeleton(1)}</div>
+
   <div class="section-h"><h2>${icon('flame')} Próximos picks</h2><a class="link" href="#/picks">Ver todos</a></div>
   ${!data.loaded ? skeleton(2) : upcoming.length ? `<div class="grid-2">${upcoming.map((p) => matchCard(p, p)).join('')}</div>` : empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.')}
   ${footer()}`;
@@ -328,6 +329,7 @@ function viewCalendario() {
   const stateOf = (m) => (m.st === 'f' ? 'done' : m.st === 'l' || liveFor(m) || new Date(m.at).getTime() <= Date.now() ? 'live' : 'next');
   const counts = { next: 0, live: 0, done: 0 };
   dayList.forEach((m) => counts[stateOf(m)]++);
+  if (ui.calView !== 'next' && ui.calView !== 'done') ui.calView = 'next';
   let list = dayList.filter((m) => stateOf(m) === ui.calView);
   if (ui.calView === 'done') list.reverse(); // resultados: lo más reciente arriba
   if (ui.calFilter === 'pick') list = list.filter((m) => m.pick);
@@ -350,7 +352,6 @@ function viewCalendario() {
   </div>
   <div class="seg seg-full" style="margin-bottom:14px">
     <button data-calv="next" class="${ui.calView === 'next' ? 'on' : ''}">Próximos <em>${counts.next}</em></button>
-    <button data-calv="live" class="${ui.calView === 'live' ? 'on' : ''}">● En vivo <em>${counts.live}</em></button>
     <button data-calv="done" class="${ui.calView === 'done' ? 'on' : ''}">Resultados <em>${counts.done}</em></button>
   </div>
   ${
@@ -964,7 +965,22 @@ function route() {
   liveUnsub = null;
   if (name === 'inicio' || !ROUTES[name]) liveUnsub = onLive(renderLiveHome);
   else if (name === 'envivo') liveUnsub = onLive(renderLivePage);
-  else if (['calendario', 'picks'].includes(name)) liveUnsub = onLive(() => refreshLiveMids());
+  else if (['calendario', 'picks'].includes(name)) {
+    // Si un partido de la lista empezó, se redibuja para sacarlo (los en
+    // vivo se ven solo en la pestaña En vivo).
+    liveUnsub = onLive(() => {
+      const map = allById();
+      const started = [...document.querySelectorAll('#view [data-match]')].some((c) => {
+        const m = map.get(Number(c.dataset.match));
+        return m && m.st !== 'f' && liveFor(m);
+      });
+      if (started && $sheet.hidden) {
+        const y = window.scrollY;
+        route();
+        window.scrollTo(0, y);
+      }
+    });
+  }
   else if (name === 'seguidos') {
     // Redibuja solo si hay algún seguido en vivo (marcador y barra de sets).
     liveUnsub = onLive(() => {
@@ -975,21 +991,6 @@ function route() {
   }
   renderCounter();
   if (tab === 'bankroll') renderAdminLedger();
-}
-
-// Actualiza solo los marcadores en vivo de las tarjetas visibles.
-function refreshLiveMids() {
-  const map = allById();
-  document.querySelectorAll('[data-match]').forEach((card) => {
-    const m = map.get(Number(card.dataset.match));
-    if (!m || m.st === 'f') return;
-    const mid = card.querySelector('.mid');
-    const html = midBlock(m);
-    if (mid && mid.outerHTML !== html) {
-      mid.outerHTML = html;
-      card.querySelector('.mid')?.classList.add('flash');
-    }
-  });
 }
 
 async function renderCounter() {

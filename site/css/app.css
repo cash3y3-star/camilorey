@@ -108,7 +108,7 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
 .seg { display: inline-flex; gap: 4px; padding: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; }
 .seg button { padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .seg button.on { background: var(--text); color: var(--bg); }
-.seg-full { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+.seg-full { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
 .seg-full button { padding: 9px 6px; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
 .seg-full button em { font-style: normal; font-size: 11px; padding: 1px 6px; border-radius: 99px; background: var(--card-2); color: var(--muted); }
 .seg-full button.on em { background: var(--red); color: #fff; }
