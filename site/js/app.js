@@ -194,21 +194,32 @@ function matchCard(m, pick = m.pick || (m.c ? m : null), { showForm = true } = {
   </article>`;
 }
 
-function liveCard(e, ourMatch) {
-  const row = (name, sets, pts, serving, mine) => `
+// Tarjeta de marcador en vivo. Si el partido es nuestro (ourMatch), se
+// orienta el evento de Kambi a nuestro jugador A/B y se muestran sus fotos.
+function liveCard(e, ourMatch, { inSheet = false } = {}) {
+  let players = [null, null];
+  if (ourMatch) {
+    const oriented = findLive([e], ourMatch.a.n, ourMatch.b.n);
+    if (oriented) {
+      e = oriented;
+      players = [ourMatch.a, ourMatch.b];
+    }
+  }
+  const pick = ourMatch ? ourMatch.pick || (ourMatch.c ? ourMatch : null) : null;
+  const row = (name, sets, pts, serving, p) => `
     <div class="live-row">
-      <div class="p">${serving ? '<i class="serve"></i>' : ''}<span>${esc(name)}</span></div>
+      <div class="p">${p ? avatar(p, 'avatar sm') : ''}<span>${esc(p?.n || name)}</span>${serving ? '<i class="serve" title="Saca"></i>' : ''}${pick && p && pick.fav === p.id ? '<span class="badge red" style="padding:1px 6px;font-size:10px">PICK</span>' : ''}</div>
       <div class="sets">${sets.map((s) => `<span class="${s.won ? 'won' : ''}">${s.v}</span>`).join('')}</div>
       <div class="pts">${esc(pts)}</div>
     </div>`;
   const setsH = e.sets.map((s) => ({ v: s.h, won: s.h > s.a && (s.h >= 11 || s.a >= 11) }));
   const setsA = e.sets.map((s) => ({ v: s.a, won: s.a > s.h && (s.h >= 11 || s.a >= 11) }));
   return `
-  <article class="card live-card" ${ourMatch ? `data-open="${ourMatch.id}" style="cursor:pointer"` : ''}>
-    <div class="live-head"><span><span class="badge live">EN VIVO</span> &nbsp;${esc(e.group)}</span><b style="color:var(--text)">${e.setsHome} - ${e.setsAway}</b></div>
-    ${row(e.home, setsH, e.ptsHome, e.homeServe === true)}
-    ${row(e.away, setsA, e.ptsAway, e.homeServe === false)}
-    ${ourMatch?.pick ? `<div class="pickbar" style="padding:8px 0 0;border-top:1px solid var(--line);margin-top:6px"><span class="who">Nuestro pick: <b>${esc(ourMatch.pick.fav === ourMatch.a.id ? ourMatch.a.n : ourMatch.b.n)}</b></span><span class="conf">${ourMatch.pick.c}%</span></div>` : ''}
+  <article class="card live-card" ${ourMatch && !inSheet ? `data-open="${ourMatch.id}" style="cursor:pointer"` : ''}>
+    <div class="live-head"><span><span class="badge live">EN VIVO</span> &nbsp;${esc(ourMatch?.tn || e.group)}${ourMatch?.ph ? ` · 🏆 ${esc(ourMatch.ph)}` : ''}</span><b style="color:var(--text)">${e.setsHome} - ${e.setsAway}</b></div>
+    ${row(e.home, setsH, e.ptsHome, e.homeServe === true, players[0])}
+    ${row(e.away, setsA, e.ptsAway, e.homeServe === false, players[1])}
+    ${pick && !inSheet ? `<div class="pickbar" style="padding:8px 0 0;border-top:1px solid var(--line);margin-top:6px"><span class="who">Nuestro pick: <b>${esc(pick.fav === ourMatch.a.id ? ourMatch.a.n : ourMatch.b.n)}</b></span><span class="conf">${pick.c}%</span></div>` : ''}
   </article>`;
 }
 
@@ -826,7 +837,7 @@ function openMatch(id) {
     </div>
     ${
       lv
-        ? `<div class="block"><div class="block-h"><span class="overline">Marcador en vivo</span><span class="badge live">cada 2 s</span></div>${liveCard(lv, null)}</div>`
+        ? `<div class="block"><div class="block-h"><span class="overline">Marcador en vivo</span><span class="badge live">cada 2 s</span></div>${liveCard(lv, m, { inSheet: true })}</div>`
         : ''
     }
     <div class="block">

@@ -162,9 +162,10 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
 /* ---------- en vivo ---------- */
 .live-card { padding: 12px 14px; }
 .live-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 6px 0; }
-.live-row .p { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.live-row .p { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.avatar.sm { width: 36px; height: 36px; border-width: 2px; font-size: 12px; flex: none; }
 .live-row .p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.serve { width: 6px; height: 6px; border-radius: 50%; background: var(--red-2); flex: none; }
+.serve { width: 7px; height: 7px; border-radius: 50%; background: var(--red-2); flex: none; box-shadow: 0 0 0 3px var(--red-soft); }
 .sets { display: flex; gap: 4px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .sets span { width: 22px; text-align: center; }
 .sets span.won { color: var(--text); font-weight: 700; }
