@@ -653,6 +653,10 @@ function writeSite(meta) {
       res: b.res
     }));
 
+  const byPlayer = finishedByPlayer();
+  const champs = champions(now);
+  const hot = hotPlayers(byPlayer, now);
+
   writeJson(path.join(OUT_DIR, 'picks.json'), pendingView);
   writeJson(path.join(OUT_DIR, 'results.json'), resolved.slice(0, 300).map((p) => pickView(p)));
   writeJson(path.join(OUT_DIR, 'calendar.json'), { days, matches: calendar });
@@ -667,8 +671,99 @@ function writeSite(meta) {
     pendingCount: pendingView.length,
     model: meta.model,
     featured: featuredStats(resolved, d),
-    champions: champions(now)
+    champions: champs,
+    hot
   });
+  writePlayers(new Set([...calendar.flatMap((m) => [m.a.id, m.b.id]), ...pendingView.flatMap((p) => [p.a.id, p.b.id]), ...champs.flatMap((c) => [c.champ.id, c.rival.id]), ...hot.map((h) => h.p.id)]), byPlayer);
+}
+
+// Índice: partidos terminados de cada jugador, del más nuevo al más viejo.
+function finishedByPlayer() {
+  const idx = new Map();
+  for (const m of Object.values(state.matches)) {
+    if (m.st !== 'f') continue;
+    for (const pid of [m.a, m.b]) {
+      if (!idx.has(pid)) idx.set(pid, []);
+      idx.get(pid).push(m);
+    }
+  }
+  for (const list of idx.values()) list.sort((x, y) => (x.at < y.at ? 1 : -1));
+  return idx;
+}
+
+function streakOf(list, pid) {
+  let s = 0;
+  for (const m of list) {
+    const won = m.w === pid;
+    if (s === 0) s = won ? 1 : -1;
+    else if (s > 0 === won) s += won ? 1 : -1;
+    else break;
+  }
+  return s;
+}
+
+// "Jugadores en racha": racha de victorias actual de 4 o más, jugando en
+// las últimas 24 h. Desempata el % de victorias de los últimos 7 días.
+function hotPlayers(byPlayer, now) {
+  const dayAgo = new Date(now - 24 * 3600e3).toISOString();
+  const weekAgo = new Date(now - 7 * 86400e3).toISOString();
+  const out = [];
+  for (const [pid, list] of byPlayer) {
+    if (!list.length || list[0].at < dayAgo) continue;
+    const s = streakOf(list, pid);
+    if (s < 4) continue;
+    const week = list.filter((m) => m.at >= weekAgo);
+    const w = week.filter((m) => m.w === pid).length;
+    out.push({ p: playerRef(pid), streak: s, w7: w, l7: week.length - w });
+  }
+  return out.sort((a, b) => b.streak - a.streak || b.w7 / (b.w7 + b.l7) - a.w7 / (a.w7 + a.l7)).slice(0, 10);
+}
+
+// Ficha de cada jugador: site/data/players/{id}.json
+function writePlayers(ids, byPlayer) {
+  const dir = path.join(OUT_DIR, 'players');
+  fs.rmSync(dir, { recursive: true, force: true });
+  const monthAgo = new Date(Date.now() - 30 * 86400e3).toISOString();
+  for (const pid of ids) {
+    const list = byPlayer.get(pid) || [];
+    const month = list.filter((m) => m.at >= monthAgo);
+    const wM = month.filter((m) => m.w === pid).length;
+    const titles = Object.entries(state.tournaments)
+      .filter(([, t]) => t.st === 'f' && t.w === pid)
+      .map(([tid, t]) => ({ t: Number(tid), tn: (t.n || '').replace(/^Tournament\s*/i, ''), at: t.at }))
+      .sort((a, b) => (a.at < b.at ? 1 : -1));
+    // Rivales más frecuentes con su historial.
+    const vs = new Map();
+    for (const m of list) {
+      const op = m.a === pid ? m.b : m.a;
+      if (!vs.has(op)) vs.set(op, { w: 0, l: 0 });
+      vs.get(op)[m.w === pid ? 'w' : 'l']++;
+    }
+    const rivals = [...vs.entries()]
+      .sort((a, b) => b[1].w + b[1].l - (a[1].w + a[1].l))
+      .slice(0, 8)
+      .map(([op, r]) => ({ p: playerRef(op), ...r }));
+    writeJson(path.join(dir, `${pid}.json`), {
+      p: playerRef(pid),
+      streak: streakOf(list, pid),
+      month: { w: wM, l: month.length - wM },
+      all: { w: list.filter((m) => m.w === pid).length, l: list.filter((m) => m.w !== pid).length },
+      titles: { count: titles.length, recent: titles.slice(0, 6) },
+      rivals,
+      last: list.slice(0, 20).map((m) => {
+        const isA = m.a === pid;
+        return {
+          id: m.id,
+          at: m.at,
+          tn: (state.tournaments[m.t]?.n || '').replace(/^Tournament\s*/i, ''),
+          ph: phaseOf(m),
+          op: playerRef(isA ? m.b : m.a),
+          s: isA ? `${m.sa}-${m.sb}` : `${m.sb}-${m.sa}`,
+          w: m.w === pid
+        };
+      })
+    });
+  }
 }
 
 // Campeones de los torneos terminados en las últimas 30 horas: el ganador,

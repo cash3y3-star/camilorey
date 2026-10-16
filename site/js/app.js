@@ -325,6 +325,93 @@ function viewInicio() {
   ${footer()}`;
 }
 
+// ---------- Perfil de jugador ----------
+function viewJugador(id) {
+  setTimeout(() => renderJugador(Number(id)), 0);
+  return `<div class="subhead"><a class="back" href="javascript:history.back()">${icon('left')} Atrás</a><h1>Jugador</h1></div><div id="player-page">${skeleton(3)}</div>`;
+}
+
+async function renderJugador(id) {
+  const box = document.getElementById('player-page');
+  if (!box) return;
+  let d;
+  try {
+    d = await getJson(`players/${id}`);
+  } catch {
+    box.innerHTML = empty('user', 'Sin ficha', 'Este jugador no tiene partidos recientes en nuestros datos.');
+    return;
+  }
+  const p = d.p;
+  const pctM = d.month.w + d.month.l ? Math.round((d.month.w / (d.month.w + d.month.l)) * 100) : null;
+  const form = d.last.slice(0, 10).map((x) => (x.w ? 'W' : 'L')).join('');
+  const upcoming = data.calendar.matches.filter((m) => m.st !== 'f' && (m.a.id === id || m.b.id === id));
+  const photo = p.cut
+    ? `<img class="fc-cut" src="${esc(p.cut)}" alt="">`
+    : p.av
+    ? `<img class="fc-raw" src="${esc(p.av)}" alt="" referrerpolicy="no-referrer">`
+    : `<span class="fc-ini">${esc(initials(p.n))}</span>`;
+  const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', timeZone: TZ }).format(new Date(iso));
+  box.innerHTML = `
+  <div class="player-hero">
+    <div class="fc-photo">${photo}<span class="fc-flag"><svg viewBox="0 0 30 20"><rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0 15 10 0 20z" fill="#11457e"/></svg></span></div>
+    <div class="ph-info">
+      <h2>${esc(p.n)}</h2>
+      <div class="ph-sub">Liga Pro Checa · Rating <b>${p.r ?? '—'}</b></div>
+      ${d.streak >= 3 ? `<span class="badge win">🔥 ${d.streak} victorias seguidas</span>` : d.streak <= -3 ? `<span class="badge loss">${-d.streak} derrotas seguidas</span>` : ''}
+      <div style="margin-top:10px">${formDots(form, 10, 'form lg')}</div>
+    </div>
+  </div>
+  <div class="tiles">
+    <div class="tile"><div class="overline">Últimos 30 días</div><div class="val">${pctM == null ? '—' : pctM + '%'}</div><div class="hint">${d.month.w}G · ${d.month.l}P</div></div>
+    <div class="tile"><div class="overline">Racha</div><div class="val ${d.streak > 0 ? 'pos' : d.streak < 0 ? 'neg' : ''}">${d.streak > 0 ? d.streak + 'W' : d.streak < 0 ? -d.streak + 'L' : '—'}</div><div class="hint">actual</div></div>
+    <div class="tile"><div class="overline">Títulos</div><div class="val">${d.titles.count} 🏆</div><div class="hint">torneos ganados</div></div>
+  </div>
+  ${upcoming.length ? `<div class="section-h"><h2>${icon('clock')} Próximos partidos</h2></div><div class="grid-2">${upcoming.map((m) => matchCard(m)).join('')}</div>` : ''}
+  <div class="section-h"><h2>Últimos partidos</h2><span class="badge">${d.last.length}</span></div>
+  <div class="h2h-list">${d.last
+    .map(
+      (x) => `<div class="pl-row" data-open="${x.id}">
+        <div class="h2h-date">${fmtD(x.at)} ${fmtTime(x.at)}<small>${esc(x.ph ? `${x.ph} · ${x.tn}` : x.tn)}</small></div>
+        <div class="pl-op" data-player="${x.op.id}">${avatar(x.op, 'avatar sm')}<span>vs ${esc(x.op.n)}</span></div>
+        <div class="pl-res"><b>${esc(x.s)}</b><span class="h2h-res ${x.w ? 'w' : 'l'}">${x.w ? 'G' : 'P'}</span></div>
+      </div>`
+    )
+    .join('')}</div>
+  ${
+    d.rivals.length
+      ? `<div class="section-h"><h2>Rivales frecuentes</h2></div><div class="h2h-list">${d.rivals
+          .map((r) => {
+            const tot = r.w + r.l;
+            return `<div class="pl-row" data-player="${r.p.id}" style="cursor:pointer">
+              <div class="pl-op">${avatar(r.p, 'avatar sm')}<span>${esc(r.p.n)}</span></div>
+              <div class="pl-bar"><span style="width:${(r.w / tot) * 100}%"></span></div>
+              <div class="pl-res"><b>${r.w}-${r.l}</b></div>
+            </div>`;
+          })
+          .join('')}</div>`
+      : ''
+  }
+  ${
+    d.titles.recent.length
+      ? `<div class="section-h"><h2>🏆 Torneos ganados</h2><span class="badge">${d.titles.count}</span></div><div class="list">${d.titles.recent
+          .map((t) => `<div class="row"><span class="ic">🏆</span><span class="tx"><b>${esc(t.tn)}</b><small>${esc(new Intl.DateTimeFormat(LOC(), { day: 'numeric', month: 'long', timeZone: TZ }).format(new Date(t.at)))}</small></span></div>`)
+          .join('')}</div>`
+      : ''
+  }
+  ${footer()}`;
+}
+
+function hotHtml() {
+  const list = data.stats?.hot || [];
+  if (!list.length) return '';
+  return `<div class="section-h"><h2>🔥 Jugadores en racha</h2></div>
+  <div class="hot-strip">${list
+    .map(
+      (h) => `<button class="hot-chip" data-player="${h.p.id}">${avatar(h.p, 'avatar')}<b>${esc(h.p.n)}</b><span class="badge win">${h.streak}W 🔥</span><small>${h.w7}-${h.l7} en 7 días</small></button>`
+    )
+    .join('')}</div>`;
+}
+
 // Campeones (ganadores de la final) de los torneos de las últimas horas.
 function championsHtml() {
   const list = data.stats?.champions || [];
@@ -338,7 +425,7 @@ function championsHtml() {
         : c.champ.av
         ? `<img class="fc-raw" src="${esc(c.champ.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         : `<span class="fc-ini">${esc(initials(c.champ.n))}</span>`;
-      return `<article class="fcard champ">
+      return `<article class="fcard champ" data-player="${c.champ.id}" style="cursor:pointer">
         <div class="fc-photo">${photo}<span class="crown">👑</span><span class="fc-flag"><svg viewBox="0 0 30 20"><rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0 15 10 0 20z" fill="#11457e"/></svg></span></div>
         <div class="fc-body">
           <small class="fc-league">${esc(c.tn)}</small>
@@ -1078,9 +1165,9 @@ function openMatch(id) {
       : `<div class="mid"><span class="badge red">● ${fmtTime(m.at)}</span><div class="vs">VS</div></div>`;
     $sheetBody.innerHTML = `
     <div class="sheet-hero">
-      <div class="side ${favA ? 'fav' : ''}">${avatar(m.a, 'avatar lg')}<span class="nm" style="font-size:15px">${esc(m.a.n)}</span><span class="sub">Rating ${m.a.r ?? '—'}</span></div>
+      <div class="side ${favA ? 'fav' : ''}" data-player="${m.a.id}" style="cursor:pointer">${avatar(m.a, 'avatar lg')}<span class="nm" style="font-size:15px">${esc(m.a.n)}</span><span class="sub">Rating ${m.a.r ?? '—'}</span></div>
       ${center}
-      <div class="side ${pick && !favA ? 'fav' : ''}">${avatar(m.b, 'avatar lg')}<span class="nm" style="font-size:15px">${esc(m.b.n)}</span><span class="sub">Rating ${m.b.r ?? '—'}</span></div>
+      <div class="side ${pick && !favA ? 'fav' : ''}" data-player="${m.b.id}" style="cursor:pointer">${avatar(m.b, 'avatar lg')}<span class="nm" style="font-size:15px">${esc(m.b.n)}</span><span class="sub">Rating ${m.b.r ?? '—'}</span></div>
     </div>
     <div class="kv">
       <div><small>${m.ph ? esc(m.ph) : 'Torneo'}</small><b style="font-size:13px">${esc((m.tn || '').replace(/^Tournament\s*/i, ''))}</b></div>
@@ -1195,6 +1282,7 @@ const ROUTES = {
   resultados: viewBankroll,
   perfil: viewPerfil,
   cuenta: viewCuenta,
+  jugador: viewJugador,
   tema: viewTema,
   cuotas: viewCuotas,
   idioma: viewIdioma,
@@ -1208,7 +1296,7 @@ const ROUTES = {
 function route() {
   const name = (location.hash.replace(/^#\/?/, '').split('/')[0] || 'inicio').toLowerCase();
   const fn = ROUTES[name] || viewInicio;
-  $view.innerHTML = fn();
+  $view.innerHTML = fn(location.hash.replace(/^#\/?/, '').split('/')[1]);
   const tab = name === 'resultados' ? 'bankroll' : name;
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   liveUnsub?.();
@@ -1261,6 +1349,13 @@ async function renderCounter() {
 // ---------------- eventos ----------------
 
 document.addEventListener('click', async (ev) => {
+  // Tocar un jugador abre su perfil (tiene prioridad sobre abrir el partido).
+  const pl = ev.target.closest('[data-player]');
+  if (pl && !ev.target.closest('[data-follow]')) {
+    closeSheet();
+    location.hash = '#/jugador/' + pl.dataset.player;
+    return;
+  }
   const t = ev.target.closest('button, a, [data-open]');
   if (!t) return;
 
