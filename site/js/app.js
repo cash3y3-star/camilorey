@@ -16,7 +16,7 @@ const $sheet = document.getElementById('sheet');
 const $sheetBody = $sheet.querySelector('.sheet-body');
 
 const data = { stats: null, picks: [], results: [], calendar: { days: [], matches: [] }, bankroll: null, loaded: false, error: null };
-const ui = { day: 1, calFilter: 'all', pickFilter: 'all', resRange: 'd30', formTab: 'L5', followRange: 'd7' };
+const ui = { day: 1, calFilter: 'all', calView: 'next', pickFilter: 'all', resRange: 'd30', formTab: 'L5', followRange: 'd7', liveFilter: 'all' };
 let follows = new Set(readLocal('cr_follows', []));
 let liveUnsub = null;
 let sheetUnsub = null;
@@ -236,8 +236,9 @@ function viewInicio() {
     const list = [...pend, ...data.results.slice(0, 40)].filter((p) => p.o);
     return list.length ? (list.reduce((a, p) => a + p.o, 0) / list.length).toFixed(2) : '—';
   })();
-  const featured = pend.find((p) => p.ft) || pend[0];
-  const upcoming = pend.filter((p) => p !== featured && new Date(p.at) > Date.now()).slice(0, 4);
+  const next = upcomingPicks();
+  const featured = next.find((p) => p.ft) || next.slice().sort((a, b) => b.c - a.c)[0];
+  const upcoming = next.filter((p) => p !== featured).slice(0, 4);
 
   return `
   <section class="hero">
@@ -252,7 +253,7 @@ function viewInicio() {
   </div>
   ${s?.d7?.hit + s?.d7?.miss ? `<div class="banner"><span>⭐ CamiloRey acertó <b>${s.d7.hit}/${s.d7.hit + s.d7.miss}</b> en los últimos 7 días</span><a class="textlink" href="#/bankroll">Ver</a></div>` : ''}
 
-  <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/calendario">Calendario</a></div>
+  <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/envivo">Ver todo</a></div>
   <div id="live-home">${skeleton(1)}</div>
 
   ${
@@ -265,7 +266,14 @@ function viewInicio() {
   ${footer()}`;
 }
 
+// Punto rojo en la pestaña En vivo cuando hay partidos de la Liga Pro en juego.
+function liveDot(state) {
+  const d = document.getElementById('tab-live-dot');
+  if (d && state.at) d.hidden = !state.liga.length;
+}
+
 function renderLiveHome(state) {
+  liveDot(state);
   const box = document.getElementById('live-home');
   if (!box) return;
   const ours = data.calendar.matches;
@@ -291,8 +299,14 @@ function viewCalendario() {
   if (!days.length) return `<h1 class="page-title">Calendario</h1>${data.loaded ? errorBox() || empty('calendar', 'Sin partidos', 'Aún no hay partidos cargados.') : skeleton(4)}`;
   ui.day = Math.max(0, Math.min(days.length - 1, ui.day));
   const key = days[ui.day];
-  let list = data.calendar.matches.filter((m) => dayKey(m.at) === key);
-  const total = list.length;
+  const dayList = data.calendar.matches.filter((m) => dayKey(m.at) === key);
+  const total = dayList.length;
+  // Estado de cada partido: terminado / en vivo / próximo.
+  const stateOf = (m) => (m.st === 'f' ? 'done' : m.st === 'l' || liveFor(m) || new Date(m.at).getTime() <= Date.now() ? 'live' : 'next');
+  const counts = { next: 0, live: 0, done: 0 };
+  dayList.forEach((m) => counts[stateOf(m)]++);
+  let list = dayList.filter((m) => stateOf(m) === ui.calView);
+  if (ui.calView === 'done') list.reverse(); // resultados: lo más reciente arriba
   if (ui.calFilter === 'pick') list = list.filter((m) => m.pick);
   // Agrupado por torneo, en orden de hora.
   const groups = new Map();
@@ -309,7 +323,12 @@ function viewCalendario() {
       <b>${esc(dayLabel(key))}</b>
       <button data-day="1" ${ui.day === days.length - 1 ? 'disabled' : ''} aria-label="Día siguiente">${icon('right')}</button>
     </div>
-    <div class="seg"><button data-calf="all" class="${ui.calFilter === 'all' ? 'on' : ''}">Todos</button><button data-calf="pick" class="${ui.calFilter === 'pick' ? 'on' : ''}">Con pick</button></div>
+    <button class="chip-btn ${ui.calFilter === 'pick' ? 'on' : ''}" data-calf="${ui.calFilter === 'pick' ? 'all' : 'pick'}">${icon('flame')} Con pick</button>
+  </div>
+  <div class="seg seg-full" style="margin-bottom:14px">
+    <button data-calv="next" class="${ui.calView === 'next' ? 'on' : ''}">Próximos <em>${counts.next}</em></button>
+    <button data-calv="live" class="${ui.calView === 'live' ? 'on' : ''}">● En vivo <em>${counts.live}</em></button>
+    <button data-calv="done" class="${ui.calView === 'done' ? 'on' : ''}">Resultados <em>${counts.done}</em></button>
   </div>
   ${
     groups.size
@@ -319,18 +338,33 @@ function viewCalendario() {
             <div class="grid-2">${g.items.map((m) => matchCard(m)).join('')}</div>`
           )
           .join('')
-      : empty('calendar', 'Sin partidos', ui.calFilter === 'pick' ? 'No hay picks para este día.' : 'No hay partidos este día.')
+      : empty(
+          ui.calView === 'live' ? 'live' : 'calendar',
+          ui.calView === 'live' ? 'Nada en vivo' : ui.calView === 'done' ? 'Sin resultados todavía' : 'Sin partidos por jugar',
+          ui.calView === 'live'
+            ? 'No hay partidos de este día en juego ahora. Mira la pestaña En vivo para todas las ligas.'
+            : ui.calView === 'done'
+            ? 'Aún no termina ningún partido de este día' + (ui.calFilter === 'pick' ? ' con pick.' : '.')
+            : 'No quedan partidos por jugar este día' + (ui.calFilter === 'pick' ? ' con pick.' : '.')
+        )
   }
   ${footer()}`;
 }
 
+// Solo picks de partidos que todavía no empiezan (los en vivo/jugados van a
+// Calendario y a la pestaña En vivo).
+function upcomingPicks() {
+  const now = Date.now();
+  return data.picks.filter((p) => p.st === 's' && new Date(p.at).getTime() > now && !liveFor(p));
+}
+
 function viewPicks() {
-  let list = data.picks.slice();
+  let list = upcomingPicks();
   if (ui.pickFilter === 'high') list = list.filter((p) => p.c >= 68);
   if (ui.pickFilter === 'odds') list = list.filter((p) => p.o && p.o >= 1.6);
   return `
   <h1 class="page-title">Predicciones</h1>
-  <div class="page-sub"><i class="live-dot"></i>${data.picks.length} picks · ${esc(longDate())}</div>
+  <div class="page-sub"><i class="live-dot"></i>${upcomingPicks().length} próximos picks · ${esc(longDate())}</div>
   <div class="toolbar">
     <div class="seg">
       <button data-pf="all" class="${ui.pickFilter === 'all' ? 'on' : ''}">Todos</button>
@@ -393,6 +427,47 @@ function followCard(p) {
       <div class="fc-conf"><div class="fc-bar"><span style="width:${Math.max(8, ((p.c - 50) / 30) * 100)}%"></span></div><b>${p.c}</b></div>
     </div>
   </article>`;
+}
+
+// ---------- En vivo: todos los partidos de tenis de mesa en juego ----------
+function viewEnVivo() {
+  return `
+  <h1 class="page-title">En vivo</h1>
+  <div class="page-sub"><i class="live-dot red"></i><span id="live-count">Cargando...</span></div>
+  <div class="toolbar"><div class="seg">
+    <button data-lf="all" class="${ui.liveFilter === 'all' ? 'on' : ''}">Todos</button>
+    <button data-lf="liga" class="${ui.liveFilter === 'liga' ? 'on' : ''}">Liga Pro Checa</button>
+    <button data-lf="pick" class="${ui.liveFilter === 'pick' ? 'on' : ''}">Con pick</button>
+  </div></div>
+  <div id="live-page">${skeleton(3)}</div>
+  ${footer()}`;
+}
+
+function renderLivePage(state) {
+  liveDot(state);
+  const box = document.getElementById('live-page');
+  if (!box || !state.at) return;
+  const ours = data.calendar.matches;
+  const withOurs = state.all.map((e) => ({ e, m: e.liga ? ours.find((x) => findLive([e], x.a.n, x.b.n)) : null }));
+  // Liga Pro primero, después el resto; dentro de cada grupo, por liga.
+  withOurs.sort((x, y) => (y.e.liga - x.e.liga) || x.e.group.localeCompare(y.e.group));
+  let list = withOurs;
+  if (ui.liveFilter === 'liga') list = list.filter((x) => x.e.liga);
+  if (ui.liveFilter === 'pick') list = list.filter((x) => x.m?.pick);
+  document.getElementById('live-count').textContent = `${state.all.length} partidos en juego · ${state.liga.length} de la Liga Pro · se actualiza cada 2 s`;
+  if (!list.length) {
+    box.innerHTML = empty('live', 'Nada en vivo ahora', ui.liveFilter === 'all' ? 'No hay partidos de tenis de mesa en juego en este momento.' : 'No hay partidos en vivo con este filtro.');
+    return;
+  }
+  const groups = new Map();
+  for (const x of list) {
+    const g = x.e.liga ? 'Liga Pro Checa' : x.e.group || 'Otras ligas';
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(x);
+  }
+  box.innerHTML = [...groups.entries()]
+    .map(([g, xs]) => `<div class="section-h"><h2 style="font-size:14px">${esc(g)}</h2><span class="badge live">${xs.length}</span></div><div class="grid-2">${xs.map((x) => liveCard(x.e, x.m)).join('')}</div>`)
+    .join('');
 }
 
 function viewSeguidos() {
@@ -850,6 +925,7 @@ const ROUTES = {
   inicio: viewInicio,
   calendario: viewCalendario,
   picks: viewPicks,
+  envivo: viewEnVivo,
   seguidos: viewSeguidos,
   bankroll: viewBankroll,
   resultados: viewBankroll,
@@ -872,6 +948,7 @@ function route() {
   liveUnsub?.();
   liveUnsub = null;
   if (name === 'inicio' || !ROUTES[name]) liveUnsub = onLive(renderLiveHome);
+  else if (name === 'envivo') liveUnsub = onLive(renderLivePage);
   else if (['calendario', 'picks'].includes(name)) liveUnsub = onLive(() => refreshLiveMids());
   else if (name === 'seguidos') {
     // Redibuja solo si hay algún seguido en vivo (marcador y barra de sets).
@@ -928,9 +1005,18 @@ document.addEventListener('click', async (ev) => {
     ui.day += Number(t.dataset.day);
     return route();
   }
+  if (t.dataset.lf) {
+    ui.liveFilter = t.dataset.lf;
+    document.querySelectorAll('[data-lf]').forEach((b) => b.classList.toggle('on', b === t));
+    return renderLivePage(currentLive());
+  }
   if (t.dataset.frange) {
     const i = FOLLOW_RANGES.findIndex((r) => r[0] === ui.followRange);
     ui.followRange = FOLLOW_RANGES[(i + 1) % FOLLOW_RANGES.length][0];
+    return route();
+  }
+  if (t.dataset.calv) {
+    ui.calView = t.dataset.calv;
     return route();
   }
   if (t.dataset.calf) {
