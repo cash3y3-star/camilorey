@@ -702,9 +702,9 @@ function writeSite(meta) {
     featured: featuredStats(resolved, d),
     champions: champs,
     hot,
-    tipster: meta.tipster || null,
-    users: meta.users ?? null
+    tipster: meta.tipster || null
   });
+  registeredUsers = meta.users ?? null; // va a la parte privada del admin, no a stats.json
   writePlayers(new Set([...calendar.flatMap((m) => [m.a.id, m.b.id]), ...pendingView.flatMap((p) => [p.a.id, p.b.id]), ...champs.flatMap((c) => [c.champ.id, c.rival.id]), ...hot.map((h) => h.p.id)]), byPlayer);
 }
 
@@ -859,6 +859,7 @@ const FIREBASE_PROJECT = 'camilorey-1399c';
 const FIREBASE_API_KEY = 'AIzaSyAjEK6Ca7_NEDiPMJv9iqwNLx1DY8WOog0';
 let privateLedger = null;
 let systemBankroll = null;
+let registeredUsers = null; // número real de cuentas (solo admin)
 
 // Picks del tipster (colección pública "tipster" de Firestore, la escribe
 // el admin desde el panel): se resuelven con los resultados oficiales.
@@ -914,7 +915,7 @@ async function pushPrivateLedger() {
     fields: {
       botKey: { stringValue: botKey },
       updatedAt: { stringValue: new Date().toISOString() },
-      data: { stringValue: JSON.stringify({ summary: systemBankroll, ledger: privateLedger }) }
+      data: { stringValue: JSON.stringify({ summary: systemBankroll, ledger: privateLedger, users: registeredUsers }) }
     }
   };
   try {

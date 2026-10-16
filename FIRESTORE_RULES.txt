@@ -19,9 +19,10 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/members/$(myEmail())).data.until > request.time;
     }
 
-    // Contadores públicos: cualquiera los lee, y solo se pueden sumar de a 1.
+    // Contadores de visitas: cualquiera puede sumar la suya (de a 1), pero
+    // solo el admin puede leerlos.
     match /stats/{doc} {
-      allow read: if true;
+      allow read: if isAdmin();
       allow create: if request.resource.data.keys().hasOnly(['count'])
                     && request.resource.data.count == 1;
       allow update: if request.resource.data.keys().hasOnly(['count'])

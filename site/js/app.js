@@ -608,10 +608,11 @@ async function renderAdminPanel() {
   // Visitas por día
   const vbox = document.getElementById('admin-visits');
   try {
-    const [days, c] = await Promise.all([FB.visitsByDay(14), FB.getCounters()]);
+    const [days, c, priv] = await Promise.all([FB.visitsByDay(14), FB.getCounters(), FB.loadAdminLedger().catch(() => ({}))]);
+    adminUsers = priv.users ?? null;
     const max = Math.max(1, ...days.map((x) => x.count));
     if (vbox)
-      vbox.innerHTML = `<div class="card pad"><div class="tiles" style="margin:0 0 12px"><div class="tile"><div class="overline">Hoy</div><div class="val">${fmtInt(c.today)}</div></div><div class="tile"><div class="overline">Total</div><div class="val">${fmtInt(c.total)}</div></div><div class="tile"><div class="overline">Usuarios</div><div class="val">${(data.stats?.users ?? '—')}</div></div></div>
+      vbox.innerHTML = `<div class="card pad"><div class="tiles" style="margin:0 0 12px"><div class="tile"><div class="overline">Hoy</div><div class="val">${fmtInt(c.today)}</div></div><div class="tile"><div class="overline">Total</div><div class="val">${fmtInt(c.total)}</div></div><div class="tile"><div class="overline">Usuarios</div><div class="val">${(adminUsers ?? '—')}</div></div></div>
         <div class="bars">${days.map((x) => `<div class="b" title="${x.d}: ${x.count}"><i class="h" style="height:${(x.count / max) * 100}px;background:var(--red)"></i></div>`).join('')}</div>
         <div class="bars-x"><span>${esc(days[0].d.slice(5))}</span><span>${esc(days[days.length - 1].d.slice(5))}</span></div></div>`;
   } catch (e) {
@@ -1762,13 +1763,18 @@ function route() {
 // eran 3 lecturas en cada cambio de pantalla) y solo después de cargar
 // Firebase (que se carga un instante después de la primera pantalla).
 let counterCache = { at: 0, c: null };
+let adminUsers = null; // cuentas registradas reales (parte privada del admin)
 async function renderCounter() {
   const el = document.getElementById('foot-counter');
-  if (!el || !FB.enabled || !fbStarted) return;
+  // Visitas y usuarios: solo los ve la cuenta admin.
+  if (!el || !FB.enabled || !fbStarted || !isAdmin()) return;
   try {
-    if (Date.now() - counterCache.at > 5 * 60e3) counterCache = { at: Date.now(), c: await FB.getCounters() };
+    if (Date.now() - counterCache.at > 5 * 60e3) {
+      counterCache = { at: Date.now(), c: await FB.getCounters() };
+      adminUsers = (await FB.loadAdminLedger().catch(() => ({}))).users ?? adminUsers;
+    }
     const c = counterCache.c;
-    if (c) el.innerHTML = `${icon('eye', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:13px;height:13px;vertical-align:-2px"')} ${fmtInt(c.today)} visitas hoy · ${fmtInt(c.total)} en total · ${(data.stats?.users ?? '—')} usuarios`;
+    if (c) el.innerHTML = `${icon('eye', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:13px;height:13px;vertical-align:-2px"')} ${fmtInt(c.today)} visitas hoy · ${fmtInt(c.total)} en total · ${(adminUsers ?? '—')} usuarios`;
   } catch {}
 }
 
