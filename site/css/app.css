@@ -324,6 +324,17 @@ details.faq p { margin: 0; padding: 0 14px 14px; font-size: 13px; color: var(--m
 .fc-bar span { display: block; height: 100%; background: #22c55e; border-radius: 99px; }
 .fcard.is-miss .fc-bar span { background: #ef4444; }
 .fc-conf b { font-size: 11px; color: #a1a1aa; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Íconos de línea en lugar de emojis (js/i18n.js) */
+.ei { display: inline-flex; vertical-align: -0.16em; width: 1.1em; height: 1.1em; flex: none; }
+.ei .ei-svg { width: 100%; height: 100%; }
+.ei.gold { color: #facc15; }
+.ei.hot { color: var(--red-2); }
+.ei.win { color: var(--win); }
+.ei.loss { color: var(--loss); }
+.badge .ei, .fc-pill .ei { width: 1.15em; height: 1.15em; }
+.crown .ei { width: 26px; height: 26px; }
+.crown .ei-svg { stroke-width: 2.2; fill: rgba(250, 204, 21, 0.25); }
+
 /* Bienvenida a Premium (hoja que sube desde abajo) */
 .sheet-backdrop.pw .sheet { padding-top: 0; background: #151817; }
 .sheet-backdrop.pw .sheet-grip, .sheet-backdrop.pw .sheet-close { display: none; }

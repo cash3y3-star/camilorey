@@ -22,6 +22,7 @@ let follows = new Set(readLocal('cr_follows', []));
 let liveUnsub = null;
 let sheetUnsub = null;
 let account = null;
+let fbStarted = false; // Firebase se arranca después de la primera pantalla (startFirebase)
 let profile = null; // { name, photo } editable, guardado en Firestore
 let membership = null; // { until, active } de la colección members
 let premiumData = null; // contenido Premium (picks completos + Análisis IA)
@@ -181,9 +182,12 @@ const fmtInt = (n) => new Intl.NumberFormat(LOC()).format(n || 0);
 const cop = (n) => `$${new Intl.NumberFormat(LOC(), { maximumFractionDigits: 0 }).format(Math.round(n || 0))}`;
 const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${cop(Math.abs(n))}`;
 
+// Avatar redondo: usa la miniatura propia (160 px, ~6 KB) si existe; la foto
+// original de tt.league-pro.com pesa 150-300 KB.
 function avatar(p, cls = 'avatar') {
-  if (p?.av) {
-    return `<img class="${cls}" src="${esc(p.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;${cls}&quot;>${esc(initials(p.n))}</div>'">`;
+  const src = p?.th || p?.av;
+  if (src) {
+    return `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;${cls}&quot;>${esc(initials(p.n))}</div>'">`;
   }
   return `<div class="${cls}">${esc(initials(p?.n))}</div>`;
 }
@@ -731,7 +735,7 @@ async function renderJugador(id) {
   const photo = p.cut
     ? `<img class="fc-cut" src="${esc(p.cut)}" alt="">`
     : p.av
-    ? `<img class="fc-raw" src="${esc(p.av)}" alt="" referrerpolicy="no-referrer">`
+    ? `<img class="fc-raw" src="${esc(p.th || p.av)}" alt="" referrerpolicy="no-referrer">`
     : `<span class="fc-ini">${esc(initials(p.n))}</span>`;
   const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', timeZone: TZ }).format(new Date(iso));
   box.innerHTML = `
@@ -806,7 +810,7 @@ function championsHtml() {
       const photo = c.champ.cut
         ? `<img class="fc-cut" src="${esc(c.champ.cut)}" alt="" loading="lazy">`
         : c.champ.av
-        ? `<img class="fc-raw" src="${esc(c.champ.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+        ? `<img class="fc-raw" src="${esc(c.champ.th || c.champ.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         : `<span class="fc-ini">${esc(initials(c.champ.n))}</span>`;
       return `<article class="fcard champ" data-player="${c.champ.id}" style="cursor:pointer">
         <div class="fc-photo">${photo}<span class="crown">👑</span><span class="fc-flag"><svg viewBox="0 0 30 20"><rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0 15 10 0 20z" fill="#11457e"/></svg></span></div>
@@ -984,7 +988,7 @@ function followCard(p) {
   const photo = fav.cut
     ? `<img class="fc-cut" src="${esc(fav.cut)}" alt="" loading="lazy">`
     : fav.av
-    ? `<img class="fc-raw" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    ? `<img class="fc-raw" src="${esc(fav.th || fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : '';
   return `
   <article class="fcard ${p.res === 'miss' ? 'is-miss' : ''}" data-open="${p.id}" data-match="${p.id}" data-ev="f${p.id}">
@@ -1754,11 +1758,16 @@ function route() {
   if (name === 'inicio' || !ROUTES[name]) renderTipsterHome();
 }
 
+// Contador del pie: se lee de Firestore como máximo cada 5 minutos (antes
+// eran 3 lecturas en cada cambio de pantalla) y solo después de cargar
+// Firebase (que se carga un instante después de la primera pantalla).
+let counterCache = { at: 0, c: null };
 async function renderCounter() {
   const el = document.getElementById('foot-counter');
-  if (!el || !FB.enabled) return;
+  if (!el || !FB.enabled || !fbStarted) return;
   try {
-    const c = await FB.getCounters();
+    if (Date.now() - counterCache.at > 5 * 60e3) counterCache = { at: Date.now(), c: await FB.getCounters() };
+    const c = counterCache.c;
     if (c) el.innerHTML = `${icon('eye', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:13px;height:13px;vertical-align:-2px"')} ${fmtInt(c.today)} visitas hoy · ${fmtInt(c.total)} en total · ${fmtInt(c.users)} usuarios`;
   } catch {}
 }
@@ -2103,21 +2112,34 @@ function renderAuthHeader() {
 }
 renderAuthHeader();
 
-FB.onAuth(async (u) => {
-  account = u;
-  profile = u ? await FB.loadProfile().catch(() => null) : null;
-  await refreshPremium();
-  renderAuthHeader();
-  if (u) {
-    const remote = await FB.loadFollows().catch(() => null);
-    if (remote) {
-      follows = new Set([...remote, ...follows]);
-      writeLocal('cr_follows', [...follows]);
-      FB.saveFollows([...follows]).catch(() => {});
+// Firebase (~170 KB) se carga DESPUÉS de mostrar los picks, para que la
+// primera pantalla salga rápido. Si la persona ya tenía sesión, se carga de
+// inmediato para que no vea "Entrar" ni candados de más.
+function startFirebase() {
+  if (fbStarted) return;
+  fbStarted = true;
+  FB.onAuth(async (u) => {
+    account = u;
+    writeLocal('cr_had_session', Boolean(u));
+    profile = u ? await FB.loadProfile().catch(() => null) : null;
+    await refreshPremium();
+    renderAuthHeader();
+    if (u) {
+      const remote = await FB.loadFollows().catch(() => null);
+      if (remote) {
+        follows = new Set([...remote, ...follows]);
+        writeLocal('cr_follows', [...follows]);
+        FB.saveFollows([...follows]).catch(() => {});
+      }
     }
-  }
-  if ($sheet.hidden) route();
-});
-FB.countVisit().catch(() => {});
+    if ($sheet.hidden) route();
+  });
+  FB.countVisit().catch(() => {});
+}
+if (readLocal('cr_had_session', false) || /^#\/(login|registro|cuenta|admin|notificaciones|bankroll|premium)/.test(location.hash)) startFirebase();
+else if ('requestIdleCallback' in window) requestIdleCallback(startFirebase, { timeout: 2500 });
+else setTimeout(startFirebase, 1500);
+// Cualquier toque a algo de la cuenta también la arranca al momento.
+window.addEventListener('hashchange', startFirebase, { once: true });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

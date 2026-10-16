@@ -120,6 +120,48 @@ const RULES = [
   [/p\. m\./g, 'PM']
 ];
 
+// ---------- Emojis → íconos de línea ----------
+// El sitio usa íconos de trazo (como la barra de abajo). Cualquier emoji que
+// aparezca en pantalla se reemplaza por su ícono equivalente.
+import { icon } from './icons.js?v=__V__';
+
+const EMOJI = {
+  '🏆': ['trophy', 'gold'], '👑': ['crown', 'gold'], '⭐': ['star', 'gold'], '🔒': ['lock', ''], '🔥': ['flame', 'hot'],
+  '🔔': ['bell', ''], '🔕': ['bellOff', ''], '✅': ['checkc', 'win'], '❌': ['xc', 'loss'], '⏳': ['clock', ''], '⌛': ['clock', ''],
+  '📊': ['chart', ''], '👥': ['users', ''], '💬': ['chat', ''], '🏓': ['paddle', 'hot'], '🧠': ['bolt', ''], '💰': ['wallet', ''], '👋': [null, '']
+};
+const EMOJI_RE = /(🏆|👑|⭐|🔒|🔥|🔔|🔕|✅|❌|⏳|⌛|📊|👥|💬|🏓|🧠|💰|👋)️?/u;
+const EMOJI_RE_G = new RegExp(EMOJI_RE.source, 'gu');
+
+function iconizeText(n) {
+  if (!n.parentNode || !EMOJI_RE.test(n.nodeValue)) return;
+  const frag = document.createDocumentFragment();
+  let last = 0;
+  const s = n.nodeValue;
+  for (const m of s.matchAll(EMOJI_RE_G)) {
+    if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
+    const [name, cls] = EMOJI[m[1]];
+    if (name) {
+      const span = document.createElement('span');
+      span.className = `ei ${cls}`;
+      span.innerHTML = icon(name, 'ei-svg');
+      frag.appendChild(span);
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) frag.appendChild(document.createTextNode(s.slice(last).replace(/^\s+$/, ' ')));
+  n.parentNode.replaceChild(frag, n);
+}
+
+function iconizeTree(root) {
+  if (!root) return;
+  if (root.nodeType === 3) return iconizeText(root);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) if (EMOJI_RE.test(walker.currentNode.nodeValue)) nodes.push(walker.currentNode);
+  nodes.forEach(iconizeText);
+}
+
 export function lang() {
   try {
     return JSON.parse(localStorage.getItem('cr_lang')) || 'es';
@@ -157,14 +199,28 @@ export function translateTree(root) {
 // Traduce todo lo que se agrega o cambia en la página.
 export function startI18n() {
   document.documentElement.lang = lang();
-  if (lang() !== 'en') return;
-  translateTree(document.body);
+  const en = lang() === 'en';
+  // Primero traduce (las reglas incluyen emojis) y después cambia emojis por íconos.
+  if (en) translateTree(document.body);
+  iconizeTree(document.body);
   new MutationObserver((muts) => {
     for (const m of muts) {
       if (m.type === 'characterData') {
-        const t = tr(m.target.nodeValue);
-        if (t !== m.target.nodeValue) m.target.nodeValue = t;
-      } else m.addedNodes.forEach((n) => (n.nodeType === 3 ? (n.nodeValue = tr(n.nodeValue)) : translateTree(n)));
+        if (en) {
+          const t = tr(m.target.nodeValue);
+          if (t !== m.target.nodeValue) m.target.nodeValue = t;
+        }
+        iconizeText(m.target);
+      } else
+        m.addedNodes.forEach((n) => {
+          if (n.nodeType === 3) {
+            if (en) n.nodeValue = tr(n.nodeValue);
+            iconizeText(n);
+          } else {
+            if (en) translateTree(n);
+            iconizeTree(n);
+          }
+        });
     }
   }).observe(document.body, { childList: true, subtree: true, characterData: true });
 }

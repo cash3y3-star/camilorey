@@ -78,6 +78,32 @@ async function main() {
     }
   }
   console.log(`Recortes nuevos: ${ok}`);
+  await makeThumbs(players, sharp);
+}
+
+// Miniaturas livianas de la foto de cada jugador (160x160 WebP, ~6 KB) para
+// los avatares chicos: la foto original de tt.league-pro.com pesa 150-300 KB
+// y en pantalla se ve de 36-72 px. No usa IA, así que se hacen muchas por
+// corrida.
+async function makeThumbs(players, sharp) {
+  const dir = path.join(OUT, 'thumbs');
+  fs.mkdirSync(dir, { recursive: true });
+  const todo = Object.entries(players)
+    .filter(([id, p]) => p.av && !fs.existsSync(path.join(dir, `${id}.webp`)))
+    .slice(0, Number(process.env.THUMBS_MAX || 600));
+  let ok = 0;
+  for (const [id, p] of todo) {
+    try {
+      const r = await fetch(p.av);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const buf = Buffer.from(await r.arrayBuffer());
+      await sharp(buf).resize(160, 160, { fit: 'cover', position: 'top' }).webp({ quality: 74 }).toFile(path.join(dir, `${id}.webp`));
+      ok++;
+    } catch (e) {
+      console.error(`  miniatura ${p.n} (${id}): ${e.message}`);
+    }
+  }
+  console.log(`Miniaturas nuevas: ${ok} (pendientes: ${Math.max(0, todo.length - ok)})`);
 }
 
 main().catch((e) => {

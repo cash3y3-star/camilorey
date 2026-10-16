@@ -66,17 +66,28 @@ async function tick() {
   listeners.forEach((fn) => fn(last));
 }
 
+// Cada 2 s mientras hay partidos de la Liga Pro en juego; si no hay, cada
+// 15 s (ahorra datos y batería, y igual detecta enseguida cuando empiezan).
+const IDLE_MS = 15000;
+function schedule() {
+  timer = setTimeout(async () => {
+    await tick();
+    if (listeners.size) schedule();
+    else timer = null;
+  }, last.liga.length ? INTERVAL_MS : IDLE_MS);
+}
+
 export function onLive(fn) {
   listeners.add(fn);
   if (last.at) fn(last);
   if (!timer) {
-    tick();
-    timer = setInterval(tick, INTERVAL_MS);
+    timer = -1;
+    tick().then(() => (listeners.size ? schedule() : (timer = null)));
   }
   return () => {
     listeners.delete(fn);
-    if (!listeners.size && timer) {
-      clearInterval(timer);
+    if (!listeners.size && timer && timer !== -1) {
+      clearTimeout(timer);
       timer = null;
     }
   };

@@ -360,13 +360,20 @@ function prune() {
 
 // Recortes de fondo (scripts/cutouts.js → site/cutouts/{id}.webp).
 const CUTOUT_DIR = path.join(ROOT, 'site', 'cutouts');
-const cutouts = new Set(
-  (fs.existsSync(CUTOUT_DIR) ? fs.readdirSync(CUTOUT_DIR) : []).filter((f) => f.endsWith('.webp')).map((f) => Number(f.slice(0, -5)))
-);
+const listWebp = (dir) => new Set((fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((f) => f.endsWith('.webp')).map((f) => Number(f.slice(0, -5))));
+const cutouts = listWebp(CUTOUT_DIR);
+const thumbs = listWebp(path.join(CUTOUT_DIR, 'thumbs')); // miniaturas 160px (scripts/cutouts.js)
 
 function playerRef(id) {
   const p = state.players[id] || {};
-  return { id, n: p.n || '?', av: p.av || null, r: p.r ?? null, cut: cutouts.has(Number(id)) ? `cutouts/${id}.webp` : null };
+  return {
+    id,
+    n: p.n || '?',
+    av: p.av || null,
+    th: thumbs.has(Number(id)) ? `cutouts/thumbs/${id}.webp` : null,
+    r: p.r ?? null,
+    cut: cutouts.has(Number(id)) ? `cutouts/${id}.webp` : null
+  };
 }
 
 // Fase del partido: los que no son de la fase de grupos (la fase con más
