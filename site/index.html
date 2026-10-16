@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>CamiloRey · Picks de tenis de mesa con IA</title>
+  <meta name="description" content="Predicciones diarias de la Liga Pro Checa de tenis de mesa, marcador en vivo y resultados verificados." />
+  <meta name="theme-color" content="#0a0a0b" />
+  <meta property="og:title" content="CamiloRey · Picks de tenis de mesa con IA" />
+  <meta property="og:description" content="Predicciones diarias de la Liga Pro Checa, marcador en vivo y efectividad real." />
+  <meta property="og:image" content="icons/icon-512.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <script>
+    // Tema antes de pintar (evita parpadeo): oscuro por defecto.
+    (function () {
+      var t = 'dark';
+      try { t = localStorage.getItem('cr_theme') || 'dark'; } catch (e) {}
+      if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/inicio" aria-label="CamiloRey, inicio">
+      <span class="brand-mark">CR</span><span class="brand-name">Camilo<b>Rey</b></span>
+    </a>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="btn-notif" aria-label="Notificaciones"><span data-icon="bell"></span><i class="dot" hidden></i></button>
+      <button class="icon-btn" id="btn-profile" aria-label="Perfil"><span data-icon="user"></span></button>
+    </div>
+  </header>
+
+  <main id="view" tabindex="-1"></main>
+
+  <nav class="tabbar" aria-label="Secciones">
+    <a href="#/inicio" data-tab="inicio"><span data-icon="home"></span><small>Inicio</small></a>
+    <a href="#/calendario" data-tab="calendario"><span data-icon="calendar"></span><small>Calendario</small></a>
+    <a href="#/picks" data-tab="picks"><span data-icon="flame"></span><small>Picks</small></a>
+    <a href="#/seguidos" data-tab="seguidos"><span data-icon="heart"></span><small>Seguidos</small></a>
+    <a href="#/resultados" data-tab="resultados"><span data-icon="chart"></span><small>Resultados</small></a>
+  </nav>
+
+  <div class="sheet-backdrop" id="sheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-grip"></div>
+      <button class="sheet-close icon-btn" aria-label="Cerrar"><span data-icon="x"></span></button>
+      <div class="sheet-body"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
