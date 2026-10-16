@@ -868,8 +868,10 @@ async function run() {
 
   totals.oddsBackfilled = backfillOdds(rushbet);
   prune();
-  saveState();
   writeSite({ model: modelInfo });
+  // Después de writeSite: ahí se marca el pick destacado (p.dst), que
+  // tiene que quedar guardado en el estado.
+  saveState();
   await pushPrivateLedger();
   console.log('Resumen:', totals);
 }
