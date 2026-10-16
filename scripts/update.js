@@ -22,6 +22,8 @@ const { fetchNuxtData } = require('./lib/tt');
 const BACKFILL_PAUSE_MS = 1200;
 const { fetchLigaProChecaOdds, findOdds } = require('./lib/rushbet');
 const { computeConfidence } = require('./lib/confidence');
+const { computeStake } = require('./lib/staking');
+const BANK_START = 2000000; // banca inicial en COP, misma convención del sitio anterior
 const { trainLogisticRegression, predictProbability, MIN_TRAINING_SAMPLES } = require('./lib/ml-model');
 
 const ROOT = path.join(__dirname, '..');
@@ -30,7 +32,8 @@ const OUT_DIR = path.join(ROOT, 'site', 'data');
 const MEDIA_BASE = 'https://api.league-pro.com';
 const TZ = 'America/Bogota';
 
-const MIN_CONFIDENCE_TO_PUBLISH = 60;
+const MIN_CONFIDENCE_TO_PUBLISH = 55; // escala 50-80%: por debajo de 55 es casi una moneda
+const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
 const HISTORY_DAYS = 120; // partidos terminados sin pick más viejos que esto se descartan
 
@@ -152,11 +155,13 @@ function generatePick(match, sideA, sideB, odds, model) {
   const formA = tournamentForm(match.a, match.t, match.at);
   const formB = tournamentForm(match.b, match.t, match.at);
   const oddsImpliedProbA = odds ? 1 / odds.oddsA / (1 / odds.oddsA + 1 / odds.oddsB) : null;
+  const streakA = recentStreak(match.a);
+  const streakB = recentStreak(match.b);
 
   const { confidence: raw, factors } = computeConfidence({
     ratingDiff: (sideA.rating_before_tournament || 0) - (sideB.rating_before_tournament || 0),
-    streakA: recentStreak(match.a),
-    streakB: recentStreak(match.b),
+    streakA,
+    streakB,
     h2hWinsA: h2h.h2hWinsA,
     h2hTotal: h2h.h2hTotal,
     h2hCurrentStreakIsA: h2h.currentStreakPlayerId === match.a ? true : h2h.currentStreakPlayerId === match.b ? false : null,
@@ -171,18 +176,24 @@ function generatePick(match, sideA, sideB, odds, model) {
   });
   delete factors.weights;
 
-  // Con muestra suficiente decide el modelo entrenado; si no, la fórmula.
+  // Confianza HONESTA, escala 50-80%: 50% = partido parejo, 80% = tope (en
+  // esta liga ningún pick justifica más). La escala vieja del sitio
+  // anterior daba al favorito siempre 70-92%, aunque el partido fuera parejo.
+  // Con muestra suficiente decide el modelo entrenado y se muestra su
+  // probabilidad real (con tope); si no, la fórmula, reescalada a 50-80.
   const useModel = model.weights && model.trainingCount >= MIN_TRAINING_SAMPLES;
-  let favA, confidence;
+  let favA, pFav;
   if (useModel) {
     const pA = predictProbability(model.weights, factors);
     favA = pA >= 0.5;
-    const pFav = favA ? pA : 1 - pA;
-    confidence = Math.max(50, Math.min(92, Math.round(70 + (2 * pFav - 1) * 20)));
+    pFav = favA ? pA : 1 - pA;
   } else {
-    favA = raw >= 70;
-    confidence = favA ? raw : 140 - raw;
+    // computeConfidence devuelve 70 + raw*20 (raw de -1 a 1 aprox., a favor de A).
+    const rawScore = Math.max(-1, Math.min(1, (raw - 70) / 20));
+    favA = rawScore >= 0;
+    pFav = 0.5 + Math.abs(rawScore) * 0.3;
   }
+  const confidence = Math.round(Math.max(0.5, Math.min(MAX_CONFIDENCE / 100, pFav)) * 100);
 
   return {
     id: match.id,
@@ -190,6 +201,23 @@ function generatePick(match, sideA, sideB, odds, model) {
     c: confidence,
     o: odds ? (favA ? odds.oddsA : odds.oddsB) : null,
     f: factors,
+    // Datos crudos con los que se decidió — base del "Análisis IA".
+    x: {
+      rA: sideA.rating_before_tournament ?? null,
+      rB: sideB.rating_before_tournament ?? null,
+      sA: streakA,
+      sB: streakB,
+      hA: h2h.h2hWinsA,
+      hT: h2h.h2hTotal,
+      hCur: h2h.currentStreakPlayerId === match.a ? 'a' : h2h.currentStreakPlayerId === match.b ? 'b' : null,
+      hLen: h2h.currentStreakLength,
+      hTyp: h2h.typicalRunLength != null ? Math.round(h2h.typicalRunLength * 10) / 10 : null,
+      hAlt: h2h.isPerfectAlternation,
+      fA: [formA.wins, formA.losses],
+      fB: [formB.wins, formB.losses],
+      pA: oddsImpliedProbA != null ? Math.round(oddsImpliedProbA * 1000) / 1000 : null,
+      n: model.trainingCount
+    },
     pub: confidence >= MIN_CONFIDENCE_TO_PUBLISH,
     src: useModel ? 'ml' : 'formula',
     res: 'pending',
@@ -396,9 +424,89 @@ function detailView(m) {
   };
 }
 
+// "Análisis IA": argumentos reales a favor y en contra del favorito, a
+// partir de los mismos datos con los que el modelo decidió (pick.x). Cada
+// argumento lleva un peso aproximado (score del factor × su peso en
+// lib/confidence.js) para ordenarlos de más a menos influyente.
+function buildWhy(p, m) {
+  const x = p.x;
+  if (!x) return null;
+  const favA = p.fav === m.a;
+  const fav = state.players[p.fav]?.n || 'El favorito';
+  const riv = state.players[favA ? m.b : m.a]?.n || 'su rival';
+  const pro = [];
+  const con = [];
+  const add = (weight, text) => (weight >= 0 ? pro : con).push({ w: Math.abs(weight), t: text });
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  // Rating (factor principal del modelo).
+  const rF = favA ? x.rA : x.rB;
+  const rR = favA ? x.rB : x.rA;
+  if (rF != null && rR != null && rF !== rR) {
+    const d = Math.round(rF - rR);
+    const w = 0.55 * Math.min(1, Math.abs(d) / 200) * Math.sign(d);
+    if (d > 0) add(w, `Tiene mejor rating: ${Math.round(rF)} contra ${Math.round(rR)} (+${d} puntos). Es el indicador que más pesa en el modelo: resume su nivel en los últimos torneos de la liga.`);
+    else add(w, `${riv} tiene mejor rating (${Math.round(rR)} contra ${Math.round(rF)}, ${Math.abs(d)} puntos más), así que en el papel el rival es más fuerte.`);
+  }
+
+  // Mercado (cuota real de Rushbet sin margen).
+  if (x.pA != null) {
+    const pf = favA ? x.pA : 1 - x.pA;
+    const pctF = Math.round(pf * 100);
+    const w = 0.35 * (pf * 2 - 1);
+    if (pf >= 0.5) add(w, `El mercado coincide: según la cuota de Rushbet tiene un ${pctF}% de probabilidad de ganar (calculado sin el margen de la casa).`);
+    else add(w, `El mercado ve favorito a ${riv} (${100 - pctF}%). Por eso la cuota es alta: el modelo ve más chances de las que paga la casa, pero es un pick más arriesgado.`);
+  }
+
+  // Cruce directo.
+  if (x.hT >= 2) {
+    const wF = favA ? x.hA : x.hT - x.hA;
+    const share = wF / x.hT;
+    const w = 0.1 * (share * 2 - 1);
+    if (share > 0.5) add(w, `Domina el cruce directo: ganó ${wF} de los últimos ${plural(x.hT, 'enfrentamiento', 'enfrentamientos')} contra ${riv}.`);
+    else if (share < 0.5) add(w, `En el cruce directo ${riv} ganó ${x.hT - wF} de ${x.hT}.`);
+  }
+
+  // Patrón de rachas dentro del cruce (alternancia).
+  if (x.hCur && x.hTyp) {
+    const curIsFav = (x.hCur === 'a') === favA;
+    const due = x.hLen >= x.hTyp;
+    const towardFav = curIsFav ? !due : due;
+    const holder = curIsFav ? fav : riv;
+    const w = (x.hAlt ? 0.3 : 0.15) * Math.min(1, x.hLen / x.hTyp) * (towardFav ? 1 : -1);
+    const pattern = x.hAlt
+      ? 'en esta pareja el ganador se alterna partido a partido'
+      : `en esta pareja las rachas suelen durar ${String(x.hTyp).replace('.', ',')} ${x.hTyp === 1 ? 'partido' : 'partidos'} antes de cortarse`;
+    add(w, `Patrón del cruce: ${pattern}, y ${holder} lleva ${plural(x.hLen, 'victoria seguida', 'victorias seguidas')}. ${towardFav ? `Eso favorece a ${fav}.` : `Eso favorece a ${riv}.`}`);
+  }
+
+  // Forma del día en este mismo torneo.
+  const fF = favA ? x.fA : x.fB;
+  const fR = favA ? x.fB : x.fA;
+  if (fF && fR && fF[0] + fF[1] + fR[0] + fR[1] > 0) {
+    const net = fF[0] - fF[1] - (fR[0] - fR[1]);
+    const w = 0.08 * Math.max(-1, Math.min(1, net / 4));
+    if (net !== 0) add(w, `Forma hoy en este torneo: ${fav} va ${fF[0]}-${fF[1]} y ${riv} va ${fR[0]}-${fR[1]}.`);
+  }
+
+  // Racha reciente (peso bajo: medido con poca señal en esta liga).
+  const sF = favA ? x.sA : x.sB;
+  const sR = favA ? x.sB : x.sA;
+  if (sF >= 3) add(0.02, `Viene de ${sF} victorias seguidas.`);
+  if (sR >= 3) add(-0.02, `${riv} viene de ${sR} victorias seguidas.`);
+  if (sF <= -3) add(-0.02, `Viene de ${-sF} derrotas seguidas.`);
+
+  const order = (a, b) => b.w - a.w;
+  return {
+    pro: pro.sort(order).map((r) => r.t),
+    con: con.sort(order).map((r) => r.t),
+    src: p.src === 'ml' ? `Modelo de machine learning entrenado con ${x.n} picks resueltos` : 'Fórmula ponderada (el modelo ML se activa con 40 picks resueltos)'
+  };
+}
+
 function pickView(p, detailed = false) {
   const m = state.matches[p.id];
-  return { ...(detailed ? detailView(m) : matchView(m)), fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft) };
+  return { ...(detailed ? detailView(m) : matchView(m)), fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft), why: buildWhy(p, m) };
 }
 
 function summarize(list) {
@@ -468,8 +576,45 @@ function writeSite(meta) {
     .sort((a, b) => (a.at < b.at ? -1 : 1))
     .map((m) => {
       const p = state.picks[m.id];
-      return { ...detailView(m), pick: p && p.pub ? { fav: p.fav, c: p.c, o: p.o, res: p.res } : null };
+      return { ...detailView(m), pick: p && p.pub ? { fav: p.fav, c: p.c, o: p.o, res: p.res, why: buildWhy(p, m) } : null };
     });
+
+  // Bankroll: banca simulada que apuesta a cada pick publicado CON cuota,
+  // en orden cronológico. Apuesta según confianza (lib/staking.js:
+  // $100.000-$250.000) y cobra con la cuota real de Rushbet.
+  const bets = resolved
+    .filter((p) => p.o)
+    .slice()
+    .reverse(); // resolved viene del más nuevo al más viejo
+  let balance = BANK_START;
+  let staked = 0;
+  let peak = BANK_START;
+  let maxDrawdown = 0;
+  const ledger = bets.map((p) => {
+    const stake = computeStake(p.c);
+    const profit = Math.round(p.res === 'hit' ? stake * (p.o - 1) : -stake);
+    balance += profit;
+    staked += stake;
+    peak = Math.max(peak, balance);
+    maxDrawdown = Math.max(maxDrawdown, peak - balance);
+    return { ...pickView(p), stake, profit, bal: balance };
+  });
+  // Serie diaria (saldo al cierre de cada día).
+  const balByDay = new Map();
+  for (const b of ledger) balByDay.set(bogotaDay(b.at), b.bal);
+  writeJson(path.join(OUT_DIR, 'bankroll.json'), {
+    start: BANK_START,
+    balance,
+    profit: balance - BANK_START,
+    staked,
+    roi: staked ? Math.round(((balance - BANK_START) / staked) * 1000) / 10 : null,
+    bets: ledger.length,
+    hits: ledger.filter((b) => b.res === 'hit').length,
+    maxDrawdown,
+    series: [...balByDay.entries()].map(([d, bal]) => ({ d, bal })),
+    ledger: ledger.slice(-150).reverse(),
+    pendingStakes: pendingView.filter((p) => p.o).map((p) => ({ id: p.id, stake: computeStake(p.c) }))
+  });
 
   writeJson(path.join(OUT_DIR, 'picks.json'), pendingView);
   writeJson(path.join(OUT_DIR, 'results.json'), resolved.slice(0, 300).map((p) => pickView(p)));
@@ -569,6 +714,13 @@ async function run() {
     console.log(`Cuotas Rushbet: ${rushbet.length} partidos`);
   } catch (e) {
     console.error(`Sin cuotas de Rushbet: ${e.message}`);
+  }
+
+  // Picks pendientes generados antes de guardar los datos del "Análisis IA"
+  // (pick.x): si el partido todavía no empieza, se recalculan.
+  for (const [id, p] of Object.entries(state.picks)) {
+    const m = state.matches[id];
+    if (!p.x && p.res === 'pending' && m && m.st === 's' && new Date(m.at).getTime() > now + 5 * 60e3) delete state.picks[id];
   }
 
   const model = trainModel();

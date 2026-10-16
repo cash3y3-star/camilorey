@@ -231,6 +231,89 @@ details.faq p { margin: 0; padding: 0 14px 14px; font-size: 13px; color: var(--m
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
 .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
 
+/* ---------- seguidos (tarjetas con foto) ---------- */
+.seg-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.seg-head .page-sub { margin-bottom: 0; }
+.seg-tools { display: flex; gap: 8px; padding-bottom: 2px; }
+.chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.chip-btn .icon { width: 16px; height: 16px; }
+.fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 900px) { .fgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.fcard { background: var(--card); border: 1px solid var(--line); border-radius: 22px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+.fcard:active { transform: scale(0.99); }
+.fc-photo { position: relative; height: 150px; background: radial-gradient(ellipse at 50% 30%, #2a0b08, var(--card-2) 70%); display: grid; place-items: end center; overflow: hidden; }
+.fc-photo img { position: relative; z-index: 1; height: 100%; width: 100%; object-fit: cover; object-position: center 20%; -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent); mask-image: linear-gradient(180deg, #000 70%, transparent); }
+.fc-ini { position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; font-weight: 900; color: var(--faint); }
+.fc-st { position: absolute; z-index: 2; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 16px; color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
+.fc-st.hit { background: var(--win); }
+.fc-st.miss { background: var(--loss); }
+.fc-st.wait { background: var(--card); border: 1px solid var(--line); color: var(--muted); }
+.fc-st.wait .icon { width: 17px; height: 17px; }
+.fc-st.live { background: var(--red); }
+.fc-st.live i { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: pulse 1.4s infinite; box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+.fc-tag { position: absolute; z-index: 2; left: 12px; bottom: 10px; font-size: 9px; font-weight: 900; padding: 3px 5px; border-radius: 5px; background: var(--red); color: #fff; }
+.fc-body { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.fc-league { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-name { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-sub { font-size: 11.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-pill { align-self: center; display: inline-flex; align-items: center; gap: 6px; margin: 10px 0 8px; padding: 7px 12px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 0.02em; text-align: center; border: 1.5px solid; }
+.fc-pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.fc-pill.pend { color: var(--red-2); border-color: rgba(255, 42, 31, 0.45); background: var(--red-soft); }
+.fc-pill.win { color: var(--win); border-color: rgba(34, 197, 94, 0.45); background: var(--win-soft); }
+.fc-pill.loss { color: var(--loss); border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.1); }
+.fc-bar { height: 6px; border-radius: 99px; background: var(--card-2); overflow: hidden; margin-top: auto; }
+.fc-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--red), var(--red-2)); border-radius: 99px; }
+.fc-sets { display: flex; justify-content: space-between; margin-top: 6px; font-size: 13px; font-weight: 800; color: var(--win); font-variant-numeric: tabular-nums; }
+.fc-sets em { font-style: normal; color: var(--muted); font-weight: 600; font-size: 11px; }
+.fc-live { color: var(--red-2); font-family: var(--mono); }
+@media (max-width: 380px) { .fc-name { font-size: 16px; } .fc-photo { height: 128px; } .fc-pill { font-size: 10px; padding: 6px 9px; } }
+
+/* ---------- análisis IA ---------- */
+.analysis { border: 1px solid rgba(225, 6, 0, 0.35); background: linear-gradient(180deg, var(--red-soft), transparent 70%), var(--card); border-radius: 16px; padding: 14px; }
+.an-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.an-head > svg { width: 34px; height: 34px; padding: 7px; border-radius: 10px; background: var(--red); color: #fff; flex: none; }
+.an-head div { flex: 1; }
+.an-head b { display: block; font-size: 15px; }
+.an-head small { color: var(--muted); font-size: 12px; }
+.why { list-style: none; margin: 0; padding: 0; }
+.why li { position: relative; padding: 0 0 9px 26px; font-size: 13.5px; line-height: 1.45; }
+.why li::before { position: absolute; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
+.why.pro li::before { content: '✓'; background: var(--win-soft); color: var(--win); }
+.why.con li::before { content: '!'; background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.an-src { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.45; }
+.an-src svg { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+
+/* ---------- bankroll ---------- */
+.bank-hero { padding: 18px; border-radius: var(--radius); background: #0c0c0d; border: 1px solid #2a0d0a; color: #fff; position: relative; overflow: hidden; }
+.bank-hero::after { content: ''; position: absolute; right: -50px; bottom: -60px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(225, 6, 0, 0.35), transparent 70%); }
+.bank-hero .overline { color: #a1a1aa; }
+.bank-hero .big { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.bank-hero .delta { font-size: 14px; font-weight: 700; }
+.pos-t { color: var(--win); }
+.neg-t { color: var(--loss); }
+.chart { width: 100%; height: 170px; display: block; }
+.chart .ln { fill: none; stroke: var(--red-2); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .ar { fill: url(#bankfill); }
+.chart .base { stroke: var(--faint); stroke-dasharray: 4 4; stroke-width: 1; }
+.chart text { fill: var(--muted); font-size: 10px; font-family: var(--font); }
+.ledger { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ledger th { text-align: left; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ledger td { padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ledger tr:last-child td { border-bottom: 0; }
+.ledger td.who { white-space: normal; min-width: 150px; }
+.ledger td.who small { display: block; color: var(--muted); font-size: 11px; }
+.ledger .num { text-align: right; }
+.scroll-x { overflow-x: auto; }
+.stake-row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.stake-row:last-child { border-bottom: 0; }
+.stake-row .who { flex: 1; min-width: 0; }
+.stake-row .who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stake-row .who small { color: var(--muted); font-size: 11px; }
+.stake-row .amt { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stake-row .amt small { display: block; font-weight: 600; color: var(--win); font-size: 11px; }
+.money-input { display: flex; align-items: center; gap: 8px; }
+.money-input input { flex: 1; }
+
 /* ---------- hoja inferior ---------- */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.18s ease; }
 .sheet { position: relative; width: 100%; max-width: 640px; max-height: 92vh; overflow-y: auto; background: var(--bg-2); border-radius: 24px 24px 0 0; padding: 10px 16px calc(24px + env(safe-area-inset-bottom, 0px)); animation: up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); border: 1px solid var(--line); border-bottom: 0; }

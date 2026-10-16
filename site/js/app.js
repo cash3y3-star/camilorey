@@ -15,8 +15,8 @@ const $view = document.getElementById('view');
 const $sheet = document.getElementById('sheet');
 const $sheetBody = $sheet.querySelector('.sheet-body');
 
-const data = { stats: null, picks: [], results: [], calendar: { days: [], matches: [] }, loaded: false, error: null };
-const ui = { day: 1, calFilter: 'all', pickFilter: 'all', resRange: 'd30', formTab: 'L5' };
+const data = { stats: null, picks: [], results: [], calendar: { days: [], matches: [] }, bankroll: null, loaded: false, error: null };
+const ui = { day: 1, calFilter: 'all', pickFilter: 'all', resRange: 'd30', formTab: 'L5', followRange: 'd7' };
 let follows = new Set(readLocal('cr_follows', []));
 let liveUnsub = null;
 let sheetUnsub = null;
@@ -55,6 +55,8 @@ const pct = (v) => (v == null ? '—' : `${String(v).replace('.', ',')}%`);
 const odds = (o) => (o ? Number(o).toFixed(2) : '—');
 const initials = (n) => (n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 const fmtInt = (n) => new Intl.NumberFormat('es-CO').format(n || 0);
+const cop = (n) => `$${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(Math.round(n || 0))}`;
+const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${cop(Math.abs(n))}`;
 
 function avatar(p, cls = 'avatar') {
   if (p?.av) {
@@ -88,7 +90,8 @@ async function getJson(name) {
 async function loadData() {
   try {
     const [stats, picks, results, calendar] = await Promise.all([getJson('stats'), getJson('picks'), getJson('results'), getJson('calendar')]);
-    Object.assign(data, { stats, picks, results, calendar, loaded: true, error: null });
+    const bankroll = await getJson('bankroll').catch(() => null);
+    Object.assign(data, { stats, picks, results, calendar, bankroll, loaded: true, error: null });
   } catch (e) {
     data.error = e.message;
     data.loaded = true;
@@ -221,7 +224,7 @@ function viewInicio() {
     <div class="tile"><div class="overline">Racha</div><div class="val ${streak > 0 ? 'pos' : streak < 0 ? 'neg' : ''}">${streakTxt}</div><div class="hint">picks seguidos</div></div>
     <div class="tile"><div class="overline">Cuota prom.</div><div class="val">${avgOdds}</div><div class="hint">picks recientes</div></div>
   </div>
-  ${s?.d7?.hit + s?.d7?.miss ? `<div class="banner"><span>⭐ CamiloRey acertó <b>${s.d7.hit}/${s.d7.hit + s.d7.miss}</b> en los últimos 7 días</span><a class="textlink" href="#/resultados">Ver</a></div>` : ''}
+  ${s?.d7?.hit + s?.d7?.miss ? `<div class="banner"><span>⭐ CamiloRey acertó <b>${s.d7.hit}/${s.d7.hit + s.d7.miss}</b> en los últimos 7 días</span><a class="textlink" href="#/bankroll">Ver</a></div>` : ''}
 
   <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/calendario">Calendario</a></div>
   <div id="live-home">${skeleton(1)}</div>
@@ -297,7 +300,7 @@ function viewCalendario() {
 
 function viewPicks() {
   let list = data.picks.slice();
-  if (ui.pickFilter === 'high') list = list.filter((p) => p.c >= 75);
+  if (ui.pickFilter === 'high') list = list.filter((p) => p.c >= 68);
   if (ui.pickFilter === 'odds') list = list.filter((p) => p.o && p.o >= 1.6);
   return `
   <h1 class="page-title">Predicciones</h1>
@@ -314,10 +317,62 @@ function viewPicks() {
   ${footer()}`;
 }
 
+const FOLLOW_RANGES = [
+  ['d7', 'Últimos 7 días', 7],
+  ['d30', 'Últimos 30 días', 30],
+  ['all', 'Todo', 99999]
+];
+
+// Tarjeta de pick seguido (estilo de la referencia: foto grande del
+// jugador elegido, estado arriba a la derecha, píldora y barra de sets).
+function followCard(p) {
+  const favA = p.fav === p.a.id;
+  const fav = favA ? p.a : p.b;
+  const riv = favA ? p.b : p.a;
+  const lv = liveFor(p);
+  let favSets = null;
+  if (p.st === 'f' && p.sa != null) favSets = favA ? p.sa : p.sb;
+  else if (lv) favSets = favA ? lv.setsHome : lv.setsAway;
+  const rivSets = p.st === 'f' && p.sa != null ? (favA ? p.sb : p.sa) : lv ? (favA ? lv.setsAway : lv.setsHome) : null;
+  const status =
+    p.res === 'hit'
+      ? '<span class="fc-st hit" title="Acertado">✓</span>'
+      : p.res === 'miss'
+      ? '<span class="fc-st miss" title="Fallado">✕</span>'
+      : lv
+      ? '<span class="fc-st live" title="En vivo"><i></i></span>'
+      : `<span class="fc-st wait" title="Pendiente">${icon('clock')}</span>`;
+  const pillCls = p.res === 'hit' ? 'win' : p.res === 'miss' ? 'loss' : 'pend';
+  const progress = favSets == null ? 0 : Math.min(100, (favSets / 3) * 100);
+  const tn = (p.tn || '').replace(/^Tournament\s*/i, '');
+  return `
+  <article class="fcard" data-open="${p.id}" data-match="${p.id}">
+    <div class="fc-photo">
+      ${fav.av ? `<img src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+      <span class="fc-ini">${esc(initials(fav.n))}</span>
+      ${status}
+      <span class="fc-tag">CR</span>
+    </div>
+    <div class="fc-body">
+      <small class="fc-league">${esc(p.ph ? `${p.ph} · ${tn}` : tn)}</small>
+      <b class="fc-name">${esc(fav.n)}</b>
+      <small class="fc-sub">${esc(fav.n)} vs ${esc(riv.n)}</small>
+      <small class="fc-sub">${esc(dayLabel(dayKey(p.at)))} · ${fmtTime(p.at)}${p.o ? ` · cuota ${odds(p.o)}` : ''}</small>
+      <span class="fc-pill ${pillCls}"><i></i>GANA EL PARTIDO · ${p.c}%</span>
+      <div class="fc-bar"><span style="width:${progress}%"></span></div>
+      <div class="fc-sets"><span>${favSets == null ? '0' : favSets}${rivSets != null ? ` <em>- ${rivSets} sets</em>` : ''}</span>${lv ? `<span class="fc-live">${esc(lv.ptsHome)}:${esc(lv.ptsAway)}</span>` : ''}</div>
+    </div>
+  </article>`;
+}
+
 function viewSeguidos() {
   const map = allById();
-  const items = [...follows].map((id) => map.get(id)).filter(Boolean).sort((a, b) => (a.at < b.at ? 1 : -1));
+  const range = FOLLOW_RANGES.find((r) => r[0] === ui.followRange) || FOLLOW_RANGES[0];
+  const since = Date.now() - range[2] * 86400e3;
+  const all = [...follows].map((id) => map.get(id)).filter((p) => p && p.c);
+  const items = all.filter((p) => new Date(p.at).getTime() >= since || p.res === 'pending').sort((a, b) => (a.at < b.at ? 1 : -1));
   const done = items.filter((p) => p.res === 'hit' || p.res === 'miss');
+  const active = items.length - done.length;
   const hit = done.filter((p) => p.res === 'hit').length;
   let streak = 0;
   for (const p of done) {
@@ -325,15 +380,23 @@ function viewSeguidos() {
     if (!streak || Math.sign(streak) === s) streak += s;
     else break;
   }
+  const withOdds = items.filter((p) => p.o);
+  const avgOdds = withOdds.length ? (withOdds.reduce((a, p) => a + p.o, 0) / withOdds.length).toFixed(2) : '—';
   return `
-  <h1 class="page-title">Seguidos</h1>
-  <div class="page-sub">${items.length} seguidos · ${done.length} resueltos${FB.enabled && !account ? ' · <a class="textlink" href="#/login">Inicia sesión para guardarlos</a>' : ''}</div>
-  <div class="tiles">
-    <div class="tile"><div class="overline">Efectividad</div><div class="val">${done.length ? pct(Math.round((hit / done.length) * 1000) / 10) : '—'}</div></div>
-    <div class="tile"><div class="overline">Racha</div><div class="val ${streak > 0 ? 'pos' : streak < 0 ? 'neg' : ''}">${streak > 0 ? `${streak}W` : streak < 0 ? `${-streak}L` : '—'}</div></div>
-    <div class="tile"><div class="overline">Pendientes</div><div class="val">${items.length - done.length}</div></div>
+  <div class="seg-head">
+    <div><h1 class="page-title">Seguidos</h1>
+    <div class="page-sub"><i class="live-dot"></i>${active} activos · ${items.length} total</div></div>
+    <div class="seg-tools">
+      <button class="chip-btn" data-frange="next">${icon('calendar')} ${esc(range[1])}</button>
+    </div>
   </div>
-  <div style="margin-top:16px">${items.length ? `<div class="grid-2">${items.map((p) => matchCard(p, p)).join('')}</div>` : empty('heart', 'Aún no sigues ningún pick', 'Toca el corazón ♥ en cualquier pick para seguirlo y ver aquí cómo termina.')}</div>
+  ${FB.enabled && !account ? '<div class="banner" style="margin:0 0 12px"><span>Inicia sesión para guardar tus seguidos en todos tus dispositivos</span><a class="textlink" href="#/login">Entrar</a></div>' : ''}
+  <div class="tiles" style="margin-top:0">
+    <div class="tile"><div class="overline">Efectividad</div><div class="val">${done.length ? pct(Math.round((hit / done.length) * 1000) / 10) : '—'}</div></div>
+    <div class="tile"><div class="overline">Racha</div><div class="val ${streak > 0 ? 'pos' : streak < 0 ? 'neg' : ''}">${streak > 0 ? `${streak}W 🔥` : streak < 0 ? `${-streak}L` : '—'}</div></div>
+    <div class="tile"><div class="overline">Cuota prom.</div><div class="val">${avgOdds}</div></div>
+  </div>
+  <div style="margin-top:16px">${items.length ? `<div class="fgrid">${items.map(followCard).join('')}</div>` : empty('heart', 'Sin seguimientos en este rango', 'Toca el corazón ♥ en cualquier pick para seguirlo, o prueba un rango de fechas diferente.')}</div>
   ${footer()}`;
 }
 
@@ -369,6 +432,105 @@ function viewResultados() {
   }
   <div class="section-h"><h2>Historial</h2><span class="badge">${list.length}</span></div>
   ${!data.loaded ? skeleton(3) : list.length ? `<div class="grid-2">${list.slice(0, 80).map((p) => matchCard(p, p, { showForm: false })).join('')}</div>` : errorBox() || empty('chart', 'Aún no hay resultados', 'Cuando terminen los partidos con pick, aparecen aquí con su resultado real.')}
+  ${footer()}`;
+}
+
+// Línea de saldo (SVG) con área roja y la banca inicial punteada.
+function bankChart(series, start) {
+  const pts = [{ d: 'inicio', bal: start }, ...series];
+  if (pts.length < 2) return '';
+  const W = 600, H = 170, P = 8, PB = 18;
+  const vals = pts.map((p) => p.bal);
+  const min = Math.min(...vals, start), max = Math.max(...vals, start);
+  const span = max - min || 1;
+  const x = (i) => P + (i / (pts.length - 1)) * (W - 2 * P);
+  const y = (v) => P + (1 - (v - min) / span) * (H - P - PB);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.bal).toFixed(1)}`).join(' ');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Evolución de la banca">
+    <defs><linearGradient id="bankfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#e10600" stop-opacity=".35"/><stop offset="1" stop-color="#e10600" stop-opacity="0"/></linearGradient></defs>
+    <line class="base" x1="${P}" x2="${W - P}" y1="${y(start)}" y2="${y(start)}"/>
+    <path class="ar" d="${line} L${x(pts.length - 1)},${H - PB} L${x(0)},${H - PB} Z"/>
+    <path class="ln" d="${line}"/>
+  </svg>
+  <div class="bars-x"><span>${esc(pts[1].d.slice(5))}</span><span>${esc(pts[pts.length - 1].d.slice(5))}</span></div>`;
+}
+
+function myStakesHtml() {
+  const b = data.bankroll;
+  const bank = Number(readLocal('cr_bank', 0)) || 0;
+  const stakeById = new Map((b?.pendingStakes || []).map((s) => [s.id, s.stake]));
+  const list = data.picks.filter((p) => stakeById.has(p.id) && new Date(p.at) > Date.now()).slice(0, 12);
+  if (!bank) return '<div class="stake-row"><span class="who"><small>Escribe tu banca arriba para ver cuánto apostar en cada pick.</small></span></div>';
+  if (!list.length) return '<div class="stake-row"><span class="who"><small>No hay picks con cuota por jugar en este momento.</small></span></div>';
+  const factor = bank / (b?.start || 2000000);
+  return list
+    .map((p) => {
+      const fav = p.fav === p.a.id ? p.a : p.b;
+      const st = Math.round((stakeById.get(p.id) * factor) / 100) * 100;
+      return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}</small></span><span class="amt">${cop(st)}<small>gana ${cop(st * (p.o - 1))}</small></span></div>`;
+    })
+    .join('');
+}
+
+function viewBankroll() {
+  const b = data.bankroll;
+  const s = data.stats;
+  const r = s?.[ui.resRange];
+  const bank = Number(readLocal('cr_bank', 0)) || '';
+  if (!data.loaded) return `<h1 class="page-title">Bankroll</h1>${skeleton(3)}`;
+  return `
+  <h1 class="page-title">Bankroll</h1>
+  <div class="page-sub"><i class="live-dot"></i>Banca simulada de CamiloRey · se actualiza sola</div>
+  ${
+    b
+      ? `<div class="bank-hero">
+      <div class="overline">Banca actual</div>
+      <div class="big">${cop(b.balance)}</div>
+      <div class="delta ${b.profit >= 0 ? 'pos-t' : 'neg-t'}">${signed(b.profit)} · ROI ${pct(b.roi)}</div>
+      <div style="font-size:12px;color:#a1a1aa;margin-top:6px">Inició con ${cop(b.start)} · ${b.bets} apuestas · ${b.hits} ganadas</div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="overline">Apostado</div><div class="val" style="font-size:17px">${cop(b.staked)}</div></div>
+      <div class="tile"><div class="overline">Efectividad</div><div class="val">${b.bets ? pct(Math.round((b.hits / b.bets) * 1000) / 10) : '—'}</div></div>
+      <div class="tile"><div class="overline">Máx. caída</div><div class="val neg" style="font-size:17px">${b.maxDrawdown ? '−' + cop(b.maxDrawdown) : '—'}</div></div>
+    </div>
+    ${b.series.length ? `<div class="card pad" style="margin-top:12px"><div class="overline">Evolución de la banca</div>${bankChart(b.series, b.start)}</div>` : '<div class="note" style="margin-top:12px">El gráfico aparece cuando se resuelvan los primeros picks con cuota.</div>'}`
+      : '<div class="note">El bankroll se calcula en la próxima actualización (cada ~10 min).</div>'
+  }
+
+  <div class="section-h"><h2>${icon('wallet')} Tu banca</h2></div>
+  <div class="card pad">
+    <label class="field" style="margin:0"><span>¿Con cuánto dinero juegas? (COP)</span>
+      <div class="money-input"><input id="bank-input" inputmode="numeric" placeholder="Ej: 500000" value="${bank}"></div></label>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Te sugerimos cuánto apostar en cada pick con la misma proporción del bankroll de CamiloRey (5% a 12,5% según la confianza). Se guarda solo en este dispositivo.</p>
+  </div>
+  <div class="list" id="my-stakes" style="margin-top:10px">${myStakesHtml()}</div>
+
+  <div class="section-h"><h2>${icon('chart')} Efectividad</h2></div>
+  <div class="toolbar"><div class="seg">
+    <button data-rr="d7" class="${ui.resRange === 'd7' ? 'on' : ''}">7 días</button>
+    <button data-rr="d30" class="${ui.resRange === 'd30' ? 'on' : ''}">30 días</button>
+    <button data-rr="all" class="${ui.resRange === 'all' ? 'on' : ''}">Todo</button>
+  </div></div>
+  <div class="tiles" style="margin-top:0">
+    <div class="tile"><div class="overline">Efectividad</div><div class="val">${pct(r?.pct)}</div><div class="hint">${r ? `${r.hit} ✓ · ${r.miss} ✗` : ''}</div></div>
+    <div class="tile"><div class="overline">Unidades</div><div class="val ${r?.units > 0 ? 'pos' : r?.units < 0 ? 'neg' : ''}">${r ? (r.units > 0 ? '+' : '') + String(r.units).replace('.', ',') : '—'}</div><div class="hint">stake fijo 1u</div></div>
+    <div class="tile"><div class="overline">ROI</div><div class="val ${r?.roi > 0 ? 'pos' : r?.roi < 0 ? 'neg' : ''}">${pct(r?.roi)}</div><div class="hint">${r?.staked || 0} con cuota</div></div>
+  </div>
+
+  <div class="section-h"><h2>Historial de apuestas</h2><span class="badge">${b?.ledger?.length || 0}</span></div>
+  ${
+    b?.ledger?.length
+      ? `<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
+      ${b.ledger
+        .map((x) => {
+          const fav = x.fav === x.a.id ? x.a : x.b;
+          return `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a.n)} vs ${esc(x.b.n)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(fav.n)} <span class="conf">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${cop(x.stake)}</td><td class="num ${x.profit >= 0 ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ ' : '✗ '}${signed(x.profit)}</td><td class="num">${cop(x.bal)}</td></tr>`;
+        })
+        .join('')}
+      </tbody></table></div>`
+      : empty('wallet', 'Aún no hay apuestas resueltas', 'Cuando terminen los partidos con pick y cuota, cada apuesta aparece aquí con su ganancia o pérdida.')
+  }
   ${footer()}`;
 }
 
@@ -429,7 +591,7 @@ function viewTema() {
 const FAQ = [
   ['Predicciones', [
     ['¿Cómo se generan las predicciones?', 'Cada ~10 minutos un proceso automático lee los torneos de la Liga Pro Checa, calcula para cada partido el rating de los jugadores, su racha, el historial entre ellos (H2H y patrones de alternancia), la forma del día y la cuota real de Rushbet, y con eso estima quién es el favorito. Cuando hay suficientes resultados, un modelo de machine learning reentrena solo y toma la decisión.'],
-    ['¿Qué significa el % de confianza?', 'Es qué tan fuerte respalda el modelo al favorito, en una escala de 50 a 92%. Solo se publican picks desde 60%. Recomendamos enfocarse en los de 75% o más.'],
+    ['¿Qué significa el % de confianza?', 'Es la probabilidad que el sistema le da al favorito de ganar, en una escala honesta de 50% (partido parejo) a 80% (el máximo: en el tenis de mesa nada es seguro y no vamos a prometer más). Solo publicamos picks desde 55%. Referencia: 55-61% confianza media, 62-67% buena, 68-80% alta. Aun con 75%, 1 de cada 4 picks se pierde: por eso mostramos todos los resultados.'],
     ['¿El marcador en vivo es en tiempo real?', 'Sí. Se lee directo del feed en vivo de Rushbet cada 2 segundos, con el marcador punto a punto y set por set.'],
     ['¿Los resultados son reales?', 'Sí. Cada pick se marca como acierto o fallo automáticamente cuando el partido termina, con el resultado oficial. No se borra ni se edita ningún pick.']
   ]],
@@ -561,14 +723,20 @@ function openMatch(id) {
       <div class="prob-x"><span>${esc(m.a.n)}</span><span>${esc(m.b.n)}</span></div>
     </div>
     <div class="block">
-      <div class="note" style="border-color:rgba(225,6,0,.35);background:var(--red-soft)"><b style="color:var(--red-2)">${icon('bolt', 'icon')} Análisis IA</b><br>
-      Pick: <b>${esc(fav.n)}</b> gana con ${pick.c}% de confianza${pick.o ? ` (cuota ${odds(pick.o)})` : ''}.
-      Rating ${esc(m.a.n)} ${m.a.r ?? '—'} vs ${esc(m.b.n)} ${m.b.r ?? '—'}.
-      ${h2hTotal ? `Historial directo: ${h2hWinsA}-${h2hTotal - h2hWinsA}.` : 'Sin historial directo.'}
-      ${pick.res === 'hit' ? '<br><b style="color:var(--win)">✓ Resultado: acierto</b>' : pick.res === 'miss' ? '<br><b style="color:var(--loss)">✗ Resultado: fallo</b>' : ''}</div>
+      <div class="analysis">
+        <div class="an-head">${icon('bolt')}<div><b>Análisis IA</b><small>Por qué el sistema elige a ${esc(fav.n)}</small></div><span class="conf" style="font-size:20px">${pick.c}%</span></div>
+        ${
+          pick.why
+            ? `${pick.why.pro.length ? `<ul class="why pro">${pick.why.pro.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+               ${pick.why.con.length ? `<div class="overline" style="margin:12px 0 6px">A tener en cuenta</div><ul class="why con">${pick.why.con.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+               <p class="an-src">${icon('info')} ${esc(pick.why.src)}.</p>`
+            : `<p class="an-src">Pick: <b>${esc(fav.n)}</b> gana con ${pick.c}% de confianza${pick.o ? ` (cuota ${odds(pick.o)})` : ''}. Rating ${m.a.r ?? '—'} vs ${m.b.r ?? '—'}${h2hTotal ? `, cruce directo ${h2hWinsA}-${h2hTotal - h2hWinsA}` : ''}.</p>`
+        }
+        ${pick.res === 'hit' ? '<div class="badge win" style="margin-top:10px">✓ Resultado: acierto</div>' : pick.res === 'miss' ? '<div class="badge loss" style="margin-top:10px">✗ Resultado: fallo</div>' : ''}
+      </div>
       ${pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin-top:12px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     </div>`
-        : '<div class="block"><p class="note">Este partido no tiene pick: la confianza del modelo no llegó al mínimo de 60%.</p></div>'
+        : '<div class="block"><p class="note">Este partido no tiene pick: el sistema lo ve demasiado parejo (menos de 55% de confianza) y prefiere no recomendarlo.</p></div>'
     }`;
   };
   draw();
@@ -617,7 +785,8 @@ const ROUTES = {
   calendario: viewCalendario,
   picks: viewPicks,
   seguidos: viewSeguidos,
-  resultados: viewResultados,
+  bankroll: viewBankroll,
+  resultados: viewBankroll,
   perfil: viewPerfil,
   cuenta: viewCuenta,
   tema: viewTema,
@@ -632,11 +801,20 @@ function route() {
   const name = (location.hash.replace(/^#\/?/, '').split('/')[0] || 'inicio').toLowerCase();
   const fn = ROUTES[name] || viewInicio;
   $view.innerHTML = fn();
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('on', a.dataset.tab === name));
+  const tab = name === 'resultados' ? 'bankroll' : name;
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   liveUnsub?.();
   liveUnsub = null;
   if (name === 'inicio' || !ROUTES[name]) liveUnsub = onLive(renderLiveHome);
-  else if (['calendario', 'picks', 'seguidos'].includes(name)) liveUnsub = onLive(() => refreshLiveMids());
+  else if (['calendario', 'picks'].includes(name)) liveUnsub = onLive(() => refreshLiveMids());
+  else if (name === 'seguidos') {
+    // Redibuja solo si hay algún seguido en vivo (marcador y barra de sets).
+    liveUnsub = onLive(() => {
+      const map = allById();
+      if (![...follows].some((id) => map.get(id) && liveFor(map.get(id)))) return;
+      if ($sheet.hidden) $view.innerHTML = viewSeguidos();
+    });
+  }
   renderCounter();
 }
 
@@ -681,6 +859,11 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.open) return openMatch(t.dataset.open);
   if (t.dataset.day) {
     ui.day += Number(t.dataset.day);
+    return route();
+  }
+  if (t.dataset.frange) {
+    const i = FOLLOW_RANGES.findIndex((r) => r[0] === ui.followRange);
+    ui.followRange = FOLLOW_RANGES[(i + 1) % FOLLOW_RANGES.length][0];
     return route();
   }
   if (t.dataset.calf) {
@@ -746,6 +929,15 @@ $sheet.addEventListener('click', (ev) => {
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !$sheet.hidden) closeSheet();
+});
+
+// Banca personal: guarda y recalcula solo la lista (sin perder el foco).
+document.addEventListener('input', (ev) => {
+  if (ev.target.id !== 'bank-input') return;
+  const digits = ev.target.value.replace(/\D/g, '').slice(0, 13);
+  writeLocal('cr_bank', Number(digits) || 0);
+  const box = document.getElementById('my-stakes');
+  if (box) box.innerHTML = myStakesHtml();
 });
 
 document.addEventListener('submit', async (ev) => {

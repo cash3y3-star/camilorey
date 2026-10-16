@@ -8,8 +8,8 @@
 // lib/confidence.js.
 // ============================================================
 
-const MIN_CONFIDENCE = 50; // cota mínima que devuelve computeConfidence
-const MAX_CONFIDENCE = 92; // cota máxima que devuelve computeConfidence
+const MIN_CONFIDENCE = 50; // escala honesta de CamiloRey: 50% (parejo) ...
+const MAX_CONFIDENCE = 80; // ... a 80% (tope)
 const MIN_STAKE = 100000;
 const MAX_STAKE = 250000;
 
