@@ -358,7 +358,7 @@ function followCard(p) {
       <b class="fc-name">${esc(fav.n)}</b>
       <small class="fc-sub">${esc(fav.n)} vs ${esc(riv.n)}</small>
       <small class="fc-sub">${esc(dayLabel(dayKey(p.at)))} · ${fmtTime(p.at)}${p.o ? ` · cuota ${odds(p.o)}` : ''}</small>
-      <span class="fc-pill ${pillCls}"><i></i>GANA EL PARTIDO · ${p.c}%</span>
+      <span class="fc-pill ${pillCls}"><i></i>GANA · ${p.c}%</span>
       <div class="fc-bar"><span style="width:${progress}%"></span></div>
       <div class="fc-sets"><span>${favSets == null ? '0' : favSets}${rivSets != null ? ` <em>- ${rivSets} sets</em>` : ''}</span>${lv ? `<span class="fc-live">${esc(lv.ptsHome)}:${esc(lv.ptsAway)}</span>` : ''}</div>
     </div>
