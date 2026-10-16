@@ -7,7 +7,14 @@
 // el resto del sitio funciona igual.
 // ============================================================
 
-export const FIREBASE_CONFIG = null;
+export const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyAjEK6Ca7_NEDiPMJv9iqwNLx1DY8WOog0',
+  authDomain: 'camilorey-1399c.firebaseapp.com',
+  projectId: 'camilorey-1399c',
+  storageBucket: 'camilorey-1399c.firebasestorage.app',
+  messagingSenderId: '130311419366',
+  appId: '1:130311419366:web:67f92d4a870d9425aed227'
+};
 
 // Link del canal de Telegram (opcional). Ej: 'https://t.me/micanal'
 export const TELEGRAM_URL = null;
