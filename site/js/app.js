@@ -174,7 +174,7 @@ function midBlock(m) {
   const lv = liveFor(m);
   const ph = m.ph ? `<span class="badge red">🏆 ${esc(m.ph)}</span>` : '';
   if (m.st === 'f') {
-    return `<div class="mid">${ph || '<span class="badge">Terminado</span>'}<span class="score">${m.sa}-${m.sb}</span><span class="tn">${esc(m.tn)}</span></div>`;
+    return `<div class="mid">${ph || '<span class="badge">Terminado</span>'}<span class="score">${m.sa}-${m.sb}</span><span class="played">${icon('clock')} ${fmtTime(m.at)}</span><span class="tn">${esc(m.tn)}</span></div>`;
   }
   if (lv) {
     return `<div class="mid" data-live-mid="${m.id}"><span class="badge live">EN VIVO</span><span class="score">${lv.setsHome}-${lv.setsAway}</span><span class="tn">${m.ph ? `${esc(m.ph)} · ` : ''}${esc(lv.ptsHome)} : ${esc(lv.ptsAway)} pts</span></div>`;
@@ -986,7 +986,7 @@ function openMatch(id) {
     const h2hWinsA = (m.h2h || '').split('').filter((c) => c === 'A').length;
     const h2hTotal = (m.h2h || '').length;
     const center = m.st === 'f'
-      ? `<div class="mid"><span class="badge">${esc(m.ph || 'Terminado')}</span><span class="score">${m.sa}-${m.sb}</span></div>`
+      ? `<div class="mid"><span class="badge">${esc(m.ph || 'Terminado')}</span><span class="score">${m.sa}-${m.sb}</span><span class="tn">Se jugó ${esc(dayLabel(dayKey(m.at)).toLowerCase())} · ${fmtTime(m.at)}</span></div>`
       : lv
       ? `<div class="mid"><span class="badge live">EN VIVO</span><span class="score">${lv.setsHome}-${lv.setsAway}</span><span class="tn">${esc(lv.ptsHome)} : ${esc(lv.ptsAway)}</span></div>`
       : `<div class="mid"><span class="badge red">● ${fmtTime(m.at)}</span><div class="vs">VS</div></div>`;
