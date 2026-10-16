@@ -378,20 +378,19 @@ function followCard(p) {
     ? `<img class="fc-raw" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : '';
   return `
-  <article class="fcard ${p.res === 'hit' ? 'is-hit' : p.res === 'miss' ? 'is-miss' : ''}" data-open="${p.id}" data-match="${p.id}">
+  <article class="fcard ${p.res === 'miss' ? 'is-miss' : ''}" data-open="${p.id}" data-match="${p.id}">
     <div class="fc-photo">
-      <span class="fc-ini">${esc(initials(fav.n))}</span>
-      ${photo}
-      <button class="fc-heart ${isFollowed(p.id) ? 'on' : ''}" data-follow="${p.id}" aria-label="Dejar de seguir">${icon('heart')}</button>
+      ${photo || `<span class="fc-ini">${esc(initials(fav.n))}</span>`}
       ${status}
-      <span class="fc-tag">CZ</span>
+      <span class="fc-flag" title="República Checa"><svg viewBox="0 0 30 20"><rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0 15 10 0 20z" fill="#11457e"/></svg></span>
     </div>
     <div class="fc-body">
       <small class="fc-league">${esc(p.ph ? `${p.ph} · ${tn}` : `Tournament ${tn}`)}</small>
       <b class="fc-name">${esc(fav.n)}</b>
-      <small class="fc-sub">vs ${esc(riv.n)} · ${fmtTime(p.at)}${dayKey(p.at) !== todayKey() ? ` · ${esc(dayLabel(dayKey(p.at)))}` : ''}</small>
-      <div class="fc-row"><span class="fc-pill ${pillCls}">${esc(fav.n.toUpperCase())} GANA</span>${score}</div>
-      <div class="fc-conf"><div class="fc-bar"><span style="width:${((p.c - 50) / 30) * 100}%"></span></div><b>${p.c}</b></div>
+      <small class="fc-sub">vs ${esc(riv.n)} · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ }).format(new Date(p.at))}</small>
+      <span class="fc-pill ${pillCls}">${esc(fav.n.toUpperCase())} GANA</span>
+      ${score}
+      <div class="fc-conf"><div class="fc-bar"><span style="width:${Math.max(8, ((p.c - 50) / 30) * 100)}%"></span></div><b>${p.c}</b></div>
     </div>
   </article>`;
 }
@@ -428,6 +427,7 @@ function viewSeguidos() {
     <div class="tile"><div class="overline">Cuota prom.</div><div class="val">${avgOdds}</div></div>
   </div>
   <div style="margin-top:16px">${items.length ? `<div class="fgrid">${items.map(followCard).join('')}</div>` : empty('heart', 'Sin seguimientos en este rango', 'Toca el corazón ♥ en cualquier pick para seguirlo, o prueba un rango de fechas diferente.')}</div>
+  ${active ? `<div class="float-active"><i></i>${active} ${active === 1 ? 'activo' : 'activos'}</div>` : ''}
   ${footer()}`;
 }
 
