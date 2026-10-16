@@ -91,7 +91,7 @@ const RULES = [
   [/^ACCESO COMPLETO$/, 'FULL ACCESS'],
   [/^Para quien sigue los picks en serio$/, 'For those who take picks seriously'],
   [/^Comenzar a Explorar$/, 'Start exploring'],
-  [/^Picks de alta confianza \(65% o más\)$/, 'High-confidence picks (65%+)'],
+  [/^Picks de alta confianza \(60% o más\)$/, 'High-confidence picks (60%+)'],
   [/^Análisis con IA por partido$/, 'AI analysis for every match'],
   [/^Bankroll con criterio de Kelly$/, 'Bankroll with Kelly criterion'],
   [/^Alertas de picks en tu celular$/, 'Pick alerts on your phone'],
@@ -129,9 +129,9 @@ import { icon } from './icons.js?v=__V__';
 const EMOJI = {
   '🏆': ['trophy', 'gold'], '👑': ['crown', 'gold'], '⭐': ['star', 'gold'], '🔒': ['lock', ''], '🔥': ['flame', 'hot'],
   '🔔': ['bell', ''], '🔕': ['bellOff', ''], '✅': ['checkc', 'win'], '❌': ['xc', 'loss'], '⏳': ['clock', ''], '⌛': ['clock', ''],
-  '📊': ['chart', ''], '👥': ['users', ''], '💬': ['chat', ''], '🏓': ['paddle', 'hot'], '🧠': ['bolt', ''], '💰': ['wallet', ''], '👋': [null, '']
+  '📊': ['chart', ''], '📅': ['calendar', ''], '👥': ['users', ''], '💬': ['chat', ''], '🏓': ['paddle', 'hot'], '🧠': ['bolt', ''], '💰': ['wallet', ''], '👋': [null, '']
 };
-const EMOJI_RE = /(🏆|👑|⭐|🔒|🔥|🔔|🔕|✅|❌|⏳|⌛|📊|👥|💬|🏓|🧠|💰|👋)️?/u;
+const EMOJI_RE = /(🏆|👑|⭐|🔒|🔥|🔔|🔕|✅|❌|⏳|⌛|📊|📅|👥|💬|🏓|🧠|💰|👋)️?/u;
 const EMOJI_RE_G = new RegExp(EMOJI_RE.source, 'gu');
 
 function iconizeText(n) {

@@ -83,7 +83,7 @@ function maybePremiumWelcome() {
 // También la usa el panel admin como vista previa.
 function showPremiumWelcome(until) {
   const fecha = until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' });
-  const perks = ['Picks de alta confianza (65% o más)', 'Análisis con IA por partido', 'Bankroll con criterio de Kelly', 'Alertas de picks en tu celular'];
+  const perks = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Bankroll con criterio de Kelly', 'Alertas de picks en tu celular'];
   $sheetBody.innerHTML = `
     <div class="pw-head">
       <div class="pw-crown">${crownSvg()}</div>
@@ -458,7 +458,7 @@ function viewPremium() {
     }
   </div>
   <div class="list" style="margin-top:14px">
-    ${perk('🔥', 'Picks de alta confianza', 'Los picks de 65% o más, antes del partido')}
+    ${perk('🔥', 'Picks de alta confianza', 'Los picks de 60% o más, antes del partido')}
     ${perk('🧠', 'Análisis IA de cada pick', 'Por qué gana: rating, mercado, cruce directo, rachas y forma del día')}
     ${perk('💰', 'Mi Bankroll con Kelly', 'Cuánto apostar en cada pick que sigues, saldo y ROI')}
     ${perk('🔔', 'Notificaciones en el celular', 'Nuevo pick destacado y resultado de tus picks seguidos')}
@@ -578,6 +578,8 @@ function viewAdmin() {
   setTimeout(renderAdminPanel, 0);
   return `
   <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Panel admin</h1></div>
+  <div class="section-h"><h2>📅 Resumen del día</h2><span class="badge red">Solo admin</span></div>
+  <div id="admin-daily">${skeleton(2)}</div>
   <div class="section-h"><h2>👑 Publicar pick del tipster</h2></div>
   <form class="card pad" id="tipster-form">
     <label class="field"><span>Partido</span>
@@ -605,8 +607,112 @@ function viewAdmin() {
   <div id="admin-users">${skeleton(2)}</div>`;
 }
 
+// Resumen del día (solo admin): picks jugados, ganados, perdidos,
+// efectividad, unidades y confianza, con gráfica de los últimos 14 días.
+// Sale del historial privado (admin/ledger), que trae TODOS los picks.
+let dailyRows = null;
+const dayName = (key, opts = { weekday: 'short', day: '2-digit', month: '2-digit' }) =>
+  new Intl.DateTimeFormat(LOC(), { ...opts, timeZone: TZ }).format(new Date(`${key}T12:00:00-05:00`));
+
+async function renderAdminDaily(reload = true) {
+  const box = document.getElementById('admin-daily');
+  if (!box || !isAdmin()) return;
+  try {
+    if (reload || !dailyRows) dailyRows = (await FB.loadAdminLedger()).rows || [];
+  } catch (e) {
+    box.innerHTML = `<div class="note">No se pudo cargar el resumen (${esc(e.code || e.message)}).</div>`;
+    return;
+  }
+  // Solo picks publicados (los "no publicados" de antes no cuentan).
+  const done = dailyRows.filter((x) => x.res === 'hit' || x.res === 'miss').filter((x) => x.st !== 'np');
+  const byDay = new Map();
+  for (const x of done) {
+    const k = dayKey(x.at);
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(x);
+  }
+  const sum = (list) => {
+    const hit = list.filter((x) => x.res === 'hit').length;
+    const withO = list.filter((x) => x.o);
+    const units = withO.reduce((s, x) => s + (x.res === 'hit' ? x.o - 1 : -1), 0);
+    return { n: list.length, hit, miss: list.length - hit, pct: list.length ? Math.round((hit / list.length) * 1000) / 10 : null, units: Math.round(units * 100) / 100, withO: withO.length };
+  };
+  const today = todayKey();
+  const keys = [...byDay.keys()].sort().reverse();
+  if (!ui.adminDay || (!byDay.has(ui.adminDay) && ui.adminDay !== today)) ui.adminDay = byDay.has(today) || !keys.length ? today : keys[0];
+  const sel = ui.adminDay;
+  const list = (byDay.get(sel) || []).slice().sort((a, b) => (a.at < b.at ? 1 : -1));
+  const s = sum(list);
+  const pending = dailyRows.filter((x) => x.res === 'pending' && dayKey(x.at) === sel).length;
+  const band = (lo, hi) => sum(list.filter((x) => x.c >= lo && x.c < hi));
+  const bands = [
+    ['60% o más', band(60, 101)],
+    ['55–59%', band(55, 60)],
+    ['50–54% (parejos)', band(50, 55)]
+  ];
+  const unitsTxt = (u) => `${u > 0 ? '+' : ''}${String(u).replace('.', ',')}`;
+
+  // Gráfica: últimos 14 días con datos, barras de ganados/perdidos con el
+  // nombre del día y la fecha debajo, y la efectividad arriba.
+  const chartDays = keys.slice(0, 14).reverse();
+  const max = Math.max(1, ...chartDays.map((k) => byDay.get(k).length));
+  const chart = chartDays.length
+    ? `<div class="card pad" style="margin-top:12px">
+      <div class="block-h" style="margin:0 0 6px"><span class="overline">Últimos días</span><div class="legend"><span><i style="background:var(--win)"></i>Ganados</span><span><i style="background:var(--red)"></i>Perdidos</span></div></div>
+      <div class="scroll-x"><div class="dchart" style="min-width:${chartDays.length * 46}px">${chartDays
+        .map((k) => {
+          const d = sum(byDay.get(k));
+          return `<button type="button" class="dcol ${k === sel ? 'on' : ''}" data-aday="${k}">
+            <span class="dpct ${d.pct >= 55 ? 'pos-t' : d.pct < 50 ? 'neg-t' : ''}">${d.pct == null ? '—' : Math.round(d.pct) + '%'}</span>
+            <span class="dbar"><i class="h" style="height:${(d.hit / max) * 110}px"></i><i class="m" style="height:${(d.miss / max) * 110}px"></i></span>
+            <span class="dname">${esc(dayName(k, { weekday: 'short' }))}</span><span class="ddate">${esc(dayName(k, { day: '2-digit', month: '2-digit' }))}</span>
+          </button>`;
+        })
+        .join('')}</div></div>
+    </div>`
+    : '';
+
+  box.innerHTML = `
+    <div class="seg seg-full" style="grid-auto-flow:column;overflow-x:auto;margin-bottom:12px">${[today, ...keys.filter((k) => k !== today)]
+      .slice(0, 7)
+      .map((k) => `<button type="button" data-aday="${k}" class="${k === sel ? 'on' : ''}">${esc(k === today ? 'Hoy' : dayName(k))}</button>`)
+      .join('')}</div>
+    <div class="card pad">
+      <div class="overline" style="text-transform:none;font-size:13px;color:var(--text)">${esc(dayName(sel, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</div>
+      <div class="tiles" style="margin-top:10px">
+        <div class="tile"><div class="overline">Efectividad</div><div class="val ${s.pct >= 55 ? 'pos' : s.pct != null && s.pct < 50 ? 'neg' : ''}">${pct(s.pct)}</div><div class="hint">${s.n} jugados${pending ? ` · ${pending} pendientes` : ''}</div></div>
+        <div class="tile"><div class="overline">Ganados</div><div class="val pos">${s.hit}</div><div class="hint">aciertos</div></div>
+        <div class="tile"><div class="overline">Perdidos</div><div class="val neg">${s.miss}</div><div class="hint">fallos</div></div>
+      </div>
+      <div class="tiles" style="margin-top:8px">
+        <div class="tile"><div class="overline">Unidades</div><div class="val ${s.units > 0 ? 'pos' : s.units < 0 ? 'neg' : ''}">${s.withO ? unitsTxt(s.units) : '—'}</div><div class="hint">1u a cada pick con cuota (${s.withO})</div></div>
+        ${bands
+          .slice(0, 2)
+          .map(([t, b]) => `<div class="tile"><div class="overline">${t}</div><div class="val">${pct(b.pct)}</div><div class="hint">${b.hit} de ${b.n}</div></div>`)
+          .join('')}
+      </div>
+      <p class="note" style="margin:10px 0 0">Parejos (50–54%): ${bands[2][1].hit} de ${bands[2][1].n}${bands[2][1].n ? ` (${pct(bands[2][1].pct)})` : ''}.</p>
+    </div>
+    ${chart}
+    ${
+      list.length
+        ? `<div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Hora</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
+      ${list
+        .map(
+          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${fmtTime(x.at)}</td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < 55 ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num ${x.res === 'hit' ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ Ganado' : '✗ Perdido'}</td></tr>`
+        )
+        .join('')}</tbody></table></div>`
+        : `<p class="note" style="margin-top:12px">Todavía no hay picks jugados este día.</p>`
+    }`;
+  // La gráfica arranca mostrando el día elegido (por defecto, el más reciente).
+  const sc = box.querySelector('.dchart')?.parentElement;
+  const on = box.querySelector('.dcol.on');
+  if (sc) sc.scrollLeft = on ? on.getBoundingClientRect().left - sc.getBoundingClientRect().left + sc.scrollLeft - sc.clientWidth / 2 + on.clientWidth / 2 : sc.scrollWidth;
+}
+
 async function renderAdminPanel() {
   if (!isAdmin()) return;
+  renderAdminDaily();
   // Picks del tipster publicados
   const tbox = document.getElementById('admin-tipster');
   const tips = (await loadTipster(true)).sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -959,7 +1065,7 @@ function upcomingPicks() {
 
 function viewPicks() {
   let list = upcomingPicks();
-  if (ui.pickFilter === 'high') list = list.filter((p) => p.locked || p.premium || p.c >= 65);
+  if (ui.pickFilter === 'high') list = list.filter((p) => p.locked || p.premium || p.c >= 60);
   if (ui.pickFilter === 'odds') list = list.filter((p) => p.o && p.o >= 1.6);
   return `
   <h1 class="page-title">Predicciones</h1>
@@ -1725,7 +1831,7 @@ function openMatch(id) {
       <div><small>Cuota</small><b>${odds(pick?.o)}</b></div>
       <div><small>Estado</small><b class="red" style="font-size:14px">${m.st === 'f' ? 'FINAL' : lv ? 'EN VIVO' : 'PROGRAMADO'}</b></div>
     </div>
-    ${pick?.locked ? `<div style="margin-top:12px">${premiumLock('Pick Premium de alta confianza', 'El sistema tiene un pick de 65% o más para este partido. Hazte Premium para ver a quién elige, su confianza, la cuota y el análisis.')}</div>` : ''}
+    ${pick?.locked ? `<div style="margin-top:12px">${premiumLock('Pick Premium de alta confianza', 'El sistema tiene un pick de 60% o más para este partido. Hazte Premium para ver a quién elige, su confianza, la cuota y el análisis.')}</div>` : ''}
     ${pick && !pick.locked && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     ${
       lv
@@ -2022,6 +2128,10 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.ft) {
     ui.formTab = t.dataset.ft;
     return $sheet._redraw?.();
+  }
+  if (t.dataset.aday) {
+    ui.adminDay = t.dataset.aday;
+    return renderAdminDaily(false);
   }
   if (t.dataset.ledgerF) {
     ui.ledgerF = t.dataset.ledgerF;

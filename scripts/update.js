@@ -21,10 +21,9 @@ const path = require('path');
 const { fetchNuxtData } = require('./lib/tt');
 const BACKFILL_PAUSE_MS = 1200;
 const { fetchLigaProChecaOdds, findOdds } = require('./lib/rushbet');
-const { computeConfidence } = require('./lib/confidence');
+const { featuresOf, train: trainV2, fitMarket, predict } = require('./lib/model-v2');
 const { computeStake } = require('./lib/staking');
 const BANK_START = 2000000; // banca inicial en COP, misma convención del sitio anterior
-const { trainLogisticRegression, predictProbability, MIN_TRAINING_SAMPLES } = require('./lib/ml-model');
 
 const ROOT = path.join(__dirname, '..');
 const STATE_DIR = path.join(ROOT, 'data');
@@ -156,93 +155,84 @@ function tournamentForm(playerId, tournamentId, beforeIso) {
 
 // ---------------- modelo ----------------
 
-// Reentrena con todos los picks resueltos (label = ganó el jugador A).
+// Lo que se publica del modelo en stats.json (sin pesos internos).
+const modelSummary = (model) => ({ active: true, version: 2, trainingCount: model.trained, holdout: model.holdout, market: model.market.fitted });
+
+// Modelo v2: se reentrena en cada corrida con TODOS los partidos
+// terminados del historial (ver lib/model-v2.js).
+const modelCtx = { finishedOf: (id) => finishedMatchesOf(id) };
 function trainModel() {
-  const rows = Object.values(state.picks)
-    .filter((p) => (p.res === 'hit' || p.res === 'miss') && p.f)
-    .map((p) => {
-      const m = state.matches[p.id];
-      if (!m || m.w == null) return null;
-      return { ...p.f, hit: m.w === m.a };
-    })
-    .filter(Boolean);
-  return { weights: rows.length ? trainLogisticRegression(rows) : null, trainingCount: rows.length };
+  const t0 = Date.now();
+  const fin = Object.values(state.matches)
+    .filter((m) => m.st === 'f' && m.w != null)
+    .sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : x.id - y.id));
+  const model = trainV2(fin, modelCtx);
+  if (!model) throw new Error(`Muy pocos partidos para entrenar (${fin.length})`);
+  currentModel = model;
+  fitMarket(model, fin.filter((m) => m.oa && m.ob), modelCtx);
+  console.log(
+    `Modelo v2: ${model.trained} partidos en ${((Date.now() - t0) / 1000).toFixed(1)}s · pesos ${JSON.stringify(model.weights)} · mercado ${JSON.stringify(model.market)} · acierto en partidos no vistos ${JSON.stringify(model.holdout)}`
+  );
+  return model;
 }
 
-function generatePick(match, sideA, sideB, odds, model) {
-  const h2h = headToHead(match.a, match.b);
-  const formA = tournamentForm(match.a, match.t, match.at);
-  const formB = tournamentForm(match.b, match.t, match.at);
-  const oddsImpliedProbA = odds ? 1 / odds.oddsA / (1 / odds.oddsA + 1 / odds.oddsB) : null;
-  const streakA = recentStreak(match.a);
-  const streakB = recentStreak(match.b);
+// Pick con el modelo v2 (lib/model-v2.js): historial completo + cuota de
+// Rushbet si la hay + regla de lógica del H2H. Se recalcula en cada
+// corrida hasta 5 min antes del inicio (cambian la forma del día y la cuota).
+function generatePick(match, odds, model, prev = null) {
+  const { f, raw } = featuresOf(match, modelCtx);
+  const oa = odds?.oddsA ?? prev?.x?.oA ?? null;
+  const ob = odds?.oddsB ?? prev?.x?.oB ?? null;
+  const { p, ph, pm } = predict(model, f, oa, ob);
+  let favA = p >= 0.5;
+  let pFav = favA ? p : 1 - p;
 
-  const { confidence: raw, factors } = computeConfidence({
-    ratingDiff: (sideA.rating_before_tournament || 0) - (sideB.rating_before_tournament || 0),
-    streakA,
-    streakB,
-    h2hWinsA: h2h.h2hWinsA,
-    h2hTotal: h2h.h2hTotal,
-    h2hCurrentStreakIsA: h2h.currentStreakPlayerId === match.a ? true : h2h.currentStreakPlayerId === match.b ? false : null,
-    h2hCurrentStreakLength: h2h.currentStreakLength,
-    h2hTypicalRunLength: h2h.typicalRunLength,
-    h2hIsPerfectAlternation: h2h.isPerfectAlternation,
-    oddsImpliedProbA,
-    todayFormWinsA: formA.wins,
-    todayFormLossesA: formA.losses,
-    todayFormWinsB: formB.wins,
-    todayFormLossesB: formB.losses
-  });
-  delete factors.weights;
-
-  // Confianza HONESTA, escala 50-80%: 50% = partido parejo, 80% = tope (en
-  // esta liga ningún pick justifica más). La escala vieja del sitio
-  // anterior daba al favorito siempre 70-92%, aunque el partido fuera parejo.
-  // Con muestra suficiente decide el modelo entrenado y se muestra su
-  // probabilidad real (con tope); si no, la fórmula, reescalada a 50-80.
-  const useModel = model.weights && model.trainingCount >= MIN_TRAINING_SAMPLES;
-  let favA, pFav;
-  if (useModel) {
-    const pA = predictProbability(model.weights, factors);
-    favA = pA >= 0.5;
-    pFav = favA ? pA : 1 - pA;
-  } else {
-    // computeConfidence devuelve 70 + raw*20 (raw de -1 a 1 aprox., a favor de A).
-    const rawScore = Math.max(-1, Math.min(1, (raw - 70) / 20));
-    favA = rawScore >= 0;
-    pFav = 0.5 + Math.abs(rawScore) * 0.3;
+  // Regla de lógica: no elegir a quien pierde claramente el cruce directo
+  // (4+ enfrentamientos y 25% o menos de victorias, ej. 0-6), salvo que el
+  // mercado también lo vea favorito. Si el modelo lo eligió igual, se pasa
+  // al dominador del H2H y se marca como parejo.
+  let rule = null;
+  if (raw.hT >= 4) {
+    const favShare = (favA ? raw.hA : raw.hT - raw.hA) / raw.hT;
+    const mFav = pm == null ? null : favA ? pm : 1 - pm;
+    if (favShare <= 0.25 && !(mFav != null && mFav >= 0.6)) {
+      favA = !favA;
+      pFav = Math.max(0.5, 1 - pFav);
+      rule = 'h2h';
+    }
   }
   const confidence = Math.round(Math.max(0.5, Math.min(MAX_CONFIDENCE / 100, pFav)) * 100);
+  const formA = tournamentForm(match.a, match.t, match.at);
+  const formB = tournamentForm(match.b, match.t, match.at);
 
   return {
     id: match.id,
     fav: favA ? match.a : match.b,
     c: confidence,
-    o: odds ? (favA ? odds.oddsA : odds.oddsB) : null,
-    f: factors,
+    o: oa && ob ? (favA ? oa : ob) : prev?.o && prev.fav === (favA ? match.a : match.b) ? prev.o : null,
+    f,
     // Datos crudos con los que se decidió — base del "Análisis IA".
     x: {
-      rA: sideA.rating_before_tournament ?? null,
-      rB: sideB.rating_before_tournament ?? null,
-      sA: streakA,
-      sB: streakB,
-      hA: h2h.h2hWinsA,
-      hT: h2h.h2hTotal,
-      hCur: h2h.currentStreakPlayerId === match.a ? 'a' : h2h.currentStreakPlayerId === match.b ? 'b' : null,
-      hLen: h2h.currentStreakLength,
-      hTyp: h2h.typicalRunLength != null ? Math.round(h2h.typicalRunLength * 10) / 10 : null,
-      hAlt: h2h.isPerfectAlternation,
+      rA: match.ra ?? null,
+      rB: match.rb ?? null,
+      hA: raw.hA,
+      hT: raw.hT,
+      h5A: raw.h5A,
+      h5T: raw.h5T,
       fA: [formA.wins, formA.losses],
       fB: [formB.wins, formB.losses],
-      pA: oddsImpliedProbA != null ? Math.round(oddsImpliedProbA * 1000) / 1000 : null,
-      oA: odds?.oddsA ?? null, // cuotas de Rushbet de cada jugador; se van actualizando
-      oB: odds?.oddsB ?? null, // hasta que empieza el partido (= cuota prepartido final)
-      n: model.trainingCount
+      pH: Math.round(ph * 1000) / 1000, // probabilidad de A según el historial
+      pA: pm != null ? Math.round(pm * 1000) / 1000 : null, // según el mercado
+      oA: oa, // cuotas de Rushbet de cada jugador; se van actualizando
+      oB: ob, // hasta que empieza el partido (= cuota prepartido final)
+      rule,
+      n: model.trained,
+      acc: model.holdout
     },
     pub: true,
-    src: useModel ? 'ml' : 'formula',
+    src: 'v2',
     res: 'pending',
-    created: new Date().toISOString()
+    created: prev?.created || new Date().toISOString()
   };
 }
 
@@ -329,23 +319,36 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       st: played ? 'f' : m.status === 2 ? 'l' : 's',
       sa: played ? m.results.score_one : null,
       sb: played ? m.results.score_two : null,
-      w: played ? (m.results.score_one > m.results.score_two ? sideA.player.id : sideB.player.id) : null
+      w: played ? (m.results.score_one > m.results.score_two ? sideA.player.id : sideB.player.id) : null,
+      // Rating oficial antes del torneo y cuotas de Rushbet (las guarda
+      // backfillOdds): el modelo v2 aprende de ellos.
+      ra: sideA.rating_before_tournament ?? null,
+      rb: sideB.rating_before_tournament ?? null,
+      oa: state.matches[m.id]?.oa ?? null,
+      ob: state.matches[m.id]?.ob ?? null
     };
-    if (played && state.matches[m.id]?.st !== 'f') finishedIdx = null; // índice de terminados desactualizado
+    const prevSt = state.matches[m.id]?.st;
     state.matches[m.id] = row;
+    if (played && prevSt !== 'f') finishedIdx = null; // índice de terminados desactualizado
     totals.matches++;
 
     if (played) {
       if (resolvePick(row)) totals.resolved++;
       continue;
     }
-    if (!makePicks || state.picks[m.id] || row.st !== 's') continue;
+    if (!makePicks || row.st !== 's') continue;
+    // Pick nuevo, o recálculo del pendiente hasta 5 min antes del inicio
+    // (mientras tanto cambian la forma del día y la cuota).
+    const prev = state.picks[m.id];
+    if (prev && (prev.res !== 'pending' || new Date(row.at).getTime() <= Date.now() + 5 * 60e3)) continue;
 
     try {
       const odds = findOdds(rushbet, state.players[row.a].n, state.players[row.b].n, row.at);
-      const pick = generatePick(row, sideA, sideB, odds, model);
+      const pick = generatePick(row, odds, model, prev);
+      if (prev?.dst != null) pick.dst = prev.dst;
       state.picks[m.id] = pick;
-      if (pick.pub) totals.newPicks++;
+      if (!prev) totals.newPicks++;
+      else if (prev.fav !== pick.fav) totals.flipped = (totals.flipped || 0) + 1;
     } catch (e) {
       console.error(`Pick de ${m.id} falló: ${e.message}`);
     }
@@ -367,6 +370,8 @@ function backfillOdds(rushbet) {
     if (p.x && m.st === 's') {
       p.x.oA = odds.oddsA;
       p.x.oB = odds.oddsB;
+      m.oa = odds.oddsA; // en el partido: el modelo aprende el peso del mercado
+      m.ob = odds.oddsB;
     }
     if (!p.o) {
       p.o = p.fav === m.a ? odds.oddsA : odds.oddsB;
@@ -487,6 +492,85 @@ function detailView(m) {
 // argumento lleva un peso aproximado (score del factor × su peso en
 // lib/confidence.js) para ordenarlos de más a menos influyente.
 function buildWhy(p, m) {
+  if (p.src === 'v2') return buildWhyV2(p, m);
+  return buildWhyV1(p, m);
+}
+
+// Análisis del modelo v2: cada argumento con su peso real en el modelo
+// (peso aprendido × valor del dato), del más al menos influyente.
+let currentModel = null;
+function buildWhyV2(p, m) {
+  const x = p.x;
+  if (!x) return null;
+  const favA = p.fav === m.a;
+  const fav = state.players[p.fav]?.n || 'El favorito';
+  const riv = state.players[favA ? m.b : m.a]?.n || 'su rival';
+  const W = currentModel?.weights || { h2h: 1.4, h2h5: -0.2, today: 0.07 };
+  const sgn = favA ? 1 : -1;
+  const pro = [];
+  const con = [];
+  const add = (weight, text) => (weight >= 0 ? pro : con).push({ w: Math.abs(weight), t: text });
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  if (x.rule === 'h2h') add(1, `Regla de lógica: ${riv} gana muy poco el cruce directo contra ${fav}, así que el sistema no lo elige aunque otros datos lo favorezcan.`);
+
+  // Cruce directo completo (la señal más fuerte medida en esta liga).
+  if (x.hT > 0) {
+    const wF = favA ? x.hA : x.hT - x.hA;
+    const w = (W.h2h || 0) * sgn * (p.f?.h2h ?? 0);
+    if (wF * 2 > x.hT) add(w, `Domina el cruce directo en 2026: ganó ${wF} de ${plural(x.hT, 'enfrentamiento', 'enfrentamientos')} contra ${riv}. Es el dato que más pesa en el modelo.`);
+    else if (wF * 2 < x.hT) add(w, `En el cruce directo de 2026 ${riv} ganó ${x.hT - wF} de ${x.hT}.`);
+    else con.push({ w: 0, t: `Cruce directo parejo en 2026: ${wF}-${x.hT - wF}.` });
+  } else con.push({ w: 0, t: 'No se han enfrentado en 2026: el modelo se apoya en la forma del día y el mercado.' });
+
+  // Últimos 5 cruces (el modelo los usa con peso propio).
+  if (x.h5T >= 3) {
+    const w5 = favA ? x.h5A : x.h5T - x.h5A;
+    const w = (W.h2h5 || 0) * sgn * (p.f?.h2h5 ?? 0);
+    // El peso de este dato salió NEGATIVO en el entrenamiento: después de
+    // una racha en el cruce, el que viene perdiendo suele recortar.
+    if (Math.abs(w) >= 0.01) {
+      if (w >= 0) add(w, `Últimos ${x.h5T} cruces: ${fav} ganó solo ${w5}, y en esta liga el que viene perdiendo el cruce suele recortar.`);
+      else add(w, `Últimos ${x.h5T} cruces: ${fav} ganó ${w5}. En esta liga, tras una racha así, el rival suele recortar algo.`);
+    }
+  }
+
+  // Forma del día en este mismo torneo.
+  const fF = favA ? x.fA : x.fB;
+  const fR = favA ? x.fB : x.fA;
+  if (fF && fR && fF[0] + fF[1] + fR[0] + fR[1] > 0) {
+    const w = (W.today || 0) * sgn * (p.f?.today ?? 0);
+    if (w !== 0) add(w, `Forma hoy en este torneo: ${fav} va ${fF[0]}-${fF[1]} y ${riv} va ${fR[0]}-${fR[1]}.`);
+  }
+
+  // Rating oficial (entra al modelo cuando hay suficiente historial con él).
+  const rF = favA ? x.rA : x.rB;
+  const rR = favA ? x.rB : x.rA;
+  if (rF != null && rR != null && rF !== rR) {
+    const d = Math.round(rF - rR);
+    const w = (W.rating || 0.05) * (d / 100);
+    if (d > 0) add(w, `Mejor rating oficial: ${Math.round(rF)} contra ${Math.round(rR)}.`);
+    else add(w, `${riv} tiene mejor rating oficial (${Math.round(rR)} contra ${Math.round(rF)}).`);
+  }
+
+  // Mercado (cuota real de Rushbet sin margen).
+  if (x.pA != null) {
+    const pf = favA ? x.pA : 1 - x.pA;
+    const w = (currentModel?.market?.m ?? 0.7) * (pf - 0.5) * 2;
+    if (pf >= 0.5) add(w, `El mercado coincide: según la cuota de Rushbet tiene ${Math.round(pf * 100)}% de probabilidad de ganar (sin el margen de la casa).`);
+    else add(w, `El mercado ve favorito a ${riv} (${Math.round((1 - pf) * 100)}%): es un pick contra la casa, más arriesgado.`);
+  } else con.push({ w: 0, t: 'Todavía no hay cuota de Rushbet para este partido: el pick se recalcula cuando aparezca, hasta 5 minutos antes del inicio.' });
+
+  const order = (a, b) => b.w - a.w;
+  const acc = x.acc?.all?.acc;
+  return {
+    pro: pro.sort(order).map((r) => r.t),
+    con: con.sort(order).map((r) => r.t),
+    src: `Modelo entrenado con ${(x.n || 0).toLocaleString('es-CO')} partidos reales de 2026${acc ? ` (acierto medido en partidos que no vio: ${String(acc).replace('.', ',')}%)` : ''}`
+  };
+}
+
+function buildWhyV1(p, m) {
   const x = p.x;
   if (!x) return null;
   const favA = p.fav === m.a;
@@ -566,7 +650,9 @@ function buildWhy(p, m) {
 // los picks no van en los archivos públicos; van a Firestore (premium/content),
 // que solo pueden leer las cuentas con membresía activa. Ya jugados, los
 // picks se muestran completos a todos (efectividad transparente).
-const PREMIUM_MIN = 65;
+// Modelo v2: con 60% o más de confianza acertó ~67% en partidos que no vio.
+const PREMIUM_MIN = 60;
+const FEATURED_MAX_ODDS = 2.5; // cuotas más altas = el mercado lo ve perdedor: ahí se perdía casi todo
 const isLocked = (p) => p.res === 'pending' && p.c >= PREMIUM_MIN;
 let premiumContent = null;
 
@@ -609,7 +695,7 @@ function writeSite(meta) {
   const notStarted = pending.filter((p) => state.matches[p.id].st === 's' && new Date(state.matches[p.id].at).getTime() > now);
   // El destacado es público: se elige entre los picks que no son Premium.
   const publicNext = notStarted.filter((p) => p.c < PREMIUM_MIN);
-  const withOdds = publicNext.filter((p) => p.o && p.o > FEATURED_MIN_ODDS);
+  const withOdds = publicNext.filter((p) => p.o && p.o > FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS);
   const pool = withOdds.length ? withOdds : publicNext;
   const featured = pool.slice().sort((a, b) => b.c - a.c || (state.matches[a.id].at < state.matches[b.id].at ? -1 : 1))[0];
   for (const p of notStarted) p.dst = p === featured;
@@ -1168,14 +1254,15 @@ async function run() {
     // Antes no se publicaban los picks de menos de 55%: ahora el modelo
     // publica en todos los partidos (los que no se han jugado).
     if (!p.pub && p.res === 'pending' && m && m.st !== 'f') p.pub = true;
+    // Cuotas que solo estaban en el pick: al partido (el modelo aprende de ellas).
+    if (m && p.x?.oA && p.x?.oB && !m.oa) {
+      m.oa = p.x.oA;
+      m.ob = p.x.oB;
+    }
   }
 
   const model = trainModel();
-  const modelInfo = {
-    active: Boolean(model.weights && model.trainingCount >= MIN_TRAINING_SAMPLES),
-    trainingCount: model.trainingCount
-  };
-  console.log(`Modelo: ${modelInfo.active ? 'ML activo' : 'fórmula'} (${model.trainingCount} picks resueltos)`);
+  const modelInfo = modelSummary(model);
 
   for (const id of ids) {
     try {
@@ -1207,8 +1294,7 @@ async function run() {
 
 // --site-only: regenera site/data con el estado guardado, sin internet.
 async function siteOnly() {
-  const model = trainModel();
-  writeSite({ model: { active: Boolean(model.weights && model.trainingCount >= MIN_TRAINING_SAMPLES), trainingCount: model.trainingCount } });
+  writeSite({ model: modelSummary(trainModel()) });
   console.log('site/data regenerado');
 }
 
