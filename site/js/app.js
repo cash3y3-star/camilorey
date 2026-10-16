@@ -8,6 +8,7 @@
 import { icon, hydrateIcons } from './icons.js?v=__V__';
 import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
+import { startI18n } from './i18n.js?v=__V__';
 import { TELEGRAM_URL, SUPPORT_EMAIL, ADMIN_EMAIL } from './config.js?v=__V__';
 
 const TZ = 'America/Bogota';
@@ -62,8 +63,12 @@ function writeLocal(k, v) {
     localStorage.setItem(k, JSON.stringify(v));
   } catch {}
 }
+// Idioma elegido en Perfil (es / en): define el formato de fechas y horas.
+function LOC() {
+  return readLocal('cr_lang', 'es') === 'en' ? 'en-US' : 'es-CO';
+}
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const fmtTime = (iso) => new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: TZ }).format(new Date(iso));
+const fmtTime = (iso) => new Intl.DateTimeFormat(LOC(), { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: TZ }).format(new Date(iso));
 const dayKey = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(iso));
 const todayKey = () => dayKey(new Date().toISOString());
 function dayLabel(key) {
@@ -74,14 +79,34 @@ function dayLabel(key) {
   if (key === t) return 'Hoy';
   if (key === y) return 'Ayer';
   if (key === m) return 'Mañana';
-  return new Intl.DateTimeFormat('es-CO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ }).format(d);
+  return new Intl.DateTimeFormat(LOC(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ }).format(d);
 }
-const longDate = () => new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ }).format(new Date());
+const longDate = () => new Intl.DateTimeFormat(LOC(), { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ }).format(new Date());
 const pct = (v) => (v == null ? '—' : `${String(v).replace('.', ',')}%`);
-const odds = (o) => (o ? Number(o).toFixed(2) : '—');
+// Cuotas en el formato elegido en Perfil: decimal (1.57), americano
+// (−175 / +150) o fraccional (4/7).
+function odds(o) {
+  if (!o) return '—';
+  const d = Number(o);
+  const fmt = readLocal('cr_odds', 'decimal');
+  if (fmt === 'american') return d >= 2 ? `+${Math.round((d - 1) * 100)}` : `−${Math.round(100 / (d - 1))}`;
+  if (fmt === 'fractional') {
+    // Mejor fracción con denominador hasta 20 (como las cuotas británicas).
+    const x = d - 1;
+    let best = [Math.round(x), 1];
+    for (let den = 1; den <= 20; den++) {
+      const num = Math.round(x * den);
+      if (Math.abs(num / den - x) < Math.abs(best[0] / best[1] - x) - 1e-9) best = [num, den];
+    }
+    const g = (a, b) => (b ? g(b, a % b) : a);
+    const k = g(best[0], best[1]) || 1;
+    return `${best[0] / k}/${best[1] / k}`;
+  }
+  return d.toFixed(2);
+}
 const initials = (n) => (n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
-const fmtInt = (n) => new Intl.NumberFormat('es-CO').format(n || 0);
-const cop = (n) => `$${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(Math.round(n || 0))}`;
+const fmtInt = (n) => new Intl.NumberFormat(LOC()).format(n || 0);
+const cop = (n) => `$${new Intl.NumberFormat(LOC(), { maximumFractionDigits: 0 }).format(Math.round(n || 0))}`;
 const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${cop(Math.abs(n))}`;
 
 function avatar(p, cls = 'avatar') {
@@ -262,7 +287,7 @@ function viewInicio() {
   const streak = fs?.streak || 0;
   const streakTxt = streak > 0 ? `${streak}W 🔥` : streak < 0 ? `${-streak}L` : '—';
   const pend = data.picks;
-  const avgOdds = fs?.avgOdds ? fs.avgOdds.toFixed(2) : '—';
+  const avgOdds = fs?.avgOdds ? odds(fs.avgOdds) : '—';
   const next = upcomingPicks();
   const featured = next.find((p) => p.ft) || next.slice().sort((a, b) => b.c - a.c)[0];
 
@@ -467,7 +492,7 @@ function followCard(p) {
     <div class="fc-body">
       <small class="fc-league">${esc(p.ph ? `${p.ph} · ${tn}` : `Tournament ${tn}`)}</small>
       <b class="fc-name">${esc(fav.n)}</b>
-      <small class="fc-sub">vs ${esc(riv.n)} · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ }).format(new Date(p.at))}</small>
+      <small class="fc-sub">vs ${esc(riv.n)} · ${new Intl.DateTimeFormat(LOC(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ }).format(new Date(p.at))}</small>
       <span class="fc-pill ${pillCls}">${esc(fav.n.toUpperCase())} GANA</span>
       <span data-u="f${p.id}-sc" style="display:contents">${score}</span>
       <div class="fc-conf"><div class="fc-bar"><span style="width:${Math.max(8, ((p.c - 50) / 30) * 100)}%"></span></div><b>${p.c}</b></div>
@@ -524,7 +549,7 @@ function viewSeguidos() {
     else break;
   }
   const withOdds = items.filter((p) => p.o);
-  const avgOdds = withOdds.length ? (withOdds.reduce((a, p) => a + p.o, 0) / withOdds.length).toFixed(2) : '—';
+  const avgOdds = withOdds.length ? odds(withOdds.reduce((a, p) => a + p.o, 0) / withOdds.length) : '—';
   return `
   <div class="seg-head">
     <div><h1 class="page-title">Seguidos</h1>
@@ -805,7 +830,7 @@ function viewPerfil() {
   <div class="subhead"><a class="back" href="#/inicio">${icon('left')} Atrás</a><h1>Perfil</h1></div>
   ${
     u
-      ? `<a class="usercard" href="#/cuenta"><div class="av">${userAvatar()}</div><div style="flex:1;min-width:0"><b>${esc(userName())}</b><small>${esc(u.email || '')}</small><small>Miembro desde ${esc(new Date(u.metadata?.creationTime || Date.now()).toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }))}</small></div>${icon('chev')}</a>`
+      ? `<a class="usercard" href="#/cuenta"><div class="av">${userAvatar()}</div><div style="flex:1;min-width:0"><b>${esc(userName())}</b><small>${esc(u.email || '')}</small><small>Miembro desde ${esc(new Date(u.metadata?.creationTime || Date.now()).toLocaleDateString(LOC(), { month: 'short', year: 'numeric' }))}</small></div>${icon('chev')}</a>`
       : FB.enabled
       ? `<div class="usercard"><div class="av">${icon('user')}</div><div style="flex:1"><b>Invitado</b><small>Inicia sesión para guardar tus picks seguidos</small></div></div>
          <a class="btn primary" style="margin-top:10px" href="#/login">Iniciar sesión o crear cuenta</a>`
@@ -814,6 +839,8 @@ function viewPerfil() {
   <div class="overline" style="margin:22px 4px 8px">Ajustes</div>
   <div class="list">
     <a class="row" href="#/tema"><span class="ic">${icon('moon')}</span><span class="tx"><b>Tema</b><small>${esc({ dark: 'Oscuro', light: 'Claro', system: 'Sistema' }[readLocal('cr_theme_raw', 'dark')] || 'Oscuro')}</small></span><span class="chev">${icon('chev')}</span></a>
+    <a class="row" href="#/cuotas"><span class="ic">${icon('chart')}</span><span class="tx"><b>Formato de cuotas</b><small>${esc(ODDS_FORMATS[readLocal('cr_odds', 'decimal')]?.[0] || 'Decimal')} · ${esc(odds(1.57))}</small></span><span class="chev">${icon('chev')}</span></a>
+    <a class="row" href="#/idioma"><span class="ic">${icon('globe')}</span><span class="tx"><b>Idioma</b><small>${readLocal('cr_lang', 'es') === 'en' ? 'English' : 'Español'}</small></span><span class="chev">${icon('chev')}</span></a>
     ${TELEGRAM_URL ? `<a class="row" href="${esc(TELEGRAM_URL)}" target="_blank" rel="noopener"><span class="ic">${icon('telegram')}</span><span class="tx"><b>Canal de Telegram</b><small>Recibe los picks al instante</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
     <a class="row" href="#/ayuda"><span class="ic">${icon('help')}</span><span class="tx"><b>Ayuda y FAQ</b><small>Preguntas frecuentes, contacto</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/privacidad"><span class="ic">${icon('shield')}</span><span class="tx"><b>Privacidad</b><small>Datos y seguridad de cuenta</small></span><span class="chev">${icon('chev')}</span></a>
@@ -849,7 +876,7 @@ function viewCuenta() {
       <button class="mini-btn red" type="submit">Guardar</button>
     </form>
     <div class="row"><span class="ic">${icon('mail')}</span><span class="tx"><small>Correo</small><b>${esc(u.email || '—')}</b></span></div>
-    <div class="row"><span class="ic">${icon('calendar')}</span><span class="tx"><small>Miembro desde</small><b>${esc(new Date(u.metadata?.creationTime || Date.now()).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }))}</b></span></div>
+    <div class="row"><span class="ic">${icon('calendar')}</span><span class="tx"><small>Miembro desde</small><b>${esc(new Date(u.metadata?.creationTime || Date.now()).toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' }))}</b></span></div>
     <div class="row"><span class="ic">${icon('shield')}</span><span class="tx"><small>ID de usuario</small><b style="font-family:var(--mono);font-size:12px">${esc(u.uid)}</b></span></div>
   </div>
   <button class="btn ghost" style="margin-top:18px;color:var(--loss)" id="btn-delete">${icon('trash')} Eliminar cuenta</button>
@@ -868,6 +895,31 @@ function viewTema() {
     ${opt('system', 'monitor', 'Sistema', 'Sigue el ajuste del dispositivo')}
   </div>
   <p class="note" style="margin-top:14px"><b>Nota:</b> el modo sistema cambia solo entre claro y oscuro según la apariencia de tu celular o PC.</p>`;
+}
+
+const ODDS_FORMATS = {
+  decimal: ['Decimal', 'Ej: 1.57 · 2.50 (el de Rushbet)'],
+  american: ['Americano', 'Ej: −175 · +150'],
+  fractional: ['Fraccional', 'Ej: 4/7 · 3/2']
+};
+
+function viewCuotas() {
+  const cur = readLocal('cr_odds', 'decimal');
+  return `
+  <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Formato de cuotas</h1></div>
+  <div class="list">${Object.entries(ODDS_FORMATS)
+    .map(([k, [t, s]]) => `<button class="row check ${cur === k ? 'on' : ''}" data-oddsfmt="${k}"><span class="ic" style="font-weight:800;font-size:12px">${k === 'decimal' ? '1.57' : k === 'american' ? '−175' : '4/7'}</span><span class="tx"><b>${t}</b><small>${s}</small></span><span class="tick"></span></button>`)
+    .join('')}</div>
+  <p class="note" style="margin-top:14px">Se aplica a todas las cuotas de la página. La de 1.57 se ve así: <b>${esc(odds(1.57))}</b>.</p>`;
+}
+
+function viewIdioma() {
+  const cur = readLocal('cr_lang', 'es');
+  const opt = (k, t, s) => `<button class="row check ${cur === k ? 'on' : ''}" data-lang="${k}"><span class="ic" style="font-weight:800;font-size:12px">${k.toUpperCase()}</span><span class="tx"><b>${t}</b><small>${s}</small></span><span class="tick"></span></button>`;
+  return `
+  <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Idioma</h1></div>
+  <div class="list">${opt('es', 'Español', 'Idioma original')}${opt('en', 'English', 'Interface in English')}</div>
+  <p class="note" style="margin-top:14px">El análisis de cada pick y las páginas legales se muestran en español.</p>`;
 }
 
 const FAQ = [
@@ -951,7 +1003,7 @@ function footer() {
 // izquierda, los dos jugadores con su marcador en sets, el ganador en negrita.
 function h2hListHtml(m, winsA, total) {
   const list = m.h2hL || [];
-  const fmtD = (iso) => new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ }).format(new Date(iso));
+  const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ }).format(new Date(iso));
   const rows = list.length
     ? list
         .map((x) => {
@@ -1110,6 +1162,8 @@ const ROUTES = {
   perfil: viewPerfil,
   cuenta: viewCuenta,
   tema: viewTema,
+  cuotas: viewCuotas,
+  idioma: viewIdioma,
   ayuda: viewAyuda,
   privacidad: () => viewLegal('privacidad'),
   terminos: () => viewLegal('terminos'),
@@ -1230,6 +1284,15 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.ft) {
     ui.formTab = t.dataset.ft;
     return $sheet._redraw?.();
+  }
+  if (t.dataset.oddsfmt) {
+    writeLocal('cr_odds', t.dataset.oddsfmt);
+    return route();
+  }
+  if (t.dataset.lang) {
+    writeLocal('cr_lang', t.dataset.lang);
+    location.reload(); // la traducción se aplica al cargar
+    return;
   }
   if (t.dataset.themeSet) {
     setTheme(t.dataset.themeSet);
@@ -1391,6 +1454,7 @@ window.addEventListener('hashchange', () => {
 });
 
 hydrateIcons();
+startI18n();
 route();
 await loadData();
 route();
