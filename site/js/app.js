@@ -348,8 +348,13 @@ function followCard(p) {
   return `
   <article class="fcard" data-open="${p.id}" data-match="${p.id}">
     <div class="fc-photo">
-      ${fav.av ? `<img src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
       <span class="fc-ini">${esc(initials(fav.n))}</span>
+      ${
+        fav.av
+          ? `<img class="fc-bg" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
+             <img class="fc-img" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+          : ''
+      }
       ${status}
       <span class="fc-tag">CR</span>
     </div>

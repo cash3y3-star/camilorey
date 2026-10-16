@@ -242,7 +242,9 @@ details.faq p { margin: 0; padding: 0 14px 14px; font-size: 13px; color: var(--m
 .fcard { background: var(--card); border: 1px solid var(--line); border-radius: 22px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
 .fcard:active { transform: scale(0.99); }
 .fc-photo { position: relative; height: 150px; background: radial-gradient(ellipse at 50% 30%, #2a0b08, var(--card-2) 70%); display: grid; place-items: end center; overflow: hidden; }
-.fc-photo img { position: relative; z-index: 1; height: 100%; width: 100%; object-fit: cover; object-position: center 20%; -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent); mask-image: linear-gradient(180deg, #000 70%, transparent); }
+/* Fondo: la misma foto difuminada y oscurecida; encima, la foto completa más chica. */
+.fc-photo .fc-bg { position: absolute; inset: -20px; width: calc(100% + 40px); height: calc(100% + 40px); object-fit: cover; filter: blur(18px) saturate(1.2) brightness(0.45); transform: scale(1.1); }
+.fc-photo .fc-img { position: relative; z-index: 1; height: 82%; aspect-ratio: 1; width: auto; object-fit: cover; border-radius: 18px 18px 0 0; box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.35); -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent); mask-image: linear-gradient(180deg, #000 72%, transparent); }
 .fc-ini { position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; font-weight: 900; color: var(--faint); }
 .fc-st { position: absolute; z-index: 2; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 16px; color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
 .fc-st.hit { background: var(--win); }
