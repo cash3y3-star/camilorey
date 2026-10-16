@@ -32,10 +32,13 @@ const OUT_DIR = path.join(ROOT, 'site', 'data');
 const MEDIA_BASE = 'https://api.league-pro.com';
 const TZ = 'America/Bogota';
 
-const MIN_CONFIDENCE_TO_PUBLISH = 55; // escala 50-80%: por debajo de 55 es casi una moneda
+// El modelo publica pick en TODOS los partidos. Por debajo de 55% (escala
+// 50-80%) el partido es parejo y la página lo dice así, sin inflar nada.
+const PAREJO_BELOW = 55;
 const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
-const HISTORY_DAYS = 120; // partidos terminados sin pick más viejos que esto se descartan
+const HISTORY_FROM = '2026-01-01'; // historial completo del año (H2H, forma, rachas)
+const HISTORY_BUDGET_MS = 4 * 60e3; // tiempo por corrida para cargar días viejos que falten
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -60,7 +63,8 @@ const state = {
   tournaments: readJson(path.join(STATE_DIR, 'tournaments.json'), {}),
   matches: readJson(path.join(STATE_DIR, 'matches.json'), {}),
   picks: readJson(path.join(STATE_DIR, 'picks.json'), {}),
-  notified: readJson(path.join(STATE_DIR, 'notified.json'), {}) // avisos push ya enviados (scripts/notify.js)
+  notified: readJson(path.join(STATE_DIR, 'notified.json'), {}), // avisos push ya enviados (scripts/notify.js)
+  history: readJson(path.join(STATE_DIR, 'history.json'), {}) // días viejos ya cargados completos { 'YYYY-MM-DD': true }
 };
 
 function saveState() {
@@ -82,11 +86,28 @@ function isTournamentFinished(sides) {
   return real.length > 0 && real.every((s) => s.place != null);
 }
 
-// Partidos terminados de un jugador, más nuevo primero.
+// Índice jugador -> partidos terminados (más nuevo primero). Con el año
+// completo hay decenas de miles de partidos: recorrerlos todos por cada
+// consulta sería lento. Se rehace cuando cambian los partidos.
+let finishedIdx = null;
 function finishedMatchesOf(playerId) {
-  return Object.values(state.matches)
-    .filter((m) => m.st === 'f' && (m.a === playerId || m.b === playerId))
-    .sort((x, y) => (x.at < y.at ? 1 : -1));
+  if (!finishedIdx) {
+    finishedIdx = new Map();
+    const add = (id, m) => (finishedIdx.get(id) || finishedIdx.set(id, []).get(id)).push(m);
+    for (const m of Object.values(state.matches)) {
+      if (m.st !== 'f') continue;
+      add(m.a, m);
+      add(m.b, m);
+    }
+    for (const list of finishedIdx.values()) list.sort((x, y) => (x.at < y.at ? 1 : -1));
+  }
+  return finishedIdx.get(playerId) || [];
+}
+
+// Todos los cruces directos terminados (más nuevo primero), opcionalmente
+// solo los anteriores a una fecha.
+function h2hMatches(aId, bId, beforeIso = null) {
+  return finishedMatchesOf(aId).filter((m) => (m.a === bId || m.b === bId) && (!beforeIso || m.at < beforeIso));
 }
 
 function recentStreak(playerId) {
@@ -103,10 +124,7 @@ function recentStreak(playerId) {
 // Mismo análisis de rachas dentro del cruce directo que el sitio anterior
 // (ver lib/confidence.js: alternancia / racha típica de la pareja).
 function headToHead(aId, bId) {
-  const data = Object.values(state.matches)
-    .filter((m) => m.st === 'f' && ((m.a === aId && m.b === bId) || (m.a === bId && m.b === aId)))
-    .sort((x, y) => (x.at < y.at ? 1 : -1))
-    .slice(0, 10);
+  const data = h2hMatches(aId, bId).slice(0, 10);
   if (data.length === 0) {
     return { h2hWinsA: 0, h2hTotal: 0, currentStreakPlayerId: null, currentStreakLength: 0, typicalRunLength: null, isPerfectAlternation: false };
   }
@@ -221,7 +239,7 @@ function generatePick(match, sideA, sideB, odds, model) {
       oB: odds?.oddsB ?? null, // hasta que empieza el partido (= cuota prepartido final)
       n: model.trainingCount
     },
-    pub: confidence >= MIN_CONFIDENCE_TO_PUBLISH,
+    pub: true,
     src: useModel ? 'ml' : 'formula',
     res: 'pending',
     created: new Date().toISOString()
@@ -239,13 +257,15 @@ function resolvePick(match) {
 // ---------------- lectura de tt.league-pro.com ----------------
 
 // Reintenta si el sitio limita las consultas (espera 20 s, 60 s, 3 min).
+// Mientras se carga historial viejo no se espera: se deja para la próxima.
+let fetchNoWait = false;
 async function fetchTT(pathname) {
   const waits = [20e3, 60e3, 180e3];
   for (let i = 0; ; i++) {
     try {
       return await fetchNuxtData(pathname);
     } catch (e) {
-      if (!e.rateLimited || i >= waits.length) throw e;
+      if (!e.rateLimited || fetchNoWait || i >= waits.length) throw e;
       console.log(`  límite de consultas, esperando ${waits[i] / 1000}s...`);
       await sleep(waits[i]);
     }
@@ -311,6 +331,7 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       sb: played ? m.results.score_two : null,
       w: played ? (m.results.score_one > m.results.score_two ? sideA.player.id : sideB.player.id) : null
     };
+    if (played && state.matches[m.id]?.st !== 'f') finishedIdx = null; // índice de terminados desactualizado
     state.matches[m.id] = row;
     totals.matches++;
 
@@ -356,9 +377,8 @@ function backfillOdds(rushbet) {
 }
 
 function prune() {
-  const cutoff = new Date(Date.now() - HISTORY_DAYS * 86400e3).toISOString();
   for (const [id, m] of Object.entries(state.matches)) {
-    if (m.at < cutoff && !state.picks[id]) delete state.matches[id];
+    if (m.at < HISTORY_FROM && !state.picks[id]) delete state.matches[id];
   }
   const usedT = new Set(Object.values(state.matches).map((m) => m.t));
   for (const id of Object.keys(state.tournaments)) if (!usedT.has(Number(id))) delete state.tournaments[id];
@@ -390,10 +410,15 @@ function playerRef(id) {
 // partidos del torneo) son la definición — el último es la final y el
 // anterior el 3er puesto. Se calcula por torneo y se guarda en caché.
 const phaseCache = new Map();
+let byTournament = null; // se arma una vez, en writeSite (después de cargar todo)
 function phaseOf(m) {
   if (m.sg == null) return null;
   if (!phaseCache.has(m.t)) {
-    const list = Object.values(state.matches).filter((x) => x.t === m.t && x.sg != null);
+    if (!byTournament) {
+      byTournament = new Map();
+      for (const x of Object.values(state.matches)) (byTournament.get(x.t) || byTournament.set(x.t, []).get(x.t)).push(x);
+    }
+    const list = (byTournament.get(m.t) || []).filter((x) => x.sg != null);
     const count = new Map();
     for (const x of list) count.set(x.sg, (count.get(x.sg) || 0) + 1);
     const group = [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -436,15 +461,15 @@ function formBefore(playerId, beforeIso) {
 }
 
 function detailView(m) {
-  const h2h = Object.values(state.matches)
-    .filter((x) => x.st === 'f' && x.at < m.at && ((x.a === m.a && x.b === m.b) || (x.a === m.b && x.b === m.a)))
-    .sort((x, y) => (x.at < y.at ? 1 : -1))
-    .slice(0, 10);
+  const all = h2hMatches(m.a, m.b, m.at);
+  const h2h = all.slice(0, 10);
+  h2hPairs.add(`${Math.min(m.a, m.b)}-${Math.max(m.a, m.b)}`); // H2H completo en data/h2h/
   return {
     ...matchView(m),
     fa: formBefore(m.a, m.at),
     fb: formBefore(m.b, m.at),
     h2h: h2h.map((x) => (x.w === m.a ? 'A' : 'B')).join(''),
+    hN: all.length, // cruces directos en todo el historial (desde HISTORY_FROM)
     // Lista de enfrentamientos (estilo Sofascore): fecha, torneo y sets
     // desde el punto de vista del jugador A de ESTE partido.
     h2hL: h2h.map((x) => ({
@@ -570,6 +595,9 @@ function summarize(list) {
 
 function writeSite(meta) {
   const now = Date.now();
+  byTournament = null;
+  phaseCache.clear();
+  h2hPairs.clear();
   const published = Object.values(state.picks).filter((p) => p.pub && state.matches[p.id]);
 
   // Pick destacado: entre los pendientes que TODAVÍA NO EMPIEZAN, el de más
@@ -734,6 +762,26 @@ function writeSite(meta) {
   });
   registeredUsers = meta.users ?? null; // va a la parte privada del admin, no a stats.json
   writePlayers(new Set([...calendar.flatMap((m) => [m.a.id, m.b.id]), ...pendingView.flatMap((p) => [p.a.id, p.b.id]), ...champs.flatMap((c) => [c.champ.id, c.rival.id]), ...hot.map((h) => h.p.id)]), byPlayer);
+  writeH2H();
+}
+
+// H2H completo del año de cada pareja que aparece en la página:
+// site/data/h2h/{idMenor}-{idMayor}.json (la ficha lo pide al abrir H2H).
+const h2hPairs = new Set();
+function writeH2H() {
+  const dir = path.join(OUT_DIR, 'h2h');
+  fs.rmSync(dir, { recursive: true, force: true });
+  for (const key of h2hPairs) {
+    const [lo, hi] = key.split('-').map(Number);
+    const l = h2hMatches(lo, hi).map((x) => ({
+      at: x.at,
+      tn: (state.tournaments[x.t]?.n || '').replace(/^Tournament\s*/i, ''),
+      ph: phaseOf(x),
+      w: x.w,
+      s: x.a === lo ? [x.sa, x.sb] : [x.sb, x.sa] // sets: [del id menor, del id mayor]
+    }));
+    writeJson(path.join(dir, `${key}.json`), { from: HISTORY_FROM, l });
+  }
 }
 
 // Índice: partidos terminados de cada jugador, del más nuevo al más viejo.
@@ -1004,6 +1052,59 @@ async function backfill(daysBack) {
   console.log('Backfill listo:', totals, 'partidos en estado:', Object.keys(state.matches).length);
 }
 
+// Historial del año (desde HISTORY_FROM): en cada corrida normal se usan
+// hasta HISTORY_BUDGET_MS para cargar días viejos que falten, del más
+// reciente hacia atrás. Así se completa solo, sin una corrida de horas que
+// frene las actualizaciones. Si tt.league-pro limita las consultas, se
+// para y sigue en la próxima corrida. Devuelve true si cargó días nuevos.
+async function historyStep(budgetMs) {
+  const deadline = Date.now() + budgetMs;
+  const totals = { matches: 0, resolved: 0, newPicks: 0 };
+  let loaded = 0;
+  fetchNoWait = true;
+  try {
+    for (let k = 2; ; k++) {
+      const day = new Date(Date.now() - k * 86400e3).toISOString().slice(0, 10);
+      if (day < HISTORY_FROM) break;
+      if (state.history[day]) continue;
+      if (Date.now() > deadline) break;
+      const list = await listTournaments(day, day);
+      const todo = list.filter((t) => state.tournaments[t.id]?.st !== 'f');
+      let ok = true;
+      for (const t of todo) {
+        if (Date.now() > deadline) {
+          ok = false;
+          break;
+        }
+        try {
+          await processTournament(t.id, { makePicks: false, rushbet: [], model: null, totals });
+        } catch (e) {
+          if (e.rateLimited) throw e;
+          console.error(`Historial, torneo ${t.id}: ${e.message}`);
+          ok = false;
+        }
+        await sleep(BACKFILL_PAUSE_MS);
+      }
+      if (ok) {
+        state.history[day] = true;
+        loaded++;
+      }
+    }
+  } catch (e) {
+    console.log(`Historial: pausa (${e.rateLimited ? 'límite de consultas' : e.message})`);
+  } finally {
+    fetchNoWait = false;
+  }
+  const missing = [];
+  for (let k = 2; ; k++) {
+    const day = new Date(Date.now() - k * 86400e3).toISOString().slice(0, 10);
+    if (day < HISTORY_FROM) break;
+    if (!state.history[day]) missing.push(day);
+  }
+  console.log(`Historial: ${loaded} días cargados en esta corrida (${totals.matches} partidos); faltan ${missing.length}${missing.length ? ` (el más reciente: ${missing[0]})` : ' — año completo'}`);
+  return loaded > 0;
+}
+
 async function run() {
   const totals = { matches: 0, resolved: 0, newPicks: 0 };
   const now = Date.now();
@@ -1052,6 +1153,9 @@ async function run() {
       p.c = Math.round(Math.max(50, Math.min(80, 50 + ((p.c - 70) * 30) / 22)));
       p.v2 = true;
     }
+    // Antes no se publicaban los picks de menos de 55%: ahora el modelo
+    // publica en todos los partidos (los que no se han jugado).
+    if (!p.pub && p.res === 'pending' && m && m.st !== 'f') p.pub = true;
   }
 
   const model = trainModel();
@@ -1071,6 +1175,7 @@ async function run() {
   }
 
   totals.oddsBackfilled = backfillOdds(rushbet);
+  await historyStep(HISTORY_BUDGET_MS);
   prune();
   writeSite({ model: modelInfo, tipster: await tipsterStats(), users: await require('./notify').countUsers() });
   try {

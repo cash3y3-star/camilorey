@@ -331,7 +331,7 @@ function matchCard(m, pick = m.pick || (m.c || m.locked ? m : null) || tipsterPi
       pick
         ? `<div class="pickbar">
         <span class="who">Pick: <b>${esc(fav?.n)}</b> gana</span>
-        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `${pick.premium ? '<span class="badge red" title="Pick Premium">⭐</span>' : ''}<span class="conf">${pick.c}%</span>`}
+        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `${pick.premium ? '<span class="badge red" title="Pick Premium">⭐</span>' : ''}<span class="conf${pick.c < 55 ? ' low' : ''}" ${pick.c < 55 ? 'title="Partido parejo: baja confianza"' : ''}>${pick.c}%</span>`}
         <span class="odds">${odds(pick.o)}</span>
         ${res}
         ${pick.res === 'pending' ? `<button class="follow ${isFollowed(m.id) ? 'on' : ''}" data-follow="${m.id}" aria-label="Seguir pick">${icon('heart')}</button>` : ''}
@@ -1555,7 +1555,7 @@ function noPickBlock(m, lv) {
         ${tp.note ? `<p class="tipster-note" style="margin:0">💬 ${esc(tp.note)}</p>` : ''}
         ${tp.res === 'hit' ? '<div class="badge win" style="margin-top:10px">✓ Resultado: acierto</div>' : tp.res === 'miss' ? '<div class="badge loss" style="margin-top:10px">✗ Resultado: fallo</div>' : ''}
       </div></div>`
-    : '<div class="block"><p class="note">El sistema no publica pick en este partido: lo ve demasiado parejo (menos de 55% de confianza).</p></div>';
+    : '<div class="block"><p class="note">El sistema no alcanzó a analizar este partido (empezó antes de tener sus datos).</p></div>';
   if (!isAdmin() || m.st === 'f') return shown;
 
   const np = adminNoPick[m.id] || {};
@@ -1587,13 +1587,36 @@ function noPickBlock(m, lv) {
 
 // Enfrentamientos directos en lista, estilo Sofascore: fecha y torneo a la
 // izquierda, los dos jugadores con su marcador en sets, el ganador en negrita.
-function h2hListHtml(m, winsA, total) {
+// H2H completo del año (data/h2h/{idMenor}-{idMayor}.json): se pide al
+// abrir la pestaña H2H y se redibuja la ficha cuando llega.
+const h2hCache = new Map();
+function h2hFull(m, redraw) {
+  const lo = Math.min(m.a.id, m.b.id);
+  const key = `${lo}-${Math.max(m.a.id, m.b.id)}`;
+  if (!h2hCache.has(key)) {
+    h2hCache.set(key, undefined);
+    getJson(`h2h/${key}`)
+      .then((d) => h2hCache.set(key, d))
+      .catch(() => h2hCache.set(key, null))
+      .finally(() => $sheet._redraw === redraw && redraw());
+    return null;
+  }
+  const d = h2hCache.get(key);
+  if (!d) return null;
+  // Desde el punto de vista del jugador A de ESTE partido, solo antes de él.
+  const list = d.l
+    .filter((x) => x.at < m.at)
+    .map((x) => ({ at: x.at, tn: x.tn, ph: x.ph, w: x.w, sa: m.a.id === lo ? x.s[0] : x.s[1], sb: m.a.id === lo ? x.s[1] : x.s[0] }));
+  return { list, from: d.from };
+}
+
+function h2hListHtml(m, winsA, total, label) {
   const list = m.h2hL || [];
   const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ }).format(new Date(iso));
   const rows = list.length
     ? list
         .map((x) => {
-          const aw = x.sa > x.sb;
+          const aw = x.w != null ? x.w === m.a.id : x.sa > x.sb;
           return `<div class="h2h-row">
             <div class="h2h-date">${fmtD(x.at)}<small>${esc(x.ph ? `${x.ph} · ${x.tn}` : x.tn)}</small></div>
             <div class="h2h-names"><div class="${aw ? 'w' : ''}">${esc(m.a.n)}</div><div class="${aw ? '' : 'w'}">${esc(m.b.n)}</div></div>
@@ -1606,7 +1629,7 @@ function h2hListHtml(m, winsA, total) {
         .map((c) => `<div class="h2h-row"><div class="h2h-date">—</div><div class="h2h-names"><div class="${c === 'A' ? 'w' : ''}">${esc(m.a.n)}</div><div class="${c === 'A' ? '' : 'w'}">${esc(m.b.n)}</div></div><div class="h2h-score"><div>${c === 'A' ? 'G' : 'P'}</div><div>${c === 'A' ? 'P' : 'G'}</div></div></div>`)
         .join('');
   return `
-    <div class="h2h-sum"><b>${winsA}</b><span class="lbl">Últimos ${total} enfrentamientos<br>${esc(m.a.n)} · ${esc(m.b.n)}</span><b>${total - winsA}</b></div>
+    <div class="h2h-sum"><b>${winsA}</b><span class="lbl">${label || `Últimos ${total} enfrentamientos`}<br>${esc(m.a.n)} · ${esc(m.b.n)}</span><b>${total - winsA}</b></div>
     <div class="h2h-list">${rows}</div>`;
 }
 
@@ -1652,9 +1675,15 @@ function openMatch(id) {
       <div class="block-h"><span class="overline">Forma reciente</span><div class="seg">${['L5', 'L10', 'H2H'].map((t) => `<button data-ft="${t}" class="${tab === t ? 'on' : ''}">${t}</button>`).join('')}</div></div>
       ${
         tab === 'H2H'
-          ? h2hTotal
-            ? h2hListHtml(m, h2hWinsA, h2hTotal)
-            : '<p class="note">Sin enfrentamientos directos registrados.</p>'
+          ? (() => {
+              const full = h2hFull(m, draw);
+              if (full) {
+                if (!full.list.length) return '<p class="note">Sin enfrentamientos directos en 2026.</p>';
+                const wA = full.list.filter((x) => x.w === m.a.id).length;
+                return h2hListHtml({ ...m, h2hL: full.list }, wA, full.list.length, `${full.list.length} enfrentamientos en 2026`);
+              }
+              return h2hTotal ? h2hListHtml(m, h2hWinsA, h2hTotal) : '<p class="note">Sin enfrentamientos directos registrados.</p>';
+            })()
           : [m.a, m.b]
               .map((p, i) => {
                 const f = (i ? m.fb : m.fa) || '';
@@ -1672,6 +1701,7 @@ function openMatch(id) {
       <div class="block-h"><span class="overline">Probabilidad de victoria</span><span style="font-size:11px;color:var(--muted)">según el modelo</span></div>
       <div class="prob"><b>${cA}%</b><div class="meter"><span style="width:${cA}%"></span><span class="other" style="width:${100 - cA}%"></span></div><b>${100 - cA}%</b></div>
       <div class="prob-x"><span>${esc(m.a.n)}</span><span>${esc(m.b.n)}</span></div>
+      ${pick.c < 55 ? `<p class="note" style="margin:10px 0 0">${icon('info')} Partido parejo: el modelo ve poca ventaja (menos de 55%). Es un pick de baja confianza.</p>` : ''}
     </div>
     <div class="block">
       <div class="analysis">

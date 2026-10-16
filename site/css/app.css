@@ -173,6 +173,7 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
 .pickbar .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pickbar .who b { color: var(--text); }
 .conf { font-weight: 800; color: var(--red-2); }
+.conf.low { color: var(--muted); } /* partido parejo (menos de 55%) */
 .odds { font-family: var(--mono); font-weight: 700; padding: 3px 7px; border-radius: 7px; background: var(--card-2); }
 .follow { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
 .follow.on { color: var(--red-2); }
