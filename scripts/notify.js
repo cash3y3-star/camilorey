@@ -143,12 +143,26 @@ async function runNotifications(state, helpers) {
     }
     N._featured = helpers.featuredId;
   }
-  if (!events.length) return console.log('Push: sin eventos nuevos');
+  // Chat de soporte: aviso SOLO al admin cuando alguien pidió hablar con
+  // una persona y hay mensajes sin leer (uno por mensaje nuevo).
+  const chatEvents = [];
+  try {
+    N._chats = N._chats || {};
+    for (const c of await pendingChats(token)) {
+      if (N._chats[c.uid] === c.lastAt) continue;
+      N._chats[c.uid] = c.lastAt;
+      chatEvents.push({ kind: 'chat', title: `Chat en vivo: ${c.name || c.email || 'un usuario'} quiere hablar contigo`, body: String(c.last || '').slice(0, 120), url: `${SITE}#/admin`, tag: `chat${c.uid}` });
+    }
+  } catch (e) {
+    console.error(`Push chat: ${e.message}`);
+  }
+  if (!events.length && !chatEvents.length) return console.log('Push: sin eventos nuevos');
 
   let sent = 0;
   for (const u of users) {
     const prefs = { start: true, end: true, featured: true, ...u.notify };
     const mine = events.filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && u.follows.map(Number).includes(e.mid)));
+    if (u.email === 'camilosimanca77@gmail.com') mine.push(...chatEvents);
     if (!mine.length) continue;
     const alive = [];
     for (const sub of u.push) {
@@ -166,8 +180,24 @@ async function runNotifications(state, helpers) {
     if (alive.length !== u.push.length) await savePush(token, u, alive);
   }
   // Limpia avisos viejos (partidos que ya no están en el estado).
-  for (const k of Object.keys(N)) if (k !== '_featured' && !state.matches[k]) delete N[k];
-  console.log(`Push: ${events.length} eventos, ${sent} notificaciones enviadas`);
+  for (const k of Object.keys(N)) if (!k.startsWith('_') && !state.matches[k]) delete N[k];
+  console.log(`Push: ${events.length + chatEvents.length} eventos, ${sent} notificaciones enviadas`);
+}
+
+// Chats donde el usuario pidió una persona y el admin no ha leído.
+async function pendingChats(token) {
+  const r = await fetch(`${DOCS}/chats?pageSize=300`, { headers: { Authorization: `Bearer ${token}` } });
+  if (r.status === 403 || r.status === 404) return []; // reglas aún sin "chats" para el bot
+  if (!r.ok) throw new Error(`leer chats: HTTP ${r.status}`);
+  const out = [];
+  for (const d of (await r.json()).documents || []) {
+    const f = Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, fromFs(v)]));
+    if (!f.human || !f.unreadAdmin) continue;
+    const msgs = Array.isArray(f.msgs) ? f.msgs : [];
+    const last = [...msgs].reverse().find((m) => m && m.r === 'u');
+    out.push({ uid: d.name.split('/').pop(), name: f.name, email: f.email, lastAt: f.lastAt, last: last?.t });
+  }
+  return out;
 }
 
 // Número REAL de cuentas registradas (documentos de usuario). Reemplaza al

@@ -65,5 +65,14 @@ service cloud.firestore {
       allow read: if isAdmin() || isPremium();
       allow create, update: if isBot();
     }
+
+    // Soporte en vivo: cada usuario solo su conversación (id = su uid);
+    // el admin las ve y responde todas; el bot las lee para avisarle al
+    // admin por notificación cuando alguien pide hablar con una persona.
+    match /chats/{uid} {
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin() || isBot();
+      allow create, update: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
   }
 }

@@ -10,6 +10,7 @@ import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
 import { startI18n } from './i18n.js?v=__V__';
 import { tapFx, followFx, fxEnabled, setFx } from './feedback.js?v=__V__';
+import { initChat, syncUser as syncChatUser, fmt as chatFmt } from './chat.js?v=__V__';
 import { TELEGRAM_URL, SUPPORT_EMAIL, ADMIN_EMAIL, VAPID_PUBLIC_KEY } from './config.js?v=__V__';
 
 const TZ = 'America/Bogota';
@@ -580,6 +581,8 @@ function viewAdmin() {
   <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Panel admin</h1></div>
   <div class="section-h"><h2>📅 Resumen del día</h2><span class="badge red">Solo admin</span></div>
   <div id="admin-daily">${skeleton(2)}</div>
+  <div class="section-h" id="admin-chats"><h2>💬 Soporte en vivo</h2><span class="badge" id="admin-chats-count"></span></div>
+  <div id="admin-chats-box">${skeleton(1)}</div>
   <div class="section-h"><h2>👑 Publicar pick del tipster</h2></div>
   <form class="card pad" id="tipster-form">
     <label class="field"><span>Partido</span>
@@ -710,9 +713,101 @@ async function renderAdminDaily(reload = true) {
   if (sc) sc.scrollLeft = on ? on.getBoundingClientRect().left - sc.getBoundingClientRect().left + sc.scrollLeft - sc.clientWidth / 2 + on.clientWidth / 2 : sc.scrollWidth;
 }
 
+// ---------- Soporte en vivo: conversaciones (solo admin) ----------
+// Se escuchan en vivo desde que entra la cuenta admin: el botón flotante
+// muestra un punto si hay mensajes sin leer y el panel se actualiza solo.
+let adminChats = null;
+let adminChatsErr = null;
+let adminChatUnsub = null;
+let adminChatDel = null; // uid con "¿seguro?" de borrar pendiente
+
+function startAdminChats() {
+  if (adminChatUnsub || !isAdmin()) return;
+  adminChatUnsub = true;
+  FB.adminWatchChats((list, err) => {
+    adminChats = list;
+    adminChatsErr = list ? null : err;
+    const dot = document.querySelector('#chat-fab .chat-dot');
+    if (dot) dot.hidden = !(list || []).some((c) => c.unreadAdmin);
+    renderAdminChats();
+  })
+    .then((fn) => (adminChatUnsub = fn))
+    .catch((e) => {
+      adminChatsErr = e;
+      renderAdminChats();
+    });
+}
+
+function renderAdminChats() {
+  const box = document.getElementById('admin-chats-box');
+  if (!box) return;
+  if (adminChatsErr) {
+    box.innerHTML = `<div class="note">No se pudieron leer las conversaciones (${esc(adminChatsErr.code || adminChatsErr.message)}). Revisa que las reglas de Firestore tengan la parte de "chats".</div>`;
+    return;
+  }
+  if (!adminChats) {
+    box.innerHTML = skeleton(1);
+    return;
+  }
+  const count = document.getElementById('admin-chats-count');
+  const pend = adminChats.filter((c) => c.unreadAdmin).length;
+  if (count) count.textContent = pend ? `${pend} sin leer` : `${adminChats.length}`;
+  if (!adminChats.length) {
+    box.innerHTML = '<p class="note">Todavía nadie ha escrito al chat. Cuando alguien toque "Hablar con una persona", te aparece aquí y te llega una notificación al celular (si las tienes activadas).</p>';
+    return;
+  }
+  const sel = adminChats.find((c) => c.id === ui.chatSel);
+  const who = { u: null, ai: 'IA', admin: 'Tú' };
+  const when = (iso) => (iso ? `${dayLabel(dayKey(iso))} ${fmtTime(iso)}` : '');
+  const rows = adminChats
+    .map((c) => {
+      const last = (c.msgs || []).slice(-1)[0];
+      return `<button type="button" class="row chat-row ${c.id === ui.chatSel ? 'on' : ''}" data-chatsel="${esc(c.id)}">
+        <span class="ic">${icon(c.human ? 'users' : 'bolt')}</span>
+        <span class="tx"><b>${esc(c.name || c.email || 'Usuario')}${c.unreadAdmin ? ' <span class="badge red">Nuevo</span>' : ''}${c.human ? ' <span class="badge">Pide persona</span>' : ''}</b><small>${esc(when(c.lastAt))} · ${esc((last?.t || '').slice(0, 70))}</small></span>
+      </button>`;
+    })
+    .join('');
+  const thread = sel
+    ? `<div class="card pad chat-thread">
+      <div class="block-h" style="margin:0 0 8px"><div><b>${esc(sel.name || 'Usuario')}</b><small style="display:block;color:var(--muted)">${esc(sel.email || '')}</small></div><button type="button" class="mini-btn" data-chatsel="">Cerrar</button></div>
+      <div class="chat-body admin" id="admin-chat-body">${(sel.msgs || [])
+        .map((m) => `<div class="cmsg ${m.r === 'u' ? 'ai' : m.r === 'admin' ? 'me' : 'bot'}"><small>${esc(m.r === 'u' ? sel.name || 'Usuario' : who[m.r])} · ${esc(when(m.at))}</small><div class="bub">${chatFmt(m.t)}</div></div>`)
+        .join('')}</div>
+      <form id="admin-chat-form" class="chat-form" style="margin-top:10px" autocomplete="off"><textarea name="msg" rows="2" maxlength="1000" placeholder="Escribe tu respuesta…" required></textarea><button class="chat-send" type="submit" aria-label="Enviar">${icon('send')}</button></form>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        ${sel.human ? `<button type="button" class="mini-btn" data-chatdone="${esc(sel.id)}">Marcar atendido (vuelve la IA)</button>` : ''}
+        <button type="button" class="mini-btn" data-chatdel="${esc(sel.id)}">${adminChatDel === sel.id ? '¿Seguro? Toca otra vez para borrar' : 'Borrar conversación'}</button>
+      </div>
+    </div>`
+    : '';
+  box.innerHTML = `${thread}<div class="list" style="margin-top:${sel ? 12 : 0}px">${rows}</div>`;
+  const body = document.getElementById('admin-chat-body');
+  if (body) body.scrollTop = body.scrollHeight;
+  if (sel?.unreadAdmin) FB.adminMarkRead(sel.id).catch(() => {});
+}
+
+document.addEventListener('submit', async (ev) => {
+  if (ev.target.id !== 'admin-chat-form') return;
+  ev.preventDefault();
+  const ta = ev.target.querySelector('textarea');
+  const text = ta.value.trim();
+  if (!text || !ui.chatSel) return;
+  ta.disabled = true;
+  try {
+    await FB.adminReply(ui.chatSel, text);
+    ta.value = '';
+  } catch (e) {
+    toast(`No se pudo enviar: ${e.code || e.message}`);
+  }
+  ta.disabled = false;
+});
+
 async function renderAdminPanel() {
   if (!isAdmin()) return;
   renderAdminDaily();
+  startAdminChats();
+  renderAdminChats();
   // Picks del tipster publicados
   const tbox = document.getElementById('admin-tipster');
   const tips = (await loadTipster(true)).sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -1777,8 +1872,14 @@ function formListHtml(p, f, n, last) {
   return `${head}<div class="h2h-list">${rows}</div>`;
 }
 
+const H2H_SHOW = 10; // cruces visibles antes de "Mostrar más"
 function h2hListHtml(m, winsA, total, label) {
-  const list = m.h2hL || [];
+  const full = m.h2hL || [];
+  const list = ui.h2hMore ? full : full.slice(0, H2H_SHOW);
+  const more =
+    full.length > H2H_SHOW
+      ? `<button type="button" class="h2h-more" data-h2hmore="1">${ui.h2hMore ? 'Mostrar menos' : `Mostrar más (${full.length - H2H_SHOW} enfrentamientos más)`}</button>`
+      : '';
   const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ }).format(new Date(iso));
   const rows = list.length
     ? list
@@ -1797,13 +1898,14 @@ function h2hListHtml(m, winsA, total, label) {
         .join('');
   return `
     <div class="h2h-sum"><b>${winsA}</b><span class="lbl">${label || `Últimos ${total} enfrentamientos`}<br>${esc(m.a.n)} · ${esc(m.b.n)}</span><b>${total - winsA}</b></div>
-    <div class="h2h-list">${rows}</div>`;
+    <div class="h2h-list">${rows}${more}</div>`;
 }
 
 function openMatch(id) {
   const m = allById().get(Number(id));
   if (!m) return;
   Object.assign(pickEdit, { side: null, mode: null, open: false });
+  ui.h2hMore = false;
   tapFx(); // "tic" y vibración al abrir un partido
   const pick = m.pick || (m.c ? m : null);
   const draw = () => {
@@ -2129,6 +2231,31 @@ document.addEventListener('click', async (ev) => {
     ui.formTab = t.dataset.ft;
     return $sheet._redraw?.();
   }
+  if (t.dataset.h2hmore) {
+    ui.h2hMore = !ui.h2hMore;
+    return $sheet._redraw?.();
+  }
+  if (t.dataset.chatsel !== undefined) {
+    ui.chatSel = t.dataset.chatsel || null;
+    adminChatDel = null;
+    renderAdminChats();
+    if (ui.chatSel) document.getElementById('admin-chats')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (t.dataset.chatdone) {
+    await FB.adminMarkRead(t.dataset.chatdone, { human: false }).catch((e) => toast(e.message));
+    return;
+  }
+  if (t.dataset.chatdel) {
+    if (adminChatDel !== t.dataset.chatdel) {
+      adminChatDel = t.dataset.chatdel;
+      return renderAdminChats();
+    }
+    await FB.adminDeleteChat(t.dataset.chatdel).catch((e) => toast(e.message));
+    adminChatDel = null;
+    ui.chatSel = null;
+    return;
+  }
   if (t.dataset.aday) {
     ui.adminDay = t.dataset.aday;
     return renderAdminDaily(false);
@@ -2450,6 +2577,8 @@ function startFirebase() {
     profile = u ? await FB.loadProfile().catch(() => null) : null;
     await refreshPremium();
     renderAuthHeader();
+    syncChatUser();
+    if (isAdmin()) startAdminChats();
     if (u) {
       const remote = await FB.loadFollows().catch(() => null);
       if (remote) {
@@ -2467,5 +2596,44 @@ else if ('requestIdleCallback' in window) requestIdleCallback(startFirebase, { t
 else setTimeout(startFirebase, 1500);
 // Cualquier toque a algo de la cuenta también la arranca al momento.
 window.addEventListener('hashchange', startFirebase, { once: true });
+
+// ---------- Soporte en vivo (chat con IA + persona) ----------
+function chatContext() {
+  const s = data.stats;
+  const h = s?.model?.holdout;
+  const feat = data.picks.find((p) => p.ft);
+  const tp = (tipsterCache || []).find((t) => t.at && new Date(t.at).getTime() > Date.now() - 3 * 3600e3);
+  const lines = [];
+  if (feat) {
+    const fav = feat.fav === feat.a.id ? feat.a : feat.b;
+    lines.push(`- Pick destacado ahora (público): ${fav.n} gana en ${feat.a.n} vs ${feat.b.n}, ${dayLabel(dayKey(feat.at))} a las ${fmtTime(feat.at)}, confianza ${feat.c}%${feat.o ? `, cuota ${feat.o}` : ''}.`);
+  } else lines.push('- Ahora mismo no hay pick destacado publicado.');
+  if (tp) lines.push(`- Pick del tipster reciente: ${tp.favName} gana contra ${tp.opName}.`);
+  if (s?.featured) lines.push(`- Resultados de los picks destacados: ${JSON.stringify(s.featured).slice(0, 300)}`);
+  return {
+    now: new Intl.DateTimeFormat('es-CO', { dateStyle: 'full', timeStyle: 'short', timeZone: TZ }).format(new Date()),
+    user: account ? `${account.displayName || 'sin nombre'} (${account.email || 'sin correo'}), con sesión iniciada` : 'visitante sin sesión iniciada',
+    premium: isAdmin() ? 'es el administrador del sitio' : isPremiumUser() ? `sí, activo${membership?.until ? ` hasta ${membership.until.toLocaleDateString('es-CO')}` : ''}` : 'no',
+    model: h?.all ? `Acierto del modelo medido en partidos que no vio: ${h.all.acc}% en todos, ${h.c55?.acc}% en los de 55% o más y ${h.c60?.acc}% en los de 60% o más. Es una medición, no una garantía.` : '',
+    extra: lines.join('\n')
+  };
+}
+
+initChat({
+  FB,
+  getUser: () => account,
+  isPremium: () => isPremiumUser(),
+  isAdmin: () => isAdmin(),
+  context: chatContext,
+  openLogin: () => (location.hash = '#/login'),
+  openAdmin: () => {
+    location.hash = '#/admin';
+    setTimeout(() => document.getElementById('admin-chats')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 500);
+  },
+  onTap: () => {
+    tapFx();
+    startFirebase(); // para guardar la conversación si hay sesión
+  }
+});
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

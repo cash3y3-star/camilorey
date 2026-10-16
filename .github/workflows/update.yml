@@ -75,7 +75,13 @@ jobs:
       # Número de versión en los archivos: el navegador descarga siempre la
       # versión recién publicada en vez de una copia vieja.
       - name: Marcar versión
-        run: sed -i "s/__V__/${GITHUB_SHA::8}/g" site/index.html site/js/*.js
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+        run: |
+          sed -i "s/__V__/${GITHUB_SHA::8}/g" site/index.html site/js/*.js
+          # Llave de Gemini para el chat (si no está el secreto, el chat
+          # funciona sin IA: los mensajes le llegan al admin).
+          [ -n "$GEMINI_KEY" ] && sed -i "s/__GEMINI_KEY__/${GEMINI_KEY}/" site/js/config.js || true
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

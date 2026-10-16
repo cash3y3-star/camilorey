@@ -256,6 +256,80 @@ export async function saveFollows(ids) {
   await f.F.setDoc(f.F.doc(f.db, 'users', currentUser.uid), { follows: ids.slice(-300) }, { merge: true });
 }
 
+// ---------------- chat de soporte ----------------
+// chats/{uid} = { uid, email, name, msgs: [{ id, r: 'u'|'ai'|'admin', t, at }],
+//   human (pidió persona), unreadAdmin, unreadUser, lastAt }
+// Reglas: cada usuario solo su chat; el admin todos.
+
+const MAX_MSGS = 200;
+
+// Escucha en vivo el chat del usuario actual. Devuelve la función para dejar de escuchar.
+export async function watchMyChat(cb) {
+  if (!currentUser) return () => {};
+  const f = await load();
+  return f.F.onSnapshot(
+    f.F.doc(f.db, 'chats', currentUser.uid),
+    (s) => cb(s.exists() ? s.data() : null),
+    () => cb(null)
+  );
+}
+
+// Agrega mensajes al chat del usuario actual (y marca para el admin si pidió persona).
+export async function pushMyChat(msgs, patch = {}) {
+  if (!currentUser) return;
+  const f = await load();
+  const ref = f.F.doc(f.db, 'chats', currentUser.uid);
+  const cur = (await f.F.getDoc(ref)).data();
+  const all = [...(cur?.msgs || []), ...msgs].slice(-MAX_MSGS);
+  await f.F.setDoc(
+    ref,
+    {
+      uid: currentUser.uid,
+      email: currentUser.email || '',
+      name: currentUser.displayName || '',
+      msgs: all,
+      lastAt: new Date().toISOString(),
+      unreadUser: false,
+      ...patch
+    },
+    { merge: true }
+  );
+}
+
+export async function markMyChatRead() {
+  if (!currentUser) return;
+  const f = await load();
+  await f.F.setDoc(f.F.doc(f.db, 'chats', currentUser.uid), { unreadUser: false }, { merge: true }).catch(() => {});
+}
+
+// Admin: todas las conversaciones en vivo, la más reciente primero.
+export async function adminWatchChats(cb) {
+  const f = await load();
+  return f.F.onSnapshot(
+    f.F.collection(f.db, 'chats'),
+    (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => ((a.lastAt || '') < (b.lastAt || '') ? 1 : -1))),
+    (e) => cb(null, e)
+  );
+}
+
+export async function adminReply(uid, text) {
+  const f = await load();
+  const ref = f.F.doc(f.db, 'chats', uid);
+  const cur = (await f.F.getDoc(ref)).data();
+  const msg = { id: `${Date.now()}a`, r: 'admin', t: text, at: new Date().toISOString() };
+  await f.F.setDoc(ref, { msgs: [...(cur?.msgs || []), msg].slice(-MAX_MSGS), lastAt: msg.at, unreadUser: true, unreadAdmin: false }, { merge: true });
+}
+
+export async function adminMarkRead(uid, patch = {}) {
+  const f = await load();
+  await f.F.setDoc(f.F.doc(f.db, 'chats', uid), { unreadAdmin: false, ...patch }, { merge: true });
+}
+
+export async function adminDeleteChat(uid) {
+  const f = await load();
+  await f.F.deleteDoc(f.F.doc(f.db, 'chats', uid));
+}
+
 // ---------------- acciones de cuenta ----------------
 
 const ERRORS = {

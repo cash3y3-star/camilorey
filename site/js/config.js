@@ -29,3 +29,10 @@ export const ADMIN_EMAIL = 'camilosimanca77@gmail.com';
 
 // Correo de contacto que se muestra en Ayuda.
 export const SUPPORT_EMAIL = 'lospeepff@gmail.com';
+
+// Chat de soporte con IA (Google Gemini, plan gratis). La llave NO va en el
+// repositorio: GitHub Actions la pone al publicar (secreto GEMINI_KEY).
+// Está limitada en Google Cloud a este sitio y sin tarjeta no cobra nada.
+export const GEMINI_KEY = '__GEMINI_KEY__';
+// Modelos en orden de preferencia: si uno agota su cupo gratis, se usa el siguiente.
+export const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
