@@ -983,6 +983,7 @@ function openMatch(id) {
       <div><small>Cuota</small><b>${odds(pick?.o)}</b></div>
       <div><small>Estado</small><b class="red" style="font-size:14px">${m.st === 'f' ? 'FINAL' : lv ? 'EN VIVO' : 'PROGRAMADO'}</b></div>
     </div>
+    ${pick && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     ${
       lv
         ? `<div class="block"><div class="block-h"><span class="overline">Marcador en vivo</span><span class="badge live">cada 2 s</span></div>${liveCard(lv, m, { inSheet: true })}</div>`
@@ -1023,7 +1024,6 @@ function openMatch(id) {
         }
         ${pick.res === 'hit' ? '<div class="badge win" style="margin-top:10px">✓ Resultado: acierto</div>' : pick.res === 'miss' ? '<div class="badge loss" style="margin-top:10px">✗ Resultado: fallo</div>' : ''}
       </div>
-      ${pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin-top:12px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     </div>`
         : '<div class="block"><p class="note">Este partido no tiene pick: el sistema lo ve demasiado parejo (menos de 55% de confianza) y prefiere no recomendarlo.</p></div>'
     }`;
