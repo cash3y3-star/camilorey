@@ -56,11 +56,23 @@ async function listUsers(token) {
     const j = await r.json();
     for (const d of j.documents || []) {
       const f = Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, fromFs(v)]));
-      users.push({ path: d.name, follows: f.follows || [], push: f.push || [], notify: f.notify || {} });
+      users.push({ path: d.name, email: String(f.email || '').toLowerCase(), follows: f.follows || [], push: f.push || [], notify: f.notify || {} });
     }
     pageToken = j.nextPageToken || '';
   } while (pageToken);
   return users;
+}
+
+async function activeMembers(token) {
+  const out = new Set();
+  const r = await fetch(`${DOCS}/members?pageSize=300`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return out;
+  const now = Date.now();
+  for (const d of (await r.json()).documents || []) {
+    const until = d.fields?.until?.timestampValue || d.fields?.until?.stringValue;
+    if (until && new Date(until).getTime() > now) out.add(decodeURIComponent(d.name.split('/').pop()).toLowerCase());
+  }
+  return out;
 }
 
 async function savePush(token, user, push) {
@@ -96,7 +108,10 @@ async function runNotifications(state, helpers) {
   }
 
   const token = await botToken();
-  const users = (await listUsers(token)).filter((u) => u.push.length);
+  // Las notificaciones son beneficio Premium: solo correos con membresía activa
+  // (colección "members", id = correo) o la cuenta admin.
+  const premium = await activeMembers(token);
+  const users = (await listUsers(token)).filter((u) => u.push.length && (premium.has(u.email) || u.email === 'camilosimanca77@gmail.com'));
   if (!users.length) return console.log('Push: nadie suscrito todavía');
 
   // Eventos de partidos seguidos.

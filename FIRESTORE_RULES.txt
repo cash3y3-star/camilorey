@@ -9,6 +9,15 @@ service cloud.firestore {
     function isBot() {
       return request.auth != null && request.auth.token.email == 'bot@camilorey-bot.app';
     }
+    // Premium: membresía en members/{correo en minúsculas} con "until" vigente.
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function isPremium() {
+      return request.auth != null && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/members/$(myEmail()))
+        && get(/databases/$(database)/documents/members/$(myEmail())).data.until > request.time;
+    }
 
     // Contadores públicos: cualquiera los lee, y solo se pueden sumar de a 1.
     match /stats/{doc} {
@@ -40,6 +49,20 @@ service cloud.firestore {
     match /tipster/{doc} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Membresías Premium: las activa el admin; cada usuario ve la suya;
+    // el bot las lee para saber a quién mandar notificaciones.
+    match /members/{email} {
+      allow read: if isAdmin() || isBot() || (request.auth != null && myEmail() == email);
+      allow write: if isAdmin();
+    }
+
+    // Contenido Premium (picks de alta confianza y Análisis IA): solo
+    // cuentas con Premium activo (o admin); lo escribe el bot.
+    match /premium/{doc} {
+      allow read: if isAdmin() || isPremium();
+      allow create, update: if isBot();
     }
   }
 }

@@ -23,6 +23,41 @@ let liveUnsub = null;
 let sheetUnsub = null;
 let account = null;
 let profile = null; // { name, photo } editable, guardado en Firestore
+let membership = null; // { until, active } de la colección members
+let premiumData = null; // contenido Premium (picks completos + Análisis IA)
+
+const isPremiumUser = () => isAdmin() || Boolean(membership?.active);
+
+// Rellena los picks bloqueados y agrega el Análisis IA con el contenido
+// Premium (solo llega si la cuenta tiene membresía, por reglas).
+function applyPremium() {
+  if (!premiumData) return;
+  const fill = (p) => {
+    const x = p && premiumData[p.id];
+    if (!x) return;
+    if (p.locked) Object.assign(p, { fav: x.fav, c: x.c, o: x.o, locked: false, premium: true });
+    p.why = x.why;
+  };
+  data.picks.forEach(fill);
+  for (const m of data.calendar.matches) {
+    if (!m.pick) continue;
+    const x = premiumData[m.id];
+    if (!x) continue;
+    if (m.pick.locked) Object.assign(m.pick, { fav: x.fav, c: x.c, o: x.o, locked: false, premium: true });
+    m.pick.why = x.why;
+  }
+}
+
+async function refreshPremium() {
+  membership = account ? await FB.loadMembership().catch(() => null) : null;
+  premiumData = isPremiumUser() ? await FB.loadPremiumContent().catch(() => null) : null;
+  applyPremium();
+}
+
+// Bloque "solo Premium" reutilizable.
+function premiumLock(title, text) {
+  return `<div class="premium-lock"><div class="pl-ic">⭐</div><b>${esc(title)}</b><p>${esc(text)}</p><a class="btn primary" href="#/premium">Conocer Premium</a></div>`;
+}
 
 const userName = () => profile?.name || account?.displayName || account?.email?.split('@')[0] || 'Usuario';
 const userPhoto = () => profile?.photo || account?.photoURL || null;
@@ -142,6 +177,7 @@ async function loadData() {
   try {
     const [stats, picks, results, calendar] = await Promise.all([getJson('stats'), getJson('picks'), getJson('results'), getJson('calendar')]);
     Object.assign(data, { stats, picks, results, calendar, loaded: true, error: null });
+    applyPremium();
   } catch (e) {
     data.error = e.message;
     data.loaded = true;
@@ -207,7 +243,19 @@ function midBlock(m) {
   return `<div class="mid">${ph}<span class="time">${fmtTime(m.at)}</span><span class="tn">${esc(m.tn)}</span></div>`;
 }
 
-function matchCard(m, pick = m.pick || (m.c ? m : null), { showForm = true } = {}) {
+function matchCard(m, pick = m.pick || (m.c || m.locked ? m : null), { showForm = true } = {}) {
+  if (pick?.locked) {
+    // Pick Premium pendiente: el usuario gratis ve el partido, no el pick.
+    return `
+  <article class="card" data-match="${m.id}">
+    <div class="match" data-open="${m.id}">
+      <div class="side">${avatar(m.a)}<span class="nm">${esc(m.a.n)}</span>${showForm ? formDots(m.fa, 5) : ''}</div>
+      ${midBlock(m)}
+      <div class="side">${avatar(m.b)}<span class="nm">${esc(m.b.n)}</span>${showForm ? formDots(m.fb, 5) : ''}</div>
+    </div>
+    <a class="pickbar locked-bar" href="#/premium"><span class="who">🔒 <b>Pick Premium</b> · alta confianza</span><span class="badge red">Ver con Premium</span></a>
+  </article>`;
+  }
   const favA = pick && pick.fav === m.a.id;
   const favB = pick && pick.fav === m.b.id;
   const fav = favA ? m.a : favB ? m.b : null;
@@ -223,7 +271,7 @@ function matchCard(m, pick = m.pick || (m.c ? m : null), { showForm = true } = {
       pick
         ? `<div class="pickbar">
         <span class="who">Pick: <b>${esc(fav?.n)}</b> gana</span>
-        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `<span class="conf">${pick.c}%</span>`}
+        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `${pick.premium ? '<span class="badge red" title="Pick Premium">⭐</span>' : ''}<span class="conf">${pick.c}%</span>`}
         <span class="odds">${odds(pick.o)}</span>
         ${res}
         ${pick.res === 'pending' ? `<button class="follow ${isFollowed(m.id) ? 'on' : ''}" data-follow="${m.id}" aria-label="Seguir pick">${icon('heart')}</button>` : ''}
@@ -261,7 +309,13 @@ function liveCard(e, ourMatch, { inSheet = false } = {}) {
     <div class="live-head"><span><span class="badge live">EN VIVO</span> &nbsp;${esc(ourMatch?.tn || e.group)}${ourMatch?.ph ? ` · 🏆 ${esc(ourMatch.ph)}` : ''}</span><b style="color:var(--text)" data-u="${u}-sc">${e.setsHome} - ${e.setsAway}</b></div>
     ${row('h', e.home, setsH, e.ptsHome, e.homeServe === true, players[0])}
     ${row('a', e.away, setsA, e.ptsAway, e.homeServe === false, players[1])}
-    ${pick && !inSheet ? `<div class="pickbar" style="padding:8px 0 0;border-top:1px solid var(--line);margin-top:6px"><span class="who">Nuestro pick: <b>${esc(pick.fav === ourMatch.a.id ? ourMatch.a.n : ourMatch.b.n)}</b></span><span class="conf">${pick.c}%</span></div>` : ''}
+    ${
+      pick && !inSheet
+        ? pick.locked
+          ? '<div class="pickbar" style="padding:8px 0 0;border-top:1px solid var(--line);margin-top:6px"><span class="who">🔒 <b style="color:#facc15">Pick Premium</b> · alta confianza</span></div>'
+          : `<div class="pickbar" style="padding:8px 0 0;border-top:1px solid var(--line);margin-top:6px"><span class="who">Nuestro pick: <b>${esc(pick.fav === ourMatch.a.id ? ourMatch.a.n : ourMatch.b.n)}</b></span><span class="conf">${pick.c}%</span></div>`
+        : ''
+    }
   </article>`;
 }
 
@@ -289,7 +343,7 @@ function viewInicio() {
   const pend = data.picks;
   const avgOdds = fs?.avgOdds ? odds(fs.avgOdds) : '—';
   const next = upcomingPicks();
-  const featured = next.find((p) => p.ft) || next.slice().sort((a, b) => b.c - a.c)[0];
+  const featured = next.find((p) => p.ft) || next.filter((p) => !p.locked && !p.premium).sort((a, b) => b.c - a.c)[0];
 
   return `
   <section class="hero">
@@ -327,6 +381,39 @@ function viewInicio() {
   ${footer()}`;
 }
 
+// ---------- Premium ----------
+function viewPremium() {
+  const active = isPremiumUser();
+  const until = membership?.until;
+  const perk = (ic, t, s) => `<div class="row"><span class="ic" style="font-size:18px">${ic}</span><span class="tx"><b>${t}</b><small>${s}</small></span>${active ? '<span class="badge win">✓</span>' : '<span>🔒</span>'}</div>`;
+  return `
+  <div class="subhead"><a class="back" href="javascript:history.back()">${icon('left')} Atrás</a><h1>Premium</h1></div>
+  <div class="premium-hero">
+    <div style="font-size:42px">⭐</div>
+    <h2>CamiloRey Premium</h2>
+    ${
+      active
+        ? `<p><b>Tu membresía está activa</b>${isAdmin() ? ' (administrador)' : until ? ` hasta el <b>${esc(until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' }))}</b>` : ''}.</p>`
+        : '<p>Desbloquea todo el poder del sistema.</p>'
+    }
+  </div>
+  <div class="list" style="margin-top:14px">
+    ${perk('🔥', 'Picks de alta confianza', 'Los picks de 65% o más, antes del partido')}
+    ${perk('🧠', 'Análisis IA de cada pick', 'Por qué gana: rating, mercado, cruce directo, rachas y forma del día')}
+    ${perk('💰', 'Mi Bankroll con Kelly', 'Cuánto apostar en cada pick que sigues, saldo y ROI')}
+    ${perk('🔔', 'Notificaciones en el celular', 'Nuevo pick destacado y resultado de tus picks seguidos')}
+  </div>
+  ${
+    active
+      ? ''
+      : `<div class="card pad" style="margin-top:14px">
+      <b>¿Cómo activarlo?</b>
+      <p style="font-size:13px;color:var(--muted);margin:6px 0 12px">1) ${account ? 'Ya tienes cuenta ✓' : '<a class="textlink" href="#/registro">Crea tu cuenta</a> (con Google o correo)'}.<br>2) Escríbenos a <b>${esc(SUPPORT_EMAIL)}</b> con el correo de tu cuenta${account?.email ? ` (<b>${esc(account.email)}</b>)` : ''}.<br>3) Te activamos Premium y se desbloquea al instante.</p>
+    </div>`
+  }
+  ${footer()}`;
+}
+
 // ---------- Notificaciones push ----------
 function b64ToBytes(b64) {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
@@ -347,6 +434,10 @@ async function renderNotificaciones() {
   if (!box) return;
   if (!FB.enabled || !account) {
     box.innerHTML = `${empty('bell', 'Inicia sesión', 'Las notificaciones avisan de los picks que sigues, así que necesitas una cuenta.')}<a class="btn primary" href="#/login">Iniciar sesión</a>`;
+    return;
+  }
+  if (!isPremiumUser()) {
+    box.innerHTML = premiumLock('Las notificaciones son Premium', 'Recibe en tu celular cada nuevo pick destacado y el resultado de los picks que sigues, aunque tengas la página cerrada.');
     return;
   }
   if (!pushSupported()) {
@@ -439,6 +530,15 @@ function viewAdmin() {
     <button class="btn primary" type="submit">Publicar pick</button>
   </form>
   <div id="admin-tipster">${skeleton(1)}</div>
+  <div class="section-h"><h2>⭐ Membresías Premium</h2></div>
+  <form class="card pad" id="member-form">
+    <label class="field"><span>Correo de la cuenta del usuario (sirve si entra con Google o con correo)</span>
+      <input name="email" type="email" required class="inline-input" style="width:100%;border-color:var(--line)" placeholder="usuario@gmail.com"></label>
+    <div class="field"><span>Duración</span><div class="seg seg-full" id="member-days">${[7, 30, 90, 365].map((d) => `<button type="button" data-mdays="${d}" class="${d === 30 ? 'on' : ''}">${d === 365 ? '1 año' : d + ' días'}</button>`).join('')}</div></div>
+    <button class="btn primary" type="submit">Activar Premium</button>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Si ya tenía Premium, los días se suman a su fecha de vencimiento.</p>
+  </form>
+  <div id="admin-members">${skeleton(1)}</div>
   <div class="section-h"><h2>📊 Visitas</h2></div>
   <div id="admin-visits">${skeleton(1)}</div>
   <div class="section-h"><h2>👥 Usuarios</h2></div>
@@ -462,6 +562,8 @@ async function renderAdminPanel() {
           })
           .join('')}</div>`
       : '<p class="note" style="margin-top:10px">Aún no has publicado picks del tipster.</p>';
+  // Membresías Premium
+  renderMembers();
   // Visitas por día
   const vbox = document.getElementById('admin-visits');
   try {
@@ -486,6 +588,61 @@ async function renderAdminPanel() {
     if (ubox) ubox.innerHTML = `<p class="note">No se pudo leer la lista (${esc(e.code || e.message)}). Hay que actualizar las reglas de Firestore.</p>`;
   }
 }
+
+async function renderMembers() {
+  const box = document.getElementById('admin-members');
+  if (!box) return;
+  try {
+    const list = (await FB.adminListMembers()).sort((a, b) => (b.until?.getTime() || 0) - (a.until?.getTime() || 0));
+    const now = Date.now();
+    box.innerHTML = list.length
+      ? `<div class="list" style="margin-top:10px">${list
+          .map((x) => {
+            const active = x.until && x.until.getTime() > now;
+            const left = active ? Math.ceil((x.until.getTime() - now) / 86400e3) : 0;
+            return `<div class="row"><span class="ic">${active ? '⭐' : '⌛'}</span><span class="tx"><b>${esc(x.email)}</b><small>${active ? `Activo · vence ${esc(x.until.toLocaleDateString(LOC()))} (${left} días)` : `Vencido${x.until ? ' el ' + esc(x.until.toLocaleDateString(LOC())) : ''}`}</small></span><button class="mini-btn" data-mquit="${esc(x.email)}">Quitar</button></div>`;
+          })
+          .join('')}</div><p class="foot">${list.filter((x) => x.until && x.until.getTime() > now).length} activos · ${list.length} en total</p>`
+      : '<p class="note" style="margin-top:10px">Todavía no hay membresías.</p>';
+  } catch (e) {
+    box.innerHTML = `<p class="note">No se pudo leer (${esc(e.code || e.message)}). Hay que actualizar las reglas de Firestore.</p>`;
+  }
+}
+
+let memberDays = 30;
+document.addEventListener('click', async (ev) => {
+  const d = ev.target.closest('[data-mdays]');
+  if (d) {
+    memberDays = Number(d.dataset.mdays);
+    document.querySelectorAll('[data-mdays]').forEach((b) => b.classList.toggle('on', b === d));
+    return;
+  }
+  const q = ev.target.closest('[data-mquit]');
+  if (q && isAdmin()) {
+    if (q.dataset.confirm !== '1') {
+      q.dataset.confirm = '1';
+      q.textContent = '¿Seguro?';
+      return;
+    }
+    await FB.adminRemoveMember(q.dataset.mquit);
+    toast('Premium quitado');
+    renderMembers();
+  }
+});
+document.addEventListener('submit', async (ev) => {
+  if (ev.target.id !== 'member-form') return;
+  ev.preventDefault();
+  const email = String(new FormData(ev.target).get('email') || '').trim().toLowerCase();
+  if (!email.includes('@')) return toast('Escribe un correo válido');
+  try {
+    const until = await FB.adminSetMember(email, memberDays);
+    toast(`⭐ Premium activo para ${email} hasta ${until.toLocaleDateString(LOC())}`);
+    ev.target.reset();
+    renderMembers();
+  } catch (e) {
+    toast(e.code === 'permission-denied' ? 'Falta actualizar las reglas de Firestore' : FB.errorText(e));
+  }
+});
 
 // Tarjeta del pick del tipster en Inicio (el próximo que no ha empezado).
 async function renderTipsterHome() {
@@ -741,7 +898,7 @@ function upcomingPicks() {
 
 function viewPicks() {
   let list = upcomingPicks();
-  if (ui.pickFilter === 'high') list = list.filter((p) => p.c >= 68);
+  if (ui.pickFilter === 'high') list = list.filter((p) => p.locked || p.premium || p.c >= 65);
   if (ui.pickFilter === 'odds') list = list.filter((p) => p.o && p.o >= 1.6);
   return `
   <h1 class="page-title">Predicciones</h1>
@@ -847,7 +1004,7 @@ function viewSeguidos() {
   const map = allById();
   const range = FOLLOW_RANGES.find((r) => r[0] === ui.followRange) || FOLLOW_RANGES[0];
   const since = Date.now() - range[2] * 86400e3;
-  const all = [...follows].map((id) => map.get(id)).filter((p) => p && p.c);
+  const all = [...follows].map((id) => map.get(id)).filter((p) => p && p.c && !p.locked && p.fav);
   const items = all.filter((p) => new Date(p.at).getTime() >= since || p.res === 'pending').sort((a, b) => (a.at < b.at ? 1 : -1));
   const done = items.filter((p) => p.res === 'hit' || p.res === 'miss');
   const active = items.length - done.length;
@@ -1079,6 +1236,8 @@ function kellyBodyHtml() {
 
 function viewBankroll() {
   if (!data.loaded) return `<h1 class="page-title">Mi Bankroll</h1>${skeleton(3)}`;
+  if (!isPremiumUser())
+    return `<h1 class="page-title">Mi Bankroll</h1><div class="page-sub">Kelly sobre los picks que sigues</div>${premiumLock('Mi Bankroll es Premium', 'Con Premium llevas tu banca con el criterio de Kelly: cuánto apostar en cada pick que sigues, tu saldo, ROI y gráfico, que se ajustan solos con cada resultado.')}`;
   const admin = isAdmin();
   if (!admin) ui.bankTab = 'mine';
   return `
@@ -1149,6 +1308,7 @@ function viewPerfil() {
   <div class="overline" style="margin:22px 4px 8px">Ajustes</div>
   <div class="list">
     ${isAdmin() ? `<a class="row" href="#/admin"><span class="ic" style="color:var(--red-2)">${icon('shield')}</span><span class="tx"><b>Panel admin</b><small>Pick del tipster, visitas y usuarios</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
+    <a class="row" href="#/premium"><span class="ic" style="font-size:18px">⭐</span><span class="tx"><b>Premium</b><small>${isPremiumUser() ? (isAdmin() ? 'Activo (administrador)' : `Activo hasta ${esc(membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' }))}`) : 'Picks de alta confianza, análisis IA, bankroll y avisos'}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/notificaciones"><span class="ic">${icon('bell')}</span><span class="tx"><b>Notificaciones</b><small>Avisos de tus picks en el celular</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/tema"><span class="ic">${icon('moon')}</span><span class="tx"><b>Tema</b><small>${esc({ dark: 'Oscuro', light: 'Claro', system: 'Sistema' }[readLocal('cr_theme_raw', 'dark')] || 'Oscuro')}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/cuotas"><span class="ic">${icon('chart')}</span><span class="tx"><b>Formato de cuotas</b><small>${esc(ODDS_FORMATS[readLocal('cr_odds', 'decimal')]?.[0] || 'Decimal')} · ${esc(odds(1.57))}</small></span><span class="chev">${icon('chev')}</span></a>
@@ -1365,7 +1525,8 @@ function openMatch(id) {
       <div><small>Cuota</small><b>${odds(pick?.o)}</b></div>
       <div><small>Estado</small><b class="red" style="font-size:14px">${m.st === 'f' ? 'FINAL' : lv ? 'EN VIVO' : 'PROGRAMADO'}</b></div>
     </div>
-    ${pick && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
+    ${pick?.locked ? `<div style="margin-top:12px">${premiumLock('Pick Premium de alta confianza', 'El sistema tiene un pick de 65% o más para este partido. Hazte Premium para ver a quién elige, su confianza, la cuota y el análisis.')}</div>` : ''}
+    ${pick && !pick.locked && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     ${
       lv
         ? `<div class="block"><div class="block-h"><span class="overline">Marcador en vivo</span><span class="badge live">cada 2 s</span></div><div id="sheet-live">${liveCard(lv, m, { inSheet: true })}</div></div>`
@@ -1388,7 +1549,9 @@ function openMatch(id) {
       }
     </div>
     ${
-      pick
+      pick?.locked
+        ? ''
+        : pick
         ? `<div class="block">
       <div class="block-h"><span class="overline">Probabilidad de victoria</span><span style="font-size:11px;color:var(--muted)">según el modelo</span></div>
       <div class="prob"><b>${cA}%</b><div class="meter"><span style="width:${cA}%"></span><span class="other" style="width:${100 - cA}%"></span></div><b>${100 - cA}%</b></div>
@@ -1398,7 +1561,9 @@ function openMatch(id) {
       <div class="analysis">
         <div class="an-head">${icon('bolt')}<div><b>Análisis IA</b><small>Por qué el sistema elige a ${esc(fav.n)}</small></div><span class="conf" style="font-size:20px">${pick.c}%</span></div>
         ${
-          pick.why
+          !isPremiumUser() && pick.res === 'pending'
+            ? `<p class="an-src" style="font-size:13px">🔒 El análisis completo de por qué el sistema elige a este jugador (rating, mercado, cruce directo, patrón de rachas y forma del día) es parte de <a class="textlink" href="#/premium">Premium</a>.</p>`
+            : pick.why
             ? `${pick.why.pro.length ? `<ul class="why pro">${pick.why.pro.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
                ${pick.why.con.length ? `<div class="overline" style="margin:12px 0 6px">A tener en cuenta</div><ul class="why con">${pick.why.con.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
                <p class="an-src">${icon('info')} ${esc(pick.why.src)}.</p>`
@@ -1495,6 +1660,7 @@ const ROUTES = {
   jugador: viewJugador,
   admin: viewAdmin,
   notificaciones: viewNotificaciones,
+  premium: viewPremium,
   tema: viewTema,
   cuotas: viewCuotas,
   idioma: viewIdioma,
@@ -1872,6 +2038,10 @@ updateBellDot();
 setInterval(async () => {
   if (document.visibilityState === 'hidden' || !$sheet.hidden) return;
   await loadData();
+  if (isPremiumUser()) {
+    premiumData = await FB.loadPremiumContent().catch(() => premiumData);
+    applyPremium();
+  }
   const y = window.scrollY;
   route();
   window.scrollTo(0, y);
@@ -1891,6 +2061,7 @@ renderAuthHeader();
 FB.onAuth(async (u) => {
   account = u;
   profile = u ? await FB.loadProfile().catch(() => null) : null;
+  await refreshPremium();
   renderAuthHeader();
   if (u) {
     const remote = await FB.loadFollows().catch(() => null);

@@ -520,9 +520,19 @@ function buildWhy(p, m) {
   };
 }
 
+// Premium: los picks de alta confianza PENDIENTES y el Análisis IA de todos
+// los picks no van en los archivos públicos; van a Firestore (premium/content),
+// que solo pueden leer las cuentas con membresía activa. Ya jugados, los
+// picks se muestran completos a todos (efectividad transparente).
+const PREMIUM_MIN = 65;
+const isLocked = (p) => p.res === 'pending' && p.c >= PREMIUM_MIN;
+let premiumContent = null;
+
 function pickView(p, detailed = false) {
   const m = state.matches[p.id];
-  return { ...(detailed ? detailView(m) : matchView(m)), fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft), why: buildWhy(p, m) };
+  const base = detailed ? detailView(m) : matchView(m);
+  if (isLocked(p)) return { ...base, fav: null, c: null, o: null, res: p.res, ft: false, locked: true };
+  return { ...base, fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft) };
 }
 
 function summarize(list) {
@@ -552,8 +562,10 @@ function writeSite(meta) {
   // resultados se miden aparte (estadísticas de Inicio).
   const pending = published.filter((p) => p.res === 'pending');
   const notStarted = pending.filter((p) => state.matches[p.id].st === 's' && new Date(state.matches[p.id].at).getTime() > now);
-  const withOdds = notStarted.filter((p) => p.o && p.o > FEATURED_MIN_ODDS);
-  const pool = withOdds.length ? withOdds : notStarted;
+  // El destacado es público: se elige entre los picks que no son Premium.
+  const publicNext = notStarted.filter((p) => p.c < PREMIUM_MIN);
+  const withOdds = publicNext.filter((p) => p.o && p.o > FEATURED_MIN_ODDS);
+  const pool = withOdds.length ? withOdds : publicNext;
   const featured = pool.slice().sort((a, b) => b.c - a.c || (state.matches[a.id].at < state.matches[b.id].at ? -1 : 1))[0];
   for (const p of notStarted) p.dst = p === featured;
   for (const p of published) p.ft = p === featured;
@@ -597,7 +609,8 @@ function writeSite(meta) {
     .sort((a, b) => (a.at < b.at ? -1 : 1))
     .map((m) => {
       const p = state.picks[m.id];
-      return { ...detailView(m), pick: p && p.pub ? { fav: p.fav, c: p.c, o: p.o, res: p.res, why: buildWhy(p, m) } : null };
+      if (!p || !p.pub) return { ...detailView(m), pick: null };
+      return { ...detailView(m), pick: isLocked(p) ? { fav: null, c: null, o: null, res: p.res, locked: true } : { fav: p.fav, c: p.c, o: p.o, res: p.res } };
     });
 
   // Bankroll: banca simulada que apuesta a cada pick publicado CON cuota,
@@ -653,6 +666,14 @@ function writeSite(meta) {
       bal: b.bal,
       res: b.res
     }));
+
+  // Contenido Premium (va a Firestore, no a site/data): pick completo de los
+  // pendientes bloqueados y Análisis IA de todos los pendientes.
+  premiumContent = {};
+  for (const p of pending) {
+    const m = state.matches[p.id];
+    premiumContent[p.id] = { fav: p.fav, c: p.c, o: p.o ?? null, why: buildWhy(p, m) };
+  }
 
   const byPlayer = finishedByPlayer();
   const champs = champions(now);
@@ -859,6 +880,22 @@ async function tipsterStats() {
   }
 }
 
+// Contenido Premium → Firestore premium/content (lo escribe el bot; lo leen
+// solo cuentas con membresía activa, por reglas).
+async function pushPremiumContent() {
+  if (!premiumContent || !process.env.BOT_EMAIL) return;
+  try {
+    const token = await require('./notify').botToken();
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/premium/content?key=${FIREBASE_API_KEY}`;
+    const body = { fields: { updatedAt: { stringValue: new Date().toISOString() }, data: { stringValue: JSON.stringify(premiumContent) } } };
+    const r = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+    if (!r.ok) console.error(`Contenido Premium: HTTP ${r.status} ${(await r.text()).slice(0, 150)}`);
+    else console.log(`Contenido Premium actualizado (${Object.keys(premiumContent).length} picks)`);
+  } catch (e) {
+    console.error(`Contenido Premium: ${e.message}`);
+  }
+}
+
 async function pushPrivateLedger() {
   // Escribe la cuenta bot (reglas: solo el bot escribe admin/). La clave
   // vieja (botKey) se sigue mandando mientras convivan ambas reglas.
@@ -1008,6 +1045,7 @@ async function run() {
   // tiene que quedar guardado en el estado.
   saveState();
   await pushPrivateLedger();
+  await pushPremiumContent();
   console.log('Resumen:', totals);
 }
 

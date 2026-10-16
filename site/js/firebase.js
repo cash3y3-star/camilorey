@@ -152,6 +152,49 @@ export async function savePushState({ push, notify }) {
   await f.F.setDoc(f.F.doc(f.db, 'users', currentUser.uid), patch, { merge: true });
 }
 
+// ---------- Membresía Premium ----------
+// members/{correo en minúsculas} = { until: Timestamp, days, updatedAt }.
+// Se asocia al CORREO, así funciona entre con Google o con correo/clave.
+const emailKey = (e) => String(e || '').trim().toLowerCase();
+
+export async function loadMembership() {
+  if (!currentUser?.email) return null;
+  const f = await load();
+  const snap = await f.F.getDoc(f.F.doc(f.db, 'members', emailKey(currentUser.email)));
+  if (!snap.exists()) return null;
+  const until = snap.data().until?.toDate?.() || null;
+  return until ? { until, active: until.getTime() > Date.now() } : null;
+}
+
+// Pick completo de los picks Premium y Análisis IA (solo Premium por reglas).
+export async function loadPremiumContent() {
+  const f = await load();
+  const snap = await f.F.getDoc(f.F.doc(f.db, 'premium', 'content'));
+  return snap.exists() ? JSON.parse(snap.data().data || '{}') : null;
+}
+
+export async function adminListMembers() {
+  const f = await load();
+  const snap = await f.F.getDocs(f.F.collection(f.db, 'members'));
+  return snap.docs.map((d) => ({ email: d.id, until: d.data().until?.toDate?.() || null, days: d.data().days || null }));
+}
+
+// Activa o extiende: suma los días desde hoy o desde que vence, lo que sea más tarde.
+export async function adminSetMember(email, days) {
+  const f = await load();
+  const ref = f.F.doc(f.db, 'members', emailKey(email));
+  const cur = (await f.F.getDoc(ref)).data()?.until?.toDate?.();
+  const base = cur && cur.getTime() > Date.now() ? cur.getTime() : Date.now();
+  const until = new Date(base + days * 86400e3);
+  await f.F.setDoc(ref, { until: f.F.Timestamp.fromDate(until), days, updatedAt: new Date().toISOString() });
+  return until;
+}
+
+export async function adminRemoveMember(email) {
+  const f = await load();
+  await f.F.deleteDoc(f.F.doc(f.db, 'members', emailKey(email)));
+}
+
 // ---------- Panel admin ----------
 
 // Picks del tipster: colección pública "tipster" (las reglas solo dejan

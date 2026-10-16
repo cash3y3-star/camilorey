@@ -324,6 +324,17 @@ details.faq p { margin: 0; padding: 0 14px 14px; font-size: 13px; color: var(--m
 .fc-bar span { display: block; height: 100%; background: #22c55e; border-radius: 99px; }
 .fcard.is-miss .fc-bar span { background: #ef4444; }
 .fc-conf b { font-size: 11px; color: #a1a1aa; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Premium */
+.premium-lock { text-align: center; padding: 22px 16px; border-radius: 16px; border: 1px solid rgba(250, 204, 21, 0.45); background: radial-gradient(ellipse at top, rgba(250, 204, 21, 0.12), transparent 70%), var(--card); }
+.premium-lock .pl-ic { font-size: 30px; }
+.premium-lock b { display: block; font-size: 16px; margin: 6px 0 4px; }
+.premium-lock p { margin: 0 0 14px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.premium-hero { text-align: center; padding: 22px 16px; border-radius: 20px; background: radial-gradient(ellipse at top, #6b4d08, #1a1205 70%); border: 1px solid rgba(250, 204, 21, 0.5); color: #fff; }
+.premium-hero h2 { margin: 6px 0 4px; font-size: 24px; }
+.premium-hero p { margin: 0; color: #e8dcc0; font-size: 14px; }
+.locked-bar { background: linear-gradient(90deg, rgba(250, 204, 21, 0.1), transparent); }
+.locked-bar b { color: #facc15; }
+
 /* Pick del tipster */
 .tipster-wrap .card { border-color: rgba(250, 204, 21, 0.5); }
 .tipster-note { margin: 8px 4px 0; font-size: 13px; color: var(--muted); font-style: italic; }
