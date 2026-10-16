@@ -220,19 +220,22 @@ function liveCard(e, ourMatch, { inSheet = false } = {}) {
     }
   }
   const pick = ourMatch ? ourMatch.pick || (ourMatch.c ? ourMatch : null) : null;
-  const row = (name, sets, pts, serving, p) => `
+  // data-u marca las partes que cambian (marcador, sets, saque): en cada
+  // actualización solo se reemplazan esas, nunca las fotos (no parpadean).
+  const u = `${e.id}`;
+  const row = (side, name, sets, pts, serving, p) => `
     <div class="live-row">
-      <div class="p">${p ? avatar(p, 'avatar sm') : ''}<span>${esc(p?.n || name)}</span>${serving ? '<i class="serve" title="Saca"></i>' : ''}${pick && p && pick.fav === p.id ? '<span class="badge red" style="padding:1px 6px;font-size:10px">PICK</span>' : ''}</div>
-      <div class="sets">${sets.map((s) => `<span class="${s.won ? 'won' : ''}">${s.v}</span>`).join('')}</div>
-      <div class="pts">${esc(pts)}</div>
+      <div class="p">${p ? avatar(p, 'avatar sm') : ''}<span>${esc(p?.n || name)}</span><i class="serve-slot" data-u="${u}-sv${side}">${serving ? '<i class="ball" title="Saca"></i>' : ''}</i>${pick && p && pick.fav === p.id ? '<span class="badge red" style="padding:1px 6px;font-size:10px">PICK</span>' : ''}</div>
+      <div class="sets" data-u="${u}-st${side}">${sets.map((s) => `<span class="${s.won ? 'won' : ''}">${s.v}</span>`).join('')}</div>
+      <div class="pts" data-u="${u}-pt${side}">${esc(pts)}</div>
     </div>`;
   const setsH = e.sets.map((s) => ({ v: s.h, won: s.h > s.a && (s.h >= 11 || s.a >= 11) }));
   const setsA = e.sets.map((s) => ({ v: s.a, won: s.a > s.h && (s.h >= 11 || s.a >= 11) }));
   return `
-  <article class="card live-card" ${ourMatch && !inSheet ? `data-open="${ourMatch.id}" style="cursor:pointer"` : ''}>
-    <div class="live-head"><span><span class="badge live">EN VIVO</span> &nbsp;${esc(ourMatch?.tn || e.group)}${ourMatch?.ph ? ` · 🏆 ${esc(ourMatch.ph)}` : ''}</span><b style="color:var(--text)">${e.setsHome} - ${e.setsAway}</b></div>
-    ${row(e.home, setsH, e.ptsHome, e.homeServe === true, players[0])}
-    ${row(e.away, setsA, e.ptsAway, e.homeServe === false, players[1])}
+  <article class="card live-card" data-ev="${u}" ${ourMatch && !inSheet ? `data-open="${ourMatch.id}" style="cursor:pointer"` : ''}>
+    <div class="live-head"><span><span class="badge live">EN VIVO</span> &nbsp;${esc(ourMatch?.tn || e.group)}${ourMatch?.ph ? ` · 🏆 ${esc(ourMatch.ph)}` : ''}</span><b style="color:var(--text)" data-u="${u}-sc">${e.setsHome} - ${e.setsAway}</b></div>
+    ${row('h', e.home, setsH, e.ptsHome, e.homeServe === true, players[0])}
+    ${row('a', e.away, setsA, e.ptsAway, e.homeServe === false, players[1])}
     ${pick && !inSheet ? `<div class="pickbar" style="padding:8px 0 0;border-top:1px solid var(--line);margin-top:6px"><span class="who">Nuestro pick: <b>${esc(pick.fav === ourMatch.a.id ? ourMatch.a.n : ourMatch.b.n)}</b></span><span class="conf">${pick.c}%</span></div>` : ''}
   </article>`;
 }
@@ -297,6 +300,23 @@ function viewInicio() {
   ${footer()}`;
 }
 
+// Actualiza un contenedor de tarjetas en vivo sin redibujarlo: si siguen
+// los mismos partidos, solo cambia las partes marcadas con data-u (números
+// y saque). Si cambió la lista de partidos, ahí sí lo redibuja entero.
+function patchLive(box, html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const ids = (root) => [...root.querySelectorAll('[data-ev]')].map((x) => x.dataset.ev).join(',');
+  if (!box.querySelector('[data-ev]') || ids(box) !== ids(tmp)) {
+    box.innerHTML = html;
+    return;
+  }
+  tmp.querySelectorAll('[data-u]').forEach((n) => {
+    const cur = box.querySelector(`[data-u="${n.dataset.u}"]`);
+    if (cur && cur.innerHTML !== n.innerHTML) cur.innerHTML = n.innerHTML;
+  });
+}
+
 // Punto rojo en la pestaña En vivo cuando hay partidos de la Liga Pro en juego.
 function liveDot(state) {
   const d = document.getElementById('tab-live-dot');
@@ -314,12 +334,7 @@ function renderLiveHome(state) {
     box.innerHTML = '<div class="note">No hay partidos de la Liga Pro Checa en vivo en este momento.</div>';
     return;
   }
-  box.innerHTML = list
-    .map((e) => {
-      const m = ourMatchForLive(e);
-      return liveCard(e, m);
-    })
-    .join('');
+  patchLive(box, list.map((e) => liveCard(e, ourMatchForLive(e))).join(''));
 }
 
 function viewCalendario() {
@@ -440,10 +455,10 @@ function followCard(p) {
     ? `<img class="fc-raw" src="${esc(fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : '';
   return `
-  <article class="fcard ${p.res === 'miss' ? 'is-miss' : ''}" data-open="${p.id}" data-match="${p.id}">
+  <article class="fcard ${p.res === 'miss' ? 'is-miss' : ''}" data-open="${p.id}" data-match="${p.id}" data-ev="f${p.id}">
     <div class="fc-photo">
       ${photo || `<span class="fc-ini">${esc(initials(fav.n))}</span>`}
-      ${status}
+      <span data-u="f${p.id}-st" style="display:contents">${status}</span>
       <span class="fc-flag" title="República Checa"><svg viewBox="0 0 30 20"><rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0 15 10 0 20z" fill="#11457e"/></svg></span>
     </div>
     <div class="fc-body">
@@ -451,7 +466,7 @@ function followCard(p) {
       <b class="fc-name">${esc(fav.n)}</b>
       <small class="fc-sub">vs ${esc(riv.n)} · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ }).format(new Date(p.at))}</small>
       <span class="fc-pill ${pillCls}">${esc(fav.n.toUpperCase())} GANA</span>
-      ${score}
+      <span data-u="f${p.id}-sc" style="display:contents">${score}</span>
       <div class="fc-conf"><div class="fc-bar"><span style="width:${Math.max(8, ((p.c - 50) / 30) * 100)}%"></span></div><b>${p.c}</b></div>
     </div>
   </article>`;
@@ -487,7 +502,7 @@ function renderLivePage(state) {
     );
     return;
   }
-  box.innerHTML = `<div class="grid-2">${list.map((x) => liveCard(x.e, x.m)).join('')}</div>`;
+  patchLive(box, `<div class="grid-2">${list.map((x) => liveCard(x.e, x.m)).join('')}</div>`);
 }
 
 function viewSeguidos() {
@@ -986,7 +1001,7 @@ function openMatch(id) {
     ${pick && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     ${
       lv
-        ? `<div class="block"><div class="block-h"><span class="overline">Marcador en vivo</span><span class="badge live">cada 2 s</span></div>${liveCard(lv, m, { inSheet: true })}</div>`
+        ? `<div class="block"><div class="block-h"><span class="overline">Marcador en vivo</span><span class="badge live">cada 2 s</span></div><div id="sheet-live">${liveCard(lv, m, { inSheet: true })}</div></div>`
         : ''
     }
     <div class="block">
@@ -1033,8 +1048,20 @@ function openMatch(id) {
   document.body.style.overflow = 'hidden';
   $sheet._redraw = draw;
   sheetUnsub?.();
+  // En vivo: solo se actualiza el marcador de la ficha (las fotos no se
+  // recargan). Si el partido empieza o termina, ahí sí se redibuja.
+  let wasLive = Boolean(liveFor(m));
   sheetUnsub = onLive(() => {
-    if (!$sheet.hidden && liveFor(m)) draw();
+    if ($sheet.hidden) return;
+    const lv = liveFor(m);
+    if (Boolean(lv) !== wasLive) {
+      wasLive = Boolean(lv);
+      return draw();
+    }
+    const box = document.getElementById('sheet-live');
+    if (lv && box) patchLive(box, liveCard(lv, m, { inSheet: true }));
+    const center = $sheetBody.querySelector('.sheet-hero .mid .score');
+    if (lv && center) center.textContent = `${lv.setsHome}-${lv.setsAway}`;
   });
 }
 
@@ -1114,11 +1141,17 @@ function route() {
     });
   }
   else if (name === 'seguidos') {
-    // Redibuja solo si hay algún seguido en vivo (marcador y barra de sets).
+    // Con seguidos en vivo: actualiza solo marcador y estado de cada
+    // tarjeta (las fotos no se recargan).
     liveUnsub = onLive(() => {
       const map = allById();
       if (![...follows].some((id) => map.get(id) && liveFor(map.get(id)))) return;
-      if ($sheet.hidden) $view.innerHTML = viewSeguidos();
+      const grid = $view.querySelector('.fgrid');
+      if (!grid || !$sheet.hidden) return;
+      const tmp = document.createElement('div');
+      tmp.innerHTML = viewSeguidos();
+      const fresh = tmp.querySelector('.fgrid');
+      if (fresh) patchLive(grid, fresh.innerHTML);
     });
   }
   renderCounter();

@@ -186,6 +186,10 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
 .avatar.sm { width: 36px; height: 36px; border-width: 2px; font-size: 12px; flex: none; }
 .live-row .p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .serve { width: 7px; height: 7px; border-radius: 50%; background: var(--red-2); flex: none; box-shadow: 0 0 0 3px var(--red-soft); }
+/* Pelotita de ping-pong de quien saca: lo único que se mueve en la tarjeta. */
+.serve-slot { display: inline-flex; width: 12px; height: 12px; flex: none; font-style: normal; }
+.ball { width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff 0%, #ffd9a8 35%, #ff8a1f 100%); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); animation: ball-bounce 0.9s ease-in-out infinite; }
+@keyframes ball-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 .sets { display: flex; gap: 4px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .sets span { width: 22px; text-align: center; }
 .sets span.won { color: var(--text); font-weight: 700; }
