@@ -274,6 +274,7 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       a: sideA.player.id,
       b: sideB.player.id,
       at: m.start_game,
+      sg: m.stage_id ?? null, // fase: grupos vs. definición (3er puesto / final)
       st: played ? 'f' : m.status === 2 ? 'l' : 's',
       sa: played ? m.results.score_one : null,
       sb: played ? m.results.score_two : null,
@@ -333,11 +334,35 @@ function playerRef(id) {
   return { id, n: p.n || '?', av: p.av || null, r: p.r ?? null };
 }
 
+// Fase del partido: los que no son de la fase de grupos (la fase con más
+// partidos del torneo) son la definición — el último es la final y el
+// anterior el 3er puesto. Se calcula por torneo y se guarda en caché.
+const phaseCache = new Map();
+function phaseOf(m) {
+  if (m.sg == null) return null;
+  if (!phaseCache.has(m.t)) {
+    const list = Object.values(state.matches).filter((x) => x.t === m.t && x.sg != null);
+    const count = new Map();
+    for (const x of list) count.set(x.sg, (count.get(x.sg) || 0) + 1);
+    const group = [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const playoff = list.filter((x) => x.sg !== group).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id - b.id));
+    const labels = new Map();
+    if (playoff.length === 1) labels.set(playoff[0].id, 'Final');
+    else if (playoff.length === 2) {
+      labels.set(playoff[0].id, '3er puesto');
+      labels.set(playoff[1].id, 'Final');
+    } else playoff.forEach((x) => labels.set(x.id, 'Eliminatoria'));
+    phaseCache.set(m.t, labels);
+  }
+  return phaseCache.get(m.t).get(m.id) || null;
+}
+
 function matchView(m) {
   return {
     id: m.id,
     at: m.at,
     t: m.t,
+    ph: phaseOf(m),
     tn: state.tournaments[m.t]?.n || 'Torneo',
     a: playerRef(m.a),
     b: playerRef(m.b),
@@ -529,6 +554,12 @@ async function run() {
   const twoDaysAgo = new Date(now - 2 * 86400e3).toISOString();
   for (const m of Object.values(state.matches)) {
     if (m.st !== 'f' && m.at > twoDaysAgo) ids.add(m.t);
+  }
+  // Torneos sin campeón todavía: la final y el 3er puesto no existen como
+  // partido hasta que termina la fase de grupos, así que el torneo se sigue
+  // revisando aunque ya no le quede ningún partido guardado sin terminar.
+  for (const [id, t] of Object.entries(state.tournaments)) {
+    if (t.st !== 'f' && t.at > twoDaysAgo) ids.add(Number(id));
   }
   console.log(`Torneos a revisar: ${ids.size}`);
 

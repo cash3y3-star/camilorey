@@ -129,13 +129,14 @@ function liveFor(m) {
 
 function midBlock(m) {
   const lv = liveFor(m);
+  const ph = m.ph ? `<span class="badge red">🏆 ${esc(m.ph)}</span>` : '';
   if (m.st === 'f') {
-    return `<div class="mid"><span class="badge">Final</span><span class="score">${m.sa}-${m.sb}</span><span class="tn">${esc(m.tn)}</span></div>`;
+    return `<div class="mid">${ph || '<span class="badge">Terminado</span>'}<span class="score">${m.sa}-${m.sb}</span><span class="tn">${esc(m.tn)}</span></div>`;
   }
   if (lv) {
-    return `<div class="mid" data-live-mid="${m.id}"><span class="badge live">EN VIVO</span><span class="score">${lv.setsHome}-${lv.setsAway}</span><span class="tn">${esc(lv.ptsHome)} : ${esc(lv.ptsAway)} pts</span></div>`;
+    return `<div class="mid" data-live-mid="${m.id}"><span class="badge live">EN VIVO</span><span class="score">${lv.setsHome}-${lv.setsAway}</span><span class="tn">${m.ph ? `${esc(m.ph)} · ` : ''}${esc(lv.ptsHome)} : ${esc(lv.ptsAway)} pts</span></div>`;
   }
-  return `<div class="mid"><span class="time">${fmtTime(m.at)}</span><span class="tn">${esc(m.tn)}</span></div>`;
+  return `<div class="mid">${ph}<span class="time">${fmtTime(m.at)}</span><span class="tn">${esc(m.tn)}</span></div>`;
 }
 
 function matchCard(m, pick = m.pick || (m.c ? m : null), { showForm = true } = {}) {
@@ -516,7 +517,7 @@ function openMatch(id) {
     const h2hWinsA = (m.h2h || '').split('').filter((c) => c === 'A').length;
     const h2hTotal = (m.h2h || '').length;
     const center = m.st === 'f'
-      ? `<div class="mid"><span class="badge">Final</span><span class="score">${m.sa}-${m.sb}</span></div>`
+      ? `<div class="mid"><span class="badge">${esc(m.ph || 'Terminado')}</span><span class="score">${m.sa}-${m.sb}</span></div>`
       : lv
       ? `<div class="mid"><span class="badge live">EN VIVO</span><span class="score">${lv.setsHome}-${lv.setsAway}</span><span class="tn">${esc(lv.ptsHome)} : ${esc(lv.ptsAway)}</span></div>`
       : `<div class="mid"><span class="badge red">● ${fmtTime(m.at)}</span><div class="vs">VS</div></div>`;
@@ -527,7 +528,7 @@ function openMatch(id) {
       <div class="side ${pick && !favA ? 'fav' : ''}">${avatar(m.b, 'avatar lg')}<span class="nm" style="font-size:15px">${esc(m.b.n)}</span><span class="sub">Rating ${m.b.r ?? '—'}</span></div>
     </div>
     <div class="kv">
-      <div><small>Torneo</small><b style="font-size:13px">${esc((m.tn || '').replace(/^Tournament\s*/i, ''))}</b></div>
+      <div><small>${m.ph ? esc(m.ph) : 'Torneo'}</small><b style="font-size:13px">${esc((m.tn || '').replace(/^Tournament\s*/i, ''))}</b></div>
       <div><small>Cuota</small><b>${odds(pick?.o)}</b></div>
       <div><small>Estado</small><b class="red" style="font-size:14px">${m.st === 'f' ? 'FINAL' : lv ? 'EN VIVO' : 'PROGRAMADO'}</b></div>
     </div>
