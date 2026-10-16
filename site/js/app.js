@@ -49,9 +49,46 @@ function applyPremium() {
 }
 
 async function refreshPremium() {
-  membership = account ? await FB.loadMembership().catch(() => null) : null;
-  premiumData = isPremiumUser() ? await FB.loadPremiumContent().catch(() => null) : null;
+  membership = account ? await FB.loadMembership().catch(() => membership) : null;
+  premiumData = isPremiumUser() ? await FB.loadPremiumContent().catch(() => premiumData) : null;
   applyPremium();
+  maybePremiumWelcome();
+}
+
+// Bienvenida a Premium: se muestra una sola vez por cada activación o
+// renovación (se recuerda la fecha de vencimiento ya mostrada).
+function maybePremiumWelcome() {
+  if (!membership?.active || isAdmin() || !$sheet.hidden) return;
+  const key = membership.until.toISOString();
+  if (readLocal('cr_prem_welcome', '') === key) return;
+  writeLocal('cr_prem_welcome', key);
+  showPremiumWelcome(membership.until);
+}
+
+// También la usa el panel admin como vista previa.
+function showPremiumWelcome(until) {
+  const fecha = until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' });
+  const perks = ['Picks de alta confianza (65% o más)', 'Análisis con IA por partido', 'Bankroll con criterio de Kelly', 'Alertas de picks en tu celular'];
+  $sheetBody.innerHTML = `
+    <div class="pw-head">
+      <div class="pw-crown">${crownSvg()}</div>
+      <div class="pw-over">SUSCRIPCIÓN ACTIVA</div>
+      <h2>Bienvenido a CamiloRey Premium</h2>
+      <p>Tu suscripción está activa hasta ${esc(fecha)}.</p>
+    </div>
+    <div class="pw-card">
+      <span class="pw-badge">ACCESO COMPLETO</span>
+      <div class="pw-title"><span class="pw-ic">${crownSvg()}</span><div><b>CamiloRey Premium</b><small>Para quien sigue los picks en serio</small></div></div>
+      <ul class="pw-list">${perks.map((p) => `<li>${esc(p)}<span>✓</span></li>`).join('')}</ul>
+    </div>
+    <button class="btn pw-btn" id="btn-pw-start">Comenzar a Explorar</button>`;
+  $sheet.hidden = false;
+  $sheet.classList.add('pw');
+  document.body.style.overflow = 'hidden';
+}
+
+function crownSvg() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 10H5z"/><path d="M5 18h14"/></svg>';
 }
 
 // Bloque "solo Premium" reutilizable.
@@ -536,7 +573,7 @@ function viewAdmin() {
       <input name="email" type="email" required class="inline-input" style="width:100%;border-color:var(--line)" placeholder="usuario@gmail.com"></label>
     <div class="field"><span>Duración</span><div class="seg seg-full" id="member-days">${[7, 30, 90, 365].map((d) => `<button type="button" data-mdays="${d}" class="${d === 30 ? 'on' : ''}">${d === 365 ? '1 año' : d + ' días'}</button>`).join('')}</div></div>
     <button class="btn primary" type="submit">Activar Premium</button>
-    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Si ya tenía Premium, los días se suman a su fecha de vencimiento.</p>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Si ya tenía Premium, los días se suman a su fecha de vencimiento. Al usuario le aparece automáticamente una bienvenida a Premium. <button type="button" class="textlink" id="btn-pw-preview">Ver cómo se ve</button></p>
   </form>
   <div id="admin-members">${skeleton(1)}</div>
   <div class="section-h"><h2>📊 Visitas</h2></div>
@@ -1640,6 +1677,7 @@ function openNotifications() {
 
 function closeSheet() {
   $sheet.hidden = true;
+  $sheet.classList.remove('pw');
   document.body.style.overflow = '';
   sheetUnsub?.();
   sheetUnsub = null;
@@ -1805,6 +1843,14 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.themeSet) {
     setTheme(t.dataset.themeSet);
     return route();
+  }
+  if (t.id === 'btn-pw-preview') return showPremiumWelcome(new Date(Date.now() + memberDays * 86400e3));
+  if (t.id === 'btn-pw-start') {
+    closeSheet();
+    ui.pickFilter = 'high';
+    if (location.hash === '#/picks') route();
+    else location.hash = '#/picks';
+    return;
   }
   if (t.id === 'btn-profile') return (location.hash = '#/perfil');
   if (t.id === 'btn-notif') return openNotifications();
@@ -2038,10 +2084,9 @@ updateBellDot();
 setInterval(async () => {
   if (document.visibilityState === 'hidden' || !$sheet.hidden) return;
   await loadData();
-  if (isPremiumUser()) {
-    premiumData = await FB.loadPremiumContent().catch(() => premiumData);
-    applyPremium();
-  }
+  // Revisa la membresía cada minuto: si el admin la acaba de activar, se
+  // desbloquea sin recargar y aparece la bienvenida.
+  if (account) await refreshPremium();
   const y = window.scrollY;
   route();
   window.scrollTo(0, y);

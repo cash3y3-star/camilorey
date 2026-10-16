@@ -324,6 +324,28 @@ details.faq p { margin: 0; padding: 0 14px 14px; font-size: 13px; color: var(--m
 .fc-bar span { display: block; height: 100%; background: #22c55e; border-radius: 99px; }
 .fcard.is-miss .fc-bar span { background: #ef4444; }
 .fc-conf b { font-size: 11px; color: #a1a1aa; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Bienvenida a Premium (hoja que sube desde abajo) */
+.sheet-backdrop.pw .sheet { padding-top: 0; background: #151817; }
+.sheet-backdrop.pw .sheet-grip, .sheet-backdrop.pw .sheet-close { display: none; }
+.pw-head { margin: 0 -16px; padding: 34px 20px 30px; text-align: center; color: #fff; background: linear-gradient(180deg, #2c8f6c 0%, #1d6b51 55%, #134a39 100%); border-radius: 24px 24px 0 0; }
+.pw-crown { width: 86px; height: 86px; margin: 0 auto 16px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.12); border: 2px solid rgba(255, 255, 255, 0.28); }
+.pw-crown svg { width: 40px; height: 40px; color: #b9f5dc; }
+.pw-over { font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em; color: #d3f3e6; }
+.pw-head h2 { margin: 8px 0 10px; font-size: 25px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; }
+.pw-head p { margin: 0; font-size: 15px; color: #e5f7ef; }
+.pw-card { position: relative; margin: 26px 0 22px; padding: 22px 18px 6px; border-radius: 20px; border: 1px solid #2f4d42; background: #1b2420; color: #eef5f1; }
+.pw-badge { position: absolute; top: -13px; right: 20px; padding: 5px 12px; border-radius: 999px; background: #a7f3d0; color: #064e3b; font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 0.1em; }
+.pw-title { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+.pw-ic { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: #24403a; border: 1px solid #355a4f; flex: none; }
+.pw-ic svg { width: 26px; height: 26px; color: #b9f5dc; }
+.pw-title b { display: block; font-size: 18px; }
+.pw-title small { color: #8fa79c; font-size: 13px; }
+.pw-list { list-style: none; margin: 0; padding: 0; }
+.pw-list li { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-top: 1px solid #263a33; font-size: 15px; }
+.pw-list li span { color: #4ade80; font-weight: 800; }
+.pw-btn { background: #22a06b; color: #fff; border-radius: 999px; padding: 16px; font-size: 16px; }
+.pw-btn:hover { background: #1f8f60; }
+
 /* Premium */
 .premium-lock { text-align: center; padding: 22px 16px; border-radius: 16px; border: 1px solid rgba(250, 204, 21, 0.45); background: radial-gradient(ellipse at top, rgba(250, 204, 21, 0.12), transparent 70%), var(--card); }
 .premium-lock .pl-ic { font-size: 30px; }
