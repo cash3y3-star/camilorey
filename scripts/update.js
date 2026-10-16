@@ -717,10 +717,15 @@ async function run() {
   }
 
   // Picks pendientes generados antes de guardar los datos del "Análisis IA"
-  // (pick.x): si el partido todavía no empieza, se recalculan.
+  // (pick.x): si el partido todavía no empieza, se recalculan. Los que ya
+  // empezaron se pasan de la escala vieja (70-92%) a la honesta (50-80%).
   for (const [id, p] of Object.entries(state.picks)) {
     const m = state.matches[id];
     if (!p.x && p.res === 'pending' && m && m.st === 's' && new Date(m.at).getTime() > now + 5 * 60e3) delete state.picks[id];
+    else if (!p.x && !p.v2) {
+      p.c = Math.round(Math.max(50, Math.min(80, 50 + ((p.c - 70) * 30) / 22)));
+      p.v2 = true;
+    }
   }
 
   const model = trainModel();
