@@ -694,23 +694,23 @@ function writeSite(meta) {
     maxDrawdown,
     series: [...balByDay.entries()].map(([d, bal]) => ({ d, bal }))
   };
-  privateLedger = ledger
-    .slice(-1000)
-    .reverse()
-    .map((b) => ({
-      id: b.id,
-      at: b.at,
-      ph: b.ph,
-      a: b.a.n,
-      b: b.b.n,
-      fav: b.fav === b.a.id ? b.a.n : b.b.n,
-      c: b.c,
-      o: b.o,
-      stake: b.stake,
-      profit: b.profit,
-      bal: b.bal,
-      res: b.res
-    }));
+  // Historial del admin: TODOS los picks, no solo los apostados. Los que
+  // no mueven la banca (pendientes, en juego, sin cuota, o de antes cuando
+  // no se publicaban los de menos de 55%) van sin ganancia ni saldo.
+  const betRow = new Map(ledger.map((b) => [b.id, b]));
+  const name = (id) => state.players[id]?.n || '?';
+  privateLedger = Object.values(state.picks)
+    .filter((p) => state.matches[p.id])
+    .map((p) => {
+      const m = state.matches[p.id];
+      const b = betRow.get(p.id);
+      const row = { id: p.id, at: m.at, ph: phaseOf(m), a: name(m.a), b: name(m.b), fav: name(p.fav), c: p.c, o: p.o ?? null, res: p.res };
+      if (b) return { ...row, stake: b.stake, profit: b.profit, bal: b.bal };
+      const st = p.res === 'pending' ? (m.st === 'f' ? 'wait' : m.st === 'l' ? 'live' : 'pre') : !p.pub ? 'np' : 'nodds';
+      return { ...row, stake: p.res === 'pending' && p.o ? computeStake(p.c) : null, profit: null, bal: null, st };
+    })
+    .sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : y.id - x.id))
+    .slice(0, 2500); // ~12 días; el documento de Firestore tiene tope de 1 MB
 
   // Partidos SIN pick publicado (confianza < 55%): para que el admin elija
   // uno, se prepara el Análisis IA de AMBOS lados y las cuotas prepartido.
@@ -1187,7 +1187,8 @@ async function run() {
   }
 
   totals.oddsBackfilled = backfillOdds(rushbet);
-  await historyStep(HISTORY_BUDGET_MS);
+  // El historial viejo se carga DESPUÉS de publicar (paso aparte del
+  // workflow: --history), para no demorar resultados ni picks nuevos.
   prune();
   writeSite({ model: modelInfo, tipster: await tipsterStats(), users: await require('./notify').countUsers() });
   try {
@@ -1212,7 +1213,20 @@ async function siteOnly() {
 }
 
 const bfIdx = process.argv.indexOf('--backfill');
-const job = bfIdx > -1 ? backfill(Number(process.argv[bfIdx + 1]) || 30) : process.argv.includes('--site-only') ? siteOnly() : run();
+// --history: solo carga días viejos que falten y guarda el estado.
+async function historyOnly() {
+  await historyStep(HISTORY_BUDGET_MS);
+  saveState();
+}
+
+const job =
+  bfIdx > -1
+    ? backfill(Number(process.argv[bfIdx + 1]) || 30)
+    : process.argv.includes('--site-only')
+    ? siteOnly()
+    : process.argv.includes('--history')
+    ? historyOnly()
+    : run();
 job.catch((e) => {
   console.error('ERROR:', e.message);
   process.exit(1);

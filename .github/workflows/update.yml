@@ -83,3 +83,17 @@ jobs:
           path: site
       - id: deploy
         uses: actions/deploy-pages@v4
+
+      # Historial viejo (2026 completo) DESPUÉS de publicar: así los
+      # resultados y picks nuevos no esperan esta carga.
+      - name: Cargar historial pendiente
+        continue-on-error: true
+        run: node scripts/update.js --history
+
+      - name: Guardar estado (historial)
+        run: |
+          cd data
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -q -m "estado (historial) $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state

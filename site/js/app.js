@@ -1339,15 +1339,39 @@ async function renderAdminLedger() {
       </div>
       ${b.series?.length ? `<div class="card pad" style="margin-top:12px"><div class="overline">Evolución de la banca</div>${bankChart(b.series, b.start)}</div>` : ''}`
       : '<div class="note">El resumen aparece en la próxima actualización (cada ~10 min).</div>';
+    // Todos los picks: los apostados mueven la banca; el resto se muestra
+    // con su estado (pendiente, en juego, por resolver, sin cuota...).
+    const ST = { pre: 'Pendiente', live: 'En juego', wait: 'Por resolver', nodds: 'Sin cuota · no se apostó', np: 'No publicado (<55%)' };
+    const f = ui.ledgerF || 'all';
+    const counts = {
+      all: rows.length,
+      bet: rows.filter((x) => x.profit != null).length,
+      open: rows.filter((x) => x.res === 'pending').length,
+      done: rows.filter((x) => x.res !== 'pending').length
+    };
+    const shown = rows.filter((x) => (f === 'bet' ? x.profit != null : f === 'open' ? x.res === 'pending' : f === 'done' ? x.res !== 'pending' : true));
+    const resCell = (x) => {
+      if (x.profit != null) return `<td class="num ${x.profit >= 0 ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ ' : '✗ '}${signed(x.profit)}</td>`;
+      const mark = x.res === 'hit' ? '<b class="pos-t">✓</b> ' : x.res === 'miss' ? '<b class="neg-t">✗</b> ' : '';
+      return `<td class="num"><span style="color:var(--muted);font-size:11px">${mark}${esc(ST[x.st] || '—')}</span></td>`;
+    };
+    const filters = `<div class="seg seg-full" style="margin-bottom:10px;grid-auto-flow:row;grid-template-columns:1fr 1fr;border-radius:16px">${[
+      ['all', 'Todos'],
+      ['bet', 'Apostados'],
+      ['open', 'Pendientes'],
+      ['done', 'Terminados']
+    ]
+      .map(([k, t]) => `<button type="button" data-ledger-f="${k}" class="${f === k ? 'on' : ''}">${t} <em>${counts[k]}</em></button>`)
+      .join('')}</div>`;
     const table = rows.length
-      ? `<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
-        ${rows
+      ? `${filters}<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
+        ${shown
           .map(
-            (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a)} vs ${esc(x.b)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(x.fav)} <span class="conf">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${cop(x.stake)}</td><td class="num ${x.profit >= 0 ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ ' : '✗ '}${signed(x.profit)}</td><td class="num">${cop(x.bal)}</td></tr>`
+            (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a)} vs ${esc(x.b)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(x.fav)} <span class="conf${x.c < 55 ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${x.stake != null ? cop(x.stake) : '—'}</td>${resCell(x)}<td class="num">${x.bal != null ? cop(x.bal) : '—'}</td></tr>`
           )
           .join('')}
-        </tbody></table></div><p class="foot" style="margin-top:8px">${rows.length} apuestas · actualizado ${updatedAt ? fmtTime(updatedAt) : '—'}</p>`
-      : empty('wallet', 'Aún no hay apuestas resueltas', 'Cuando terminen los partidos con pick y cuota, cada apuesta aparece aquí.');
+        </tbody></table></div><p class="foot" style="margin-top:8px">${shown.length} de ${rows.length} picks · ${counts.bet} apostados · actualizado ${updatedAt ? fmtTime(updatedAt) : '—'}</p>`
+      : empty('wallet', 'Aún no hay picks', 'Cada pick del sistema aparece aquí, con su resultado cuando termina el partido.');
     box.innerHTML = `${hero}<div class="section-h"><h2>🔒 Historial de apuestas</h2><span class="badge red">Solo admin</span></div>${table}`;
   } catch (e) {
     box.innerHTML = `<div class="note">No se pudo cargar el bankroll del sistema (${esc(e.code || e.message)}).</div>`;
@@ -1998,6 +2022,10 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.ft) {
     ui.formTab = t.dataset.ft;
     return $sheet._redraw?.();
+  }
+  if (t.dataset.ledgerF) {
+    ui.ledgerF = t.dataset.ledgerF;
+    return renderAdminLedger();
   }
   if (t.dataset.oddsfmt) {
     writeLocal('cr_odds', t.dataset.oddsfmt);
