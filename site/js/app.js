@@ -280,10 +280,7 @@ function renderLiveHome(state) {
   const list = state.liga.length ? state.liga : [];
   if (!state.at) return;
   if (!list.length) {
-    const others = state.all.slice(0, 6);
-    box.innerHTML = `<div class="note">No hay partidos de la Liga Pro en vivo en este momento.${others.length ? ' Otros partidos de tenis de mesa en vivo:' : ''}</div>${
-      others.length ? `<div class="grid-2" style="margin-top:10px">${others.map((e) => liveCard(e, null)).join('')}</div>` : ''
-    }`;
+    box.innerHTML = '<div class="note">No hay partidos de la Liga Pro Checa en vivo en este momento.</div>';
     return;
   }
   box.innerHTML = list
@@ -436,7 +433,6 @@ function viewEnVivo() {
   <div class="page-sub"><i class="live-dot red"></i><span id="live-count">Cargando...</span></div>
   <div class="toolbar"><div class="seg">
     <button data-lf="all" class="${ui.liveFilter === 'all' ? 'on' : ''}">Todos</button>
-    <button data-lf="liga" class="${ui.liveFilter === 'liga' ? 'on' : ''}">Liga Pro Checa</button>
     <button data-lf="pick" class="${ui.liveFilter === 'pick' ? 'on' : ''}">Con pick</button>
   </div></div>
   <div id="live-page">${skeleton(3)}</div>
@@ -447,27 +443,20 @@ function renderLivePage(state) {
   liveDot(state);
   const box = document.getElementById('live-page');
   if (!box || !state.at) return;
+  // Solo la Liga Pro Checa.
   const ours = data.calendar.matches;
-  const withOurs = state.all.map((e) => ({ e, m: e.liga ? ours.find((x) => findLive([e], x.a.n, x.b.n)) : null }));
-  // Liga Pro primero, después el resto; dentro de cada grupo, por liga.
-  withOurs.sort((x, y) => (y.e.liga - x.e.liga) || x.e.group.localeCompare(y.e.group));
-  let list = withOurs;
-  if (ui.liveFilter === 'liga') list = list.filter((x) => x.e.liga);
+  let list = state.liga.map((e) => ({ e, m: ours.find((x) => findLive([e], x.a.n, x.b.n)) }));
   if (ui.liveFilter === 'pick') list = list.filter((x) => x.m?.pick);
-  document.getElementById('live-count').textContent = `${state.all.length} partidos en juego · ${state.liga.length} de la Liga Pro · se actualiza cada 2 s`;
+  document.getElementById('live-count').textContent = `Liga Pro Checa · ${state.liga.length} ${state.liga.length === 1 ? 'partido' : 'partidos'} en juego · se actualiza cada 2 s`;
   if (!list.length) {
-    box.innerHTML = empty('live', 'Nada en vivo ahora', ui.liveFilter === 'all' ? 'No hay partidos de tenis de mesa en juego en este momento.' : 'No hay partidos en vivo con este filtro.');
+    box.innerHTML = empty(
+      'live',
+      'Nada en vivo ahora',
+      ui.liveFilter === 'all' ? 'No hay partidos de la Liga Pro Checa en juego en este momento. Mira los próximos en Calendario.' : 'Ningún partido con pick se está jugando ahora.'
+    );
     return;
   }
-  const groups = new Map();
-  for (const x of list) {
-    const g = x.e.liga ? 'Liga Pro Checa' : x.e.group || 'Otras ligas';
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(x);
-  }
-  box.innerHTML = [...groups.entries()]
-    .map(([g, xs]) => `<div class="section-h"><h2 style="font-size:14px">${esc(g)}</h2><span class="badge live">${xs.length}</span></div><div class="grid-2">${xs.map((x) => liveCard(x.e, x.m)).join('')}</div>`)
-    .join('');
+  box.innerHTML = `<div class="grid-2">${list.map((x) => liveCard(x.e, x.m)).join('')}</div>`;
 }
 
 function viewSeguidos() {
