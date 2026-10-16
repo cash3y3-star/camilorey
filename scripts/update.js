@@ -544,13 +544,18 @@ function writeSite(meta) {
   const now = Date.now();
   const published = Object.values(state.picks).filter((p) => p.pub && state.matches[p.id]);
 
-  // Destacado: entre los pendientes, el de más confianza con cuota > 1.60.
+  // Pick destacado: entre los pendientes que TODAVÍA NO EMPIEZAN, el de más
+  // confianza con cuota > 1.60 (si no hay, el de más confianza). Queda
+  // registrado en p.dst y se congela cuando arranca su partido: así
+  // "destacado" = el que era destacado al empezar el partido, y sus
+  // resultados se miden aparte (estadísticas de Inicio).
   const pending = published.filter((p) => p.res === 'pending');
-  for (const p of published) delete p.ft;
-  const withOdds = pending.filter((p) => p.o && p.o > FEATURED_MIN_ODDS);
-  const pool = withOdds.length ? withOdds : pending;
-  const featured = pool.slice().sort((a, b) => b.c - a.c)[0];
-  if (featured) featured.ft = true;
+  const notStarted = pending.filter((p) => state.matches[p.id].st === 's' && new Date(state.matches[p.id].at).getTime() > now);
+  const withOdds = notStarted.filter((p) => p.o && p.o > FEATURED_MIN_ODDS);
+  const pool = withOdds.length ? withOdds : notStarted;
+  const featured = pool.slice().sort((a, b) => b.c - a.c || (state.matches[a.id].at < state.matches[b.id].at ? -1 : 1))[0];
+  for (const p of notStarted) p.dst = p === featured;
+  for (const p of published) p.ft = p === featured;
 
   const pendingView = pending
     .map((p) => pickView(p, true))
@@ -660,8 +665,32 @@ function writeSite(meta) {
     streak,
     series,
     pendingCount: pendingView.length,
-    model: meta.model
+    model: meta.model,
+    featured: featuredStats(resolved, d)
   });
+}
+
+// Estadísticas SOLO de los picks destacados (p.dst), para Inicio.
+function featuredStats(resolved, d) {
+  const list = resolved.filter((p) => p.dst); // más nuevo primero
+  let streak = 0;
+  for (const p of list) {
+    const s = p.res === 'hit' ? 1 : -1;
+    if (streak === 0 || Math.sign(streak) === s) streak += s;
+    else break;
+  }
+  const withOdds = list.filter((p) => p.o);
+  return {
+    d7: summarize(list.filter((p) => state.matches[p.id].at >= d(7))),
+    d30: summarize(list.filter((p) => state.matches[p.id].at >= d(30))),
+    all: summarize(list),
+    streak,
+    avgOdds: withOdds.length ? Math.round((withOdds.reduce((s, p) => s + p.o, 0) / withOdds.length) * 100) / 100 : null,
+    last: list.slice(0, 10).map((p) => {
+      const m = state.matches[p.id];
+      return { id: p.id, at: m.at, fav: state.players[p.fav]?.n || '?', c: p.c, o: p.o, res: p.res };
+    })
+  };
 }
 
 // ---------------- historial privado (solo admin) ----------------

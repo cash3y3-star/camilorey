@@ -252,15 +252,14 @@ function errorBox() {
 // ---------------- vistas ----------------
 
 function viewInicio() {
-  const s = data.stats;
+  // Estadísticas de Inicio: SOLO los picks destacados (con su resultado real).
+  const fs = data.stats?.featured;
+  const total = fs ? fs.all.hit + fs.all.miss : 0;
   const name = account ? userName().split(' ')[0] : null;
-  const streak = s?.streak || 0;
+  const streak = fs?.streak || 0;
   const streakTxt = streak > 0 ? `${streak}W 🔥` : streak < 0 ? `${-streak}L` : '—';
   const pend = data.picks;
-  const avgOdds = (() => {
-    const list = [...pend, ...data.results.slice(0, 40)].filter((p) => p.o);
-    return list.length ? (list.reduce((a, p) => a + p.o, 0) / list.length).toFixed(2) : '—';
-  })();
+  const avgOdds = fs?.avgOdds ? fs.avgOdds.toFixed(2) : '—';
   const next = upcomingPicks();
   const featured = next.find((p) => p.ft) || next.slice().sort((a, b) => b.c - a.c)[0];
 
@@ -270,12 +269,21 @@ function viewInicio() {
     <p>${esc(longDate())} · ${pend.length} picks activos · Liga Pro Checa</p>
   </section>
   ${errorBox()}
-  <div class="tiles">
-    <div class="tile"><div class="overline">Efectividad</div><div class="val">${pct(s?.d7?.pct)}</div><div class="hint">últimos 7 días</div></div>
-    <div class="tile"><div class="overline">Racha</div><div class="val ${streak > 0 ? 'pos' : streak < 0 ? 'neg' : ''}">${streakTxt}</div><div class="hint">picks seguidos</div></div>
-    <div class="tile"><div class="overline">Cuota prom.</div><div class="val">${avgOdds}</div><div class="hint">picks recientes</div></div>
+  <div class="overline" style="margin:16px 2px 0">⭐ Picks destacados</div>
+  <div class="tiles" style="margin-top:8px">
+    <div class="tile"><div class="overline">Efectividad</div><div class="val">${pct(fs?.all?.pct)}</div><div class="hint">${total ? `${fs.all.hit} de ${total}` : 'sin resueltos aún'}</div></div>
+    <div class="tile"><div class="overline">Racha</div><div class="val ${streak > 0 ? 'pos' : streak < 0 ? 'neg' : ''}">${streakTxt}</div><div class="hint">destacados seguidos</div></div>
+    <div class="tile"><div class="overline">Cuota prom.</div><div class="val">${avgOdds}</div><div class="hint">de los destacados</div></div>
   </div>
-  ${s?.d7?.hit + s?.d7?.miss ? `<div class="banner"><span>⭐ CamiloRey acertó <b>${s.d7.hit}/${s.d7.hit + s.d7.miss}</b> en los últimos 7 días</span><a class="textlink" href="#/bankroll">Ver</a></div>` : ''}
+  ${
+    fs?.last?.length
+      ? `<div class="card pad" style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="overline" style="margin-right:auto">Últimos destacados</span>${fs.last
+          .slice()
+          .reverse()
+          .map((x) => `<span class="h2h-res ${x.res === 'hit' ? 'w' : 'l'}" style="margin:0;width:22px;height:22px" title="${esc(x.fav)} · ${x.c}%">${x.res === 'hit' ? '✓' : '✗'}</span>`)
+          .join('')}</div>`
+      : ''
+  }
 
   ${
     featured
