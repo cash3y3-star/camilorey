@@ -9,6 +9,7 @@ import { icon, hydrateIcons } from './icons.js?v=__V__';
 import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
 import { startI18n } from './i18n.js?v=__V__';
+import { tapFx, followFx, fxEnabled, setFx } from './feedback.js?v=__V__';
 import { TELEGRAM_URL, SUPPORT_EMAIL, ADMIN_EMAIL, VAPID_PUBLIC_KEY } from './config.js?v=__V__';
 
 const TZ = 'America/Bogota';
@@ -240,8 +241,13 @@ function isFollowed(id) {
   return follows.has(id);
 }
 async function toggleFollow(id) {
-  if (follows.has(id)) follows.delete(id);
-  else follows.add(id);
+  if (follows.has(id)) {
+    follows.delete(id);
+    tapFx();
+  } else {
+    follows.add(id);
+    followFx();
+  }
   writeLocal('cr_follows', [...follows]);
   if (FB.user()) FB.saveFollows([...follows]).catch(() => {});
   document.querySelectorAll(`[data-follow="${id}"]`).forEach((b) => b.classList.toggle('on', follows.has(id)));
@@ -1352,6 +1358,7 @@ function viewPerfil() {
     ${isAdmin() ? `<a class="row" href="#/admin"><span class="ic" style="color:var(--red-2)">${icon('shield')}</span><span class="tx"><b>Panel admin</b><small>Pick del tipster, visitas y usuarios</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
     <a class="row" href="#/premium"><span class="ic" style="font-size:18px">⭐</span><span class="tx"><b>Premium</b><small>${isPremiumUser() ? (isAdmin() ? 'Activo (administrador)' : `Activo hasta ${esc(membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' }))}`) : 'Picks de alta confianza, análisis IA, bankroll y avisos'}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/notificaciones"><span class="ic">${icon('bell')}</span><span class="tx"><b>Notificaciones</b><small>Avisos de tus picks en el celular</small></span><span class="chev">${icon('chev')}</span></a>
+    <button class="row check ${fxEnabled() ? 'on' : ''}" data-fx="1"><span class="ic">${icon('bolt')}</span><span class="tx"><b>Sonido y vibración</b><small>Un toque suave al cambiar de pestaña</small></span><span class="tick"></span></button>
     <a class="row" href="#/tema"><span class="ic">${icon('moon')}</span><span class="tx"><b>Tema</b><small>${esc({ dark: 'Oscuro', light: 'Claro', system: 'Sistema' }[readLocal('cr_theme_raw', 'dark')] || 'Oscuro')}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/cuotas"><span class="ic">${icon('chart')}</span><span class="tx"><b>Formato de cuotas</b><small>${esc(ODDS_FORMATS[readLocal('cr_odds', 'decimal')]?.[0] || 'Decimal')} · ${esc(odds(1.57))}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/idioma"><span class="ic">${icon('globe')}</span><span class="tx"><b>Idioma</b><small>${readLocal('cr_lang', 'es') === 'en' ? 'English' : 'Español'}</small></span><span class="chev">${icon('chev')}</span></a>
@@ -1780,7 +1787,23 @@ async function renderCounter() {
 
 // ---------------- eventos ----------------
 
+// Vibración y "tic" al tocar pestañas (barra de abajo y pestañas internas).
+document.addEventListener(
+  'click',
+  (ev) => {
+    if (ev.target.closest('.tabbar a, .seg button, .chip-btn, .daynav button')) tapFx();
+  },
+  true
+);
+
 document.addEventListener('click', async (ev) => {
+  const fxRow = ev.target.closest('[data-fx]');
+  if (fxRow) {
+    setFx(!fxEnabled());
+    fxRow.classList.toggle('on', fxEnabled());
+    tapFx();
+    return;
+  }
   // Tocar un jugador abre su perfil (tiene prioridad sobre abrir el partido).
   const pl = ev.target.closest('[data-player]');
   if (pl && !ev.target.closest('[data-follow]')) {

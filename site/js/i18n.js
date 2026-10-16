@@ -64,6 +64,7 @@ const DICT = {
   Jugador: 'Player', 'Últimos 30 días': 'Last 30 days', 'Títulos': 'Titles', 'torneos ganados': 'tournaments won', actual: 'current',
   'Próximos partidos': 'Upcoming matches', 'Últimos partidos': 'Latest matches', 'Rivales frecuentes': 'Frequent opponents',
   '🏆 Torneos ganados': '🏆 Tournaments won', 'Sin ficha': 'No profile',
+  'Sonido y vibración': 'Sound and vibration', 'Un toque suave al cambiar de pestaña': 'A soft tap when switching tabs',
   // login
   'Iniciar sesión': 'Sign in', 'Crear cuenta': 'Create account', 'Continuar con Google': 'Continue with Google', 'o con tu correo': 'or with your email',
   Nombre: 'Name', 'Contraseña': 'Password', 'Crear cuenta nueva': 'Create a new account', 'Olvidé mi contraseña': 'Forgot my password',
