@@ -134,6 +134,65 @@ export async function loadAdminLedger() {
     : { updatedAt: d.updatedAt, summary: parsed.summary || null, rows: parsed.ledger || [] };
 }
 
+// ---------- Notificaciones push ----------
+// users/{uid}.push = [suscripciones del navegador], .notify = { start, end, featured }
+export async function loadPushState() {
+  if (!currentUser) return null;
+  const f = await load();
+  const d = (await f.F.getDoc(f.F.doc(f.db, 'users', currentUser.uid))).data() || {};
+  return { push: d.push || [], notify: { start: true, end: true, featured: true, ...(d.notify || {}) } };
+}
+
+export async function savePushState({ push, notify }) {
+  if (!currentUser) return;
+  const f = await load();
+  const patch = {};
+  if (push) patch.push = push;
+  if (notify) patch.notify = notify;
+  await f.F.setDoc(f.F.doc(f.db, 'users', currentUser.uid), patch, { merge: true });
+}
+
+// ---------- Panel admin ----------
+
+// Picks del tipster: colección pública "tipster" (las reglas solo dejan
+// escribir a la cuenta admin). Id del documento = id del partido.
+export async function listTipster() {
+  const f = await load();
+  const snap = await f.F.getDocs(f.F.collection(f.db, 'tipster'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function saveTipster(pick) {
+  const f = await load();
+  await f.F.setDoc(f.F.doc(f.db, 'tipster', String(pick.mid)), { ...pick, created: new Date().toISOString() });
+}
+
+export async function deleteTipster(id) {
+  const f = await load();
+  await f.F.deleteDoc(f.F.doc(f.db, 'tipster', String(id)));
+}
+
+// Usuarios registrados (solo admin puede leerlos, por reglas).
+export async function listUsers() {
+  const f = await load();
+  const snap = await f.F.getDocs(f.F.collection(f.db, 'users'));
+  return snap.docs.map((d) => {
+    const x = d.data();
+    return { id: d.id, name: x.name || '', email: x.email || '', created: x.created || null, push: Array.isArray(x.push) ? x.push.length : 0, follows: (x.follows || []).length };
+  });
+}
+
+// Visitas por día de los últimos n días (documentos stats/visits-AAAA-MM-DD).
+export async function visitsByDay(n = 14) {
+  const f = await load();
+  const days = [];
+  for (let k = n - 1; k >= 0; k--) {
+    days.push(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date(Date.now() - k * 86400e3)));
+  }
+  const snaps = await Promise.all(days.map((d) => f.F.getDoc(f.F.doc(f.db, 'stats', `visits-${d}`))));
+  return days.map((d, i) => ({ d, count: snaps[i].data()?.count || 0 }));
+}
+
 // Configuración del "Mi Bankroll" (Kelly) de cada usuario: { start, risk }.
 export async function saveBankSettings(bank) {
   if (!currentUser) return;

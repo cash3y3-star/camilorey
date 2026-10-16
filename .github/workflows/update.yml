@@ -42,9 +42,24 @@ jobs:
         with:
           node-version: '22'
 
+      # web-push (para las notificaciones), instalado aparte y con caché
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/push-node
+          key: push-node-v1
+      - name: Instalar web-push
+        run: |
+          mkdir -p ~/.cache/push-node && cd ~/.cache/push-node
+          [ -d node_modules/web-push ] || npm install --no-audit --no-fund web-push@3.6.7
+
       - name: Actualizar partidos y picks
         env:
           FIRESTORE_BOT_KEY: ${{ secrets.FIRESTORE_BOT_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+          BOT_PASSWORD: ${{ secrets.BOT_PASSWORD }}
+          NODE_PATH: /home/runner/.cache/push-node/node_modules
         run: node scripts/update.js
 
       - name: Guardar estado

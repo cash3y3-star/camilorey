@@ -59,7 +59,8 @@ const state = {
   players: readJson(path.join(STATE_DIR, 'players.json'), {}),
   tournaments: readJson(path.join(STATE_DIR, 'tournaments.json'), {}),
   matches: readJson(path.join(STATE_DIR, 'matches.json'), {}),
-  picks: readJson(path.join(STATE_DIR, 'picks.json'), {})
+  picks: readJson(path.join(STATE_DIR, 'picks.json'), {}),
+  notified: readJson(path.join(STATE_DIR, 'notified.json'), {}) // avisos push ya enviados (scripts/notify.js)
 };
 
 function saveState() {
@@ -672,7 +673,8 @@ function writeSite(meta) {
     model: meta.model,
     featured: featuredStats(resolved, d),
     champions: champs,
-    hot
+    hot,
+    tipster: meta.tipster || null
   });
   writePlayers(new Set([...calendar.flatMap((m) => [m.a.id, m.b.id]), ...pendingView.flatMap((p) => [p.a.id, p.b.id]), ...champs.flatMap((c) => [c.champ.id, c.rival.id]), ...hot.map((h) => h.p.id)]), byPlayer);
 }
@@ -829,9 +831,39 @@ const FIREBASE_API_KEY = 'AIzaSyAjEK6Ca7_NEDiPMJv9iqwNLx1DY8WOog0';
 let privateLedger = null;
 let systemBankroll = null;
 
+// Picks del tipster (colección pública "tipster" de Firestore, la escribe
+// el admin desde el panel): se resuelven con los resultados oficiales.
+async function tipsterStats() {
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/tipster?pageSize=500&key=${FIREBASE_API_KEY}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const docs = (await r.json()).documents || [];
+    let hit = 0;
+    let miss = 0;
+    const last = [];
+    for (const d of docs) {
+      const f = d.fields || {};
+      const mid = Number(f.mid?.integerValue ?? f.mid?.doubleValue);
+      const fav = Number(f.fav?.integerValue ?? f.fav?.doubleValue);
+      const m = state.matches[mid];
+      if (!m || m.st !== 'f') continue;
+      const won = m.w === fav;
+      won ? hit++ : miss++;
+      last.push({ at: m.at, res: won ? 'hit' : 'miss' });
+    }
+    last.sort((a, b) => (a.at < b.at ? 1 : -1));
+    return { hit, miss, pct: hit + miss ? Math.round((hit / (hit + miss)) * 1000) / 10 : null, last: last.slice(0, 10).map((x) => x.res) };
+  } catch {
+    return null;
+  }
+}
+
 async function pushPrivateLedger() {
-  const botKey = process.env.FIRESTORE_BOT_KEY;
-  if (!botKey || !privateLedger) return;
+  // Escribe la cuenta bot (reglas: solo el bot escribe admin/). La clave
+  // vieja (botKey) se sigue mandando mientras convivan ambas reglas.
+  const botKey = process.env.FIRESTORE_BOT_KEY || '';
+  if (!privateLedger || (!botKey && !process.env.BOT_EMAIL)) return;
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/admin/ledger?key=${FIREBASE_API_KEY}`;
   const body = {
     fields: {
@@ -841,7 +873,9 @@ async function pushPrivateLedger() {
     }
   };
   try {
-    const r = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.BOT_EMAIL) headers.Authorization = `Bearer ${await require('./notify').botToken()}`;
+    const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(body) });
     if (!r.ok) console.error(`Historial privado: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
     else console.log(`Historial privado actualizado (${privateLedger.length} apuestas)`);
   } catch (e) {
@@ -963,7 +997,13 @@ async function run() {
 
   totals.oddsBackfilled = backfillOdds(rushbet);
   prune();
-  writeSite({ model: modelInfo });
+  writeSite({ model: modelInfo, tipster: await tipsterStats() });
+  try {
+    const featured = Object.values(state.picks).find((p) => p.ft);
+    await require('./notify').runNotifications(state, { name: (id) => state.players[id]?.n || '?', featuredId: featured?.id || null });
+  } catch (e) {
+    console.error(`Push: ${e.message}`);
+  }
   // Después de writeSite: ahí se marca el pick destacado (p.dst), que
   // tiene que quedar guardado en el estado.
   saveState();

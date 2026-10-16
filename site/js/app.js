@@ -9,7 +9,7 @@ import { icon, hydrateIcons } from './icons.js?v=__V__';
 import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
 import { startI18n } from './i18n.js?v=__V__';
-import { TELEGRAM_URL, SUPPORT_EMAIL, ADMIN_EMAIL } from './config.js?v=__V__';
+import { TELEGRAM_URL, SUPPORT_EMAIL, ADMIN_EMAIL, VAPID_PUBLIC_KEY } from './config.js?v=__V__';
 
 const TZ = 'America/Bogota';
 const $view = document.getElementById('view');
@@ -223,7 +223,7 @@ function matchCard(m, pick = m.pick || (m.c ? m : null), { showForm = true } = {
       pick
         ? `<div class="pickbar">
         <span class="who">Pick: <b>${esc(fav?.n)}</b> gana</span>
-        <span class="conf">${pick.c}%</span>
+        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `<span class="conf">${pick.c}%</span>`}
         <span class="odds">${odds(pick.o)}</span>
         ${res}
         ${pick.res === 'pending' ? `<button class="follow ${isFollowed(m.id) ? 'on' : ''}" data-follow="${m.id}" aria-label="Seguir pick">${icon('heart')}</button>` : ''}
@@ -313,6 +313,7 @@ function viewInicio() {
       : ''
   }
 
+  <div id="tipster-home"></div>
   ${
     featured
       ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div>${matchCard(featured, featured)}`
@@ -324,6 +325,194 @@ function viewInicio() {
   ${hotHtml()}
   ${data.loaded && !featured ? empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.') : ''}
   ${footer()}`;
+}
+
+// ---------- Notificaciones push ----------
+function b64ToBytes(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+function viewNotificaciones() {
+  setTimeout(renderNotificaciones, 0);
+  return `<div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Notificaciones</h1></div><div id="notif-page">${skeleton(2)}</div>`;
+}
+
+async function renderNotificaciones() {
+  const box = document.getElementById('notif-page');
+  if (!box) return;
+  if (!FB.enabled || !account) {
+    box.innerHTML = `${empty('bell', 'Inicia sesión', 'Las notificaciones avisan de los picks que sigues, así que necesitas una cuenta.')}<a class="btn primary" href="#/login">Iniciar sesión</a>`;
+    return;
+  }
+  if (!pushSupported()) {
+    box.innerHTML = isIOS() && !isStandalone()
+      ? `<div class="note"><b>En iPhone:</b> primero agrega CamiloRey a tu pantalla de inicio (botón Compartir → "Agregar a inicio"), ábrelo desde ese ícono y vuelve aquí para activarlas.</div>`
+      : '<div class="note">Este navegador no permite notificaciones. Prueba con Chrome.</div>';
+    return;
+  }
+  const st = (await FB.loadPushState().catch(() => null)) || { push: [], notify: { start: true, end: true, featured: true } };
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  const here = Boolean(sub && st.push.some((s) => s.endpoint === sub.endpoint));
+  const denied = Notification.permission === 'denied';
+  const pref = (k, ic, t, s) => `<button class="row check ${st.notify[k] ? 'on' : ''}" data-npref="${k}"><span class="ic">${ic}</span><span class="tx"><b>${t}</b><small>${s}</small></span><span class="tick"></span></button>`;
+  box.innerHTML = `
+  <div class="card pad" style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:28px">${here ? '🔔' : '🔕'}</span>
+    <div style="flex:1"><b>${here ? 'Activadas en este dispositivo' : 'Desactivadas en este dispositivo'}</b><div style="font-size:12px;color:var(--muted)">${denied ? 'Bloqueaste las notificaciones en el navegador: actívalas en la configuración del sitio.' : 'Te avisamos aunque tengas la página cerrada.'}</div></div>
+  </div>
+  <button class="btn ${here ? 'ghost' : 'primary'}" style="margin-top:10px" id="${here ? 'btn-push-off' : 'btn-push-on'}" ${denied ? 'disabled' : ''}>${here ? 'Desactivar en este dispositivo' : '🔔 Activar notificaciones'}</button>
+  <div class="overline" style="margin:22px 4px 8px">Quiero recibir</div>
+  <div class="list">
+    ${pref('start', '▶️', 'Empezó un pick que sigo', 'Cuando arranca el partido')}
+    ${pref('end', '✅', 'Resultado de mis picks', 'Si acertó o falló, con el marcador')}
+    ${pref('featured', '⭐', 'Nuevo pick destacado', 'El pick de más confianza del momento')}
+  </div>
+  <p class="note" style="margin-top:14px">Los avisos de inicio y resultado son de los picks que sigues con el ♥. Pueden llegar con unos minutos de diferencia: el sistema revisa cada ~10 minutos.</p>`;
+}
+
+async function pushOn() {
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return toast('No diste permiso para notificaciones');
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC_KEY) }));
+    const json = sub.toJSON();
+    const st = await FB.loadPushState();
+    const push = [...(st?.push || []).filter((s) => s.endpoint !== json.endpoint), { endpoint: json.endpoint, keys: json.keys }].slice(-5);
+    await FB.savePushState({ push });
+    toast('🔔 Notificaciones activadas');
+  } catch (e) {
+    toast('No se pudieron activar: ' + (e.message || e));
+  }
+  renderNotificaciones();
+}
+
+async function pushOff() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const st = await FB.loadPushState();
+    await FB.savePushState({ push: (st?.push || []).filter((s) => !sub || s.endpoint !== sub.endpoint) });
+    if (sub) await sub.unsubscribe();
+    toast('Notificaciones desactivadas');
+  } catch (e) {
+    toast(e.message || 'Error');
+  }
+  renderNotificaciones();
+}
+
+// ---------- Panel de administrador (solo la cuenta admin) ----------
+let tipsterCache = null; // picks del tipster leídos de Firestore
+
+async function loadTipster(force = false) {
+  if (!FB.enabled) return [];
+  if (tipsterCache && !force) return tipsterCache;
+  try {
+    tipsterCache = await FB.listTipster();
+  } catch {
+    tipsterCache = [];
+  }
+  return tipsterCache;
+}
+
+function viewAdmin() {
+  if (!isAdmin()) return `<div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Admin</h1></div>${empty('shield', 'Solo administrador', 'Entra con la cuenta admin para ver este panel.')}`;
+  const now = Date.now();
+  const next = data.calendar.matches.filter((m) => m.st === 's' && new Date(m.at).getTime() > now).slice(0, 80);
+  setTimeout(renderAdminPanel, 0);
+  return `
+  <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Panel admin</h1></div>
+  <div class="section-h"><h2>👑 Publicar pick del tipster</h2></div>
+  <form class="card pad" id="tipster-form">
+    <label class="field"><span>Partido</span>
+      <select name="mid" class="inline-input" style="width:100%" required>
+        <option value="">Elige un partido próximo…</option>
+        ${next.map((m) => `<option value="${m.id}">${fmtTime(m.at)} · ${esc(m.a.n)} vs ${esc(m.b.n)} · ${esc((m.tn || '').replace(/^Tournament\s*/i, ''))}</option>`).join('')}
+      </select></label>
+    <div class="field"><span>¿Quién gana?</span><div class="seg seg-full" id="tipster-side"><button type="button" data-side="a" disabled>Jugador A</button><button type="button" data-side="b" disabled>Jugador B</button></div></div>
+    <label class="field"><span>Nota (opcional)</span><input name="note" maxlength="160" class="inline-input" style="width:100%;border-color:var(--line)" placeholder="Ej: viene muy fuerte hoy"></label>
+    <button class="btn primary" type="submit">Publicar pick</button>
+  </form>
+  <div id="admin-tipster">${skeleton(1)}</div>
+  <div class="section-h"><h2>📊 Visitas</h2></div>
+  <div id="admin-visits">${skeleton(1)}</div>
+  <div class="section-h"><h2>👥 Usuarios</h2></div>
+  <div id="admin-users">${skeleton(2)}</div>`;
+}
+
+async function renderAdminPanel() {
+  if (!isAdmin()) return;
+  // Picks del tipster publicados
+  const tbox = document.getElementById('admin-tipster');
+  const tips = (await loadTipster(true)).sort((a, b) => (a.at < b.at ? 1 : -1));
+  const byId = allById();
+  if (tbox)
+    tbox.innerHTML = tips.length
+      ? `<div class="list" style="margin-top:10px">${tips
+          .slice(0, 20)
+          .map((t) => {
+            const m = byId.get(Number(t.mid));
+            const res = m && m.st === 'f' ? (m.w === t.fav ? '✅' : '❌') : '⏳';
+            return `<div class="row"><span class="ic">${res}</span><span class="tx"><b>${esc(t.favName)} gana</b><small>${esc(dayLabel(dayKey(t.at)))} ${fmtTime(t.at)} · vs ${esc(t.opName)}${t.note ? ' · ' + esc(t.note) : ''}</small></span><button class="mini-btn" data-tdel="${esc(t.id)}">Borrar</button></div>`;
+          })
+          .join('')}</div>`
+      : '<p class="note" style="margin-top:10px">Aún no has publicado picks del tipster.</p>';
+  // Visitas por día
+  const vbox = document.getElementById('admin-visits');
+  try {
+    const [days, c] = await Promise.all([FB.visitsByDay(14), FB.getCounters()]);
+    const max = Math.max(1, ...days.map((x) => x.count));
+    if (vbox)
+      vbox.innerHTML = `<div class="card pad"><div class="tiles" style="margin:0 0 12px"><div class="tile"><div class="overline">Hoy</div><div class="val">${fmtInt(c.today)}</div></div><div class="tile"><div class="overline">Total</div><div class="val">${fmtInt(c.total)}</div></div><div class="tile"><div class="overline">Usuarios</div><div class="val">${fmtInt(c.users)}</div></div></div>
+        <div class="bars">${days.map((x) => `<div class="b" title="${x.d}: ${x.count}"><i class="h" style="height:${(x.count / max) * 100}px;background:var(--red)"></i></div>`).join('')}</div>
+        <div class="bars-x"><span>${esc(days[0].d.slice(5))}</span><span>${esc(days[days.length - 1].d.slice(5))}</span></div></div>`;
+  } catch (e) {
+    if (vbox) vbox.innerHTML = `<p class="note">No se pudieron leer las visitas (${esc(e.code || e.message)}).</p>`;
+  }
+  // Usuarios
+  const ubox = document.getElementById('admin-users');
+  try {
+    const users = (await FB.listUsers()).sort((a, b) => ((a.created || '') < (b.created || '') ? 1 : -1));
+    if (ubox)
+      ubox.innerHTML = `<div class="list">${users
+        .map((u) => `<div class="row"><span class="ic">${esc(initials(u.name || u.email))}</span><span class="tx"><b>${esc(u.name || '—')}</b><small>${esc(u.email)} · ${u.created ? esc(new Date(u.created).toLocaleDateString(LOC())) : ''} · ${u.follows} seguidos${u.push ? ' · 🔔' : ''}</small></span></div>`)
+        .join('')}</div><p class="foot">${users.length} usuarios registrados</p>`;
+  } catch (e) {
+    if (ubox) ubox.innerHTML = `<p class="note">No se pudo leer la lista (${esc(e.code || e.message)}). Hay que actualizar las reglas de Firestore.</p>`;
+  }
+}
+
+// Tarjeta del pick del tipster en Inicio (el próximo que no ha empezado).
+async function renderTipsterHome() {
+  const box = document.getElementById('tipster-home');
+  if (!box) return;
+  const tips = await loadTipster();
+  const byId = allById();
+  const now = Date.now();
+  const upcoming = tips.filter((t) => new Date(t.at).getTime() > now - 3 * 3600e3).sort((a, b) => (a.at < b.at ? -1 : 1));
+  const st = data.stats?.tipster;
+  const head = `<div class="section-h"><h2>👑 Pick del tipster</h2>${st && st.hit + st.miss ? `<span class="badge win">${st.hit}/${st.hit + st.miss} aciertos</span>` : ''}</div>`;
+  if (!upcoming.length) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML =
+    head +
+    upcoming
+      .slice(0, 3)
+      .map((t) => {
+        const m = byId.get(Number(t.mid));
+        if (!m) return '';
+        const card = matchCard(m, { fav: t.fav, c: null, tipster: true, o: m.pick?.o ?? m.o, res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' });
+        return `<div class="tipster-wrap">${card}${t.note ? `<p class="tipster-note">💬 ${esc(t.note)}</p>` : ''}</div>`;
+      })
+      .join('');
 }
 
 // ---------- Perfil de jugador ----------
@@ -960,6 +1149,8 @@ function viewPerfil() {
   }
   <div class="overline" style="margin:22px 4px 8px">Ajustes</div>
   <div class="list">
+    ${isAdmin() ? `<a class="row" href="#/admin"><span class="ic" style="color:var(--red-2)">${icon('shield')}</span><span class="tx"><b>Panel admin</b><small>Pick del tipster, visitas y usuarios</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
+    <a class="row" href="#/notificaciones"><span class="ic">${icon('bell')}</span><span class="tx"><b>Notificaciones</b><small>Avisos de tus picks en el celular</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/tema"><span class="ic">${icon('moon')}</span><span class="tx"><b>Tema</b><small>${esc({ dark: 'Oscuro', light: 'Claro', system: 'Sistema' }[readLocal('cr_theme_raw', 'dark')] || 'Oscuro')}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/cuotas"><span class="ic">${icon('chart')}</span><span class="tx"><b>Formato de cuotas</b><small>${esc(ODDS_FORMATS[readLocal('cr_odds', 'decimal')]?.[0] || 'Decimal')} · ${esc(odds(1.57))}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/idioma"><span class="ic">${icon('globe')}</span><span class="tx"><b>Idioma</b><small>${readLocal('cr_lang', 'es') === 'en' ? 'English' : 'Español'}</small></span><span class="chev">${icon('chev')}</span></a>
@@ -1284,6 +1475,8 @@ const ROUTES = {
   perfil: viewPerfil,
   cuenta: viewCuenta,
   jugador: viewJugador,
+  admin: viewAdmin,
+  notificaciones: viewNotificaciones,
   tema: viewTema,
   cuotas: viewCuotas,
   idioma: viewIdioma,
@@ -1336,6 +1529,7 @@ function route() {
   }
   renderCounter();
   if (tab === 'bankroll') renderAdminLedger();
+  if (name === 'inicio' || !ROUTES[name]) renderTipsterHome();
 }
 
 async function renderCounter() {
@@ -1471,6 +1665,65 @@ $sheet.addEventListener('click', (ev) => {
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !$sheet.hidden) closeSheet();
+});
+
+// ---------- notificaciones: botones ----------
+document.addEventListener('click', async (ev) => {
+  const t = ev.target.closest('#btn-push-on, #btn-push-off, [data-npref]');
+  if (!t) return;
+  if (t.id === 'btn-push-on') return pushOn();
+  if (t.id === 'btn-push-off') return pushOff();
+  const st = await FB.loadPushState();
+  const notify = { ...st.notify, [t.dataset.npref]: !st.notify[t.dataset.npref] };
+  await FB.savePushState({ notify });
+  t.classList.toggle('on', notify[t.dataset.npref]);
+});
+
+// ---------- panel admin: pick del tipster ----------
+let tipsterSide = null;
+document.addEventListener('change', (ev) => {
+  if (ev.target.name !== 'mid' || !ev.target.closest('#tipster-form')) return;
+  const m = allById().get(Number(ev.target.value));
+  tipsterSide = null;
+  document.querySelectorAll('#tipster-side [data-side]').forEach((b) => {
+    const p = m ? (b.dataset.side === 'a' ? m.a : m.b) : null;
+    b.textContent = p ? p.n : b.dataset.side === 'a' ? 'Jugador A' : 'Jugador B';
+    b.disabled = !p;
+    b.classList.remove('on');
+  });
+});
+document.addEventListener('click', async (ev) => {
+  const sideBtn = ev.target.closest('#tipster-side [data-side]');
+  if (sideBtn) {
+    tipsterSide = sideBtn.dataset.side;
+    document.querySelectorAll('#tipster-side [data-side]').forEach((b) => b.classList.toggle('on', b === sideBtn));
+    return;
+  }
+  const del = ev.target.closest('[data-tdel]');
+  if (del && isAdmin()) {
+    await FB.deleteTipster(del.dataset.tdel);
+    toast('Pick del tipster borrado');
+    renderAdminPanel();
+  }
+});
+document.addEventListener('submit', async (ev) => {
+  if (ev.target.id !== 'tipster-form') return;
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  const m = allById().get(Number(f.get('mid')));
+  if (!m) return toast('Elige un partido');
+  if (!tipsterSide) return toast('Elige quién gana');
+  const fav = tipsterSide === 'a' ? m.a : m.b;
+  const op = tipsterSide === 'a' ? m.b : m.a;
+  try {
+    await FB.saveTipster({ mid: m.id, fav: fav.id, favName: fav.n, opName: op.n, at: m.at, tn: m.tn, note: String(f.get('note') || '').trim().slice(0, 160) });
+    toast('Pick del tipster publicado');
+    ev.target.reset();
+    tipsterSide = null;
+    route();
+  } catch (e) {
+    toast(e.code === 'permission-denied' ? 'Falta actualizar las reglas de Firestore' : FB.errorText(e));
+  }
 });
 
 // ---------- editar perfil (nombre y foto) ----------
