@@ -321,6 +321,7 @@ function viewInicio() {
 
   <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/envivo">Ver todo</a></div>
   <div id="live-home">${skeleton(1)}</div>
+  ${hotHtml()}
   ${data.loaded && !featured ? empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.') : ''}
   ${footer()}`;
 }
