@@ -350,7 +350,8 @@ function viewCalendario() {
   dayList.forEach((m) => counts[stateOf(m)]++);
   if (ui.calView !== 'next' && ui.calView !== 'done') ui.calView = 'next';
   let list = dayList.filter((m) => stateOf(m) === ui.calView);
-  if (ui.calView === 'done') list.reverse(); // resultados: lo más reciente arriba
+  // Resultados: del más reciente al más antiguo (por hora de juego).
+  if (ui.calView === 'done') list.sort((a, b) => new Date(b.at) - new Date(a.at) || b.id - a.id);
   if (ui.calFilter === 'pick') list = list.filter((m) => m.pick);
   // Agrupado por torneo, en orden de hora.
   const groups = new Map();
@@ -374,7 +375,9 @@ function viewCalendario() {
     <button data-calv="done" class="${ui.calView === 'done' ? 'on' : ''}">Resultados <em>${counts.done}</em></button>
   </div>
   ${
-    groups.size
+    ui.calView === 'done' && list.length
+      ? `<div class="grid-2">${list.map((m) => matchCard(m)).join('')}</div>`
+      : groups.size
       ? [...groups.values()]
           .map(
             (g) => `<div class="section-h"><h2 style="font-size:14px">${esc(g.name)}</h2><span class="badge">${fmtTime(g.at)}</span></div>
