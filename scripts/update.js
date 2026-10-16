@@ -217,6 +217,8 @@ function generatePick(match, sideA, sideB, odds, model) {
       fA: [formA.wins, formA.losses],
       fB: [formB.wins, formB.losses],
       pA: oddsImpliedProbA != null ? Math.round(oddsImpliedProbA * 1000) / 1000 : null,
+      oA: odds?.oddsA ?? null, // cuotas de Rushbet de cada jugador; se van actualizando
+      oB: odds?.oddsB ?? null, // hasta que empieza el partido (= cuota prepartido final)
       n: model.trainingCount
     },
     pub: confidence >= MIN_CONFIDENCE_TO_PUBLISH,
@@ -334,13 +336,21 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
 function backfillOdds(rushbet) {
   let n = 0;
   for (const p of Object.values(state.picks)) {
-    if (p.res !== 'pending' || p.o) continue;
+    if (p.res !== 'pending') continue;
     const m = state.matches[p.id];
     if (!m) continue;
     const odds = findOdds(rushbet, state.players[m.a]?.n, state.players[m.b]?.n, m.at);
     if (!odds) continue;
-    p.o = p.fav === m.a ? odds.oddsA : odds.oddsB;
-    n++;
+    // Cuotas de ambos jugadores mientras el partido no empieza: la última
+    // que se guarda es la cuota prepartido (sirve para los picks del admin).
+    if (p.x && m.st === 's') {
+      p.x.oA = odds.oddsA;
+      p.x.oB = odds.oddsB;
+    }
+    if (!p.o) {
+      p.o = p.fav === m.a ? odds.oddsA : odds.oddsB;
+      n++;
+    }
   }
   return n;
 }
@@ -674,6 +684,24 @@ function writeSite(meta) {
       res: b.res
     }));
 
+  // Partidos SIN pick publicado (confianza < 55%): para que el admin elija
+  // uno, se prepara el Análisis IA de AMBOS lados y las cuotas prepartido.
+  // Va a la parte privada del admin (admin/ledger), no a site/data.
+  adminNoPick = {};
+  for (const p of Object.values(state.picks)) {
+    const m = state.matches[p.id];
+    if (p.pub || p.res !== 'pending' || !p.x || !m || m.st === 'f') continue;
+    if (new Date(m.at).getTime() < now - 4 * 3600e3) continue;
+    adminNoPick[p.id] = {
+      c: p.c,
+      fav: p.fav,
+      oA: p.x.oA ?? null,
+      oB: p.x.oB ?? null,
+      whyA: buildWhy({ ...p, fav: m.a }, m),
+      whyB: buildWhy({ ...p, fav: m.b }, m)
+    };
+  }
+
   // Contenido Premium (va a Firestore, no a site/data): pick completo de los
   // pendientes bloqueados y Análisis IA de todos los pendientes.
   premiumContent = {};
@@ -860,6 +888,7 @@ const FIREBASE_API_KEY = 'AIzaSyAjEK6Ca7_NEDiPMJv9iqwNLx1DY8WOog0';
 let privateLedger = null;
 let systemBankroll = null;
 let registeredUsers = null; // número real de cuentas (solo admin)
+let adminNoPick = null; // partidos sin pick: análisis de ambos lados y cuotas (solo admin)
 
 // Picks del tipster (colección pública "tipster" de Firestore, la escribe
 // el admin desde el panel): se resuelven con los resultados oficiales.
@@ -915,7 +944,7 @@ async function pushPrivateLedger() {
     fields: {
       botKey: { stringValue: botKey },
       updatedAt: { stringValue: new Date().toISOString() },
-      data: { stringValue: JSON.stringify({ summary: systemBankroll, ledger: privateLedger, users: registeredUsers }) }
+      data: { stringValue: JSON.stringify({ summary: systemBankroll, ledger: privateLedger, users: registeredUsers, nopick: adminNoPick }) }
     }
   };
   try {
@@ -923,7 +952,7 @@ async function pushPrivateLedger() {
     if (process.env.BOT_EMAIL) headers.Authorization = `Bearer ${await require('./notify').botToken()}`;
     const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(body) });
     if (!r.ok) console.error(`Historial privado: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
-    else console.log(`Historial privado actualizado (${privateLedger.length} apuestas)`);
+    else console.log(`Historial privado actualizado (${privateLedger.length} apuestas, ${Object.keys(adminNoPick || {}).length} partidos sin pick para el admin)`);
   } catch (e) {
     console.error(`Historial privado: ${e.message}`);
   }

@@ -368,6 +368,15 @@ details.faq p { margin: 0; padding: 0 14px 14px; font-size: 13px; color: var(--m
 .locked-bar { background: linear-gradient(90deg, rgba(250, 204, 21, 0.1), transparent); }
 .locked-bar b { color: #facc15; }
 
+/* Editor de pick del admin (ficha del partido) */
+.pe-box { border: 1px dashed rgba(250, 204, 21, 0.5); border-radius: 16px; padding: 14px; margin-top: 10px; }
+.pe-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pe-side { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 8px; border-radius: 14px; background: var(--card); border: 1.5px solid var(--line); text-align: center; }
+.pe-side b { font-size: 14px; }
+.pe-side small { font-size: 11px; color: var(--muted); }
+.pe-side small b { font-size: 12px; color: var(--text); }
+.pe-side.on { border-color: #facc15; background: rgba(250, 204, 21, 0.08); }
+
 /* Pick del tipster */
 .tipster-wrap .card { border-color: rgba(250, 204, 21, 0.5); }
 .tipster-note { margin: 8px 4px 0; font-size: 13px; color: var(--muted); font-style: italic; }

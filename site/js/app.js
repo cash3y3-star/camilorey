@@ -50,7 +50,20 @@ function applyPremium() {
   }
 }
 
+// Partidos sin pick: análisis de ambos lados y cuotas prepartido (solo admin).
+let adminNoPick = {};
+
+// Pick elegido por el admin para un partido (colección "tipster"), en el
+// mismo formato que un pick del sistema para poder dibujarlo en las tarjetas.
+function tipsterPickFor(m) {
+  const t = (tipsterCache || []).find((x) => Number(x.mid) === m.id);
+  if (!t) return null;
+  return { fav: t.fav, c: null, o: t.odds ?? null, tipster: true, mode: t.mode || 'pre', note: t.note || '', res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' };
+}
+
 async function refreshPremium() {
+  if (isAdmin()) adminNoPick = (await FB.loadAdminLedger().catch(() => ({}))).nopick || adminNoPick;
+  if (FB.enabled) await loadTipster(true);
   membership = account ? await FB.loadMembership().catch(() => membership) : null;
   premiumData = isPremiumUser() ? await FB.loadPremiumContent().catch(() => premiumData) : null;
   applyPremium();
@@ -290,7 +303,7 @@ function midBlock(m) {
   return `<div class="mid">${ph}<span class="time">${fmtTime(m.at)}</span><span class="tn">${esc(m.tn)}</span></div>`;
 }
 
-function matchCard(m, pick = m.pick || (m.c || m.locked ? m : null), { showForm = true } = {}) {
+function matchCard(m, pick = m.pick || (m.c || m.locked ? m : null) || tipsterPickFor(m), { showForm = true } = {}) {
   if (pick?.locked) {
     // Pick Premium pendiente: el usuario gratis ve el partido, no el pick.
     return `
@@ -1520,6 +1533,58 @@ function footer() {
 
 // ---------------- hoja del partido ----------------
 
+// ---------- Partido sin pick del sistema ----------
+// Para todos: aviso de que el sistema lo ve parejo, o el pick del admin si
+// eligió uno. Para el admin: editor para elegir pick (prepartido o en vivo)
+// con la cuota prepartido y el Análisis IA del jugador elegido.
+const pickEdit = { side: null, mode: null, open: false };
+
+function whyListHtml(why) {
+  if (!why) return '<p class="an-src">Sin análisis disponible para este partido.</p>';
+  return `${why.pro.length ? `<ul class="why pro">${why.pro.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${why.con.length ? `<div class="overline" style="margin:12px 0 6px">A tener en cuenta</div><ul class="why con">${why.con.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    <p class="an-src">${icon('info')} ${esc(why.src)}.</p>`;
+}
+
+function noPickBlock(m, lv) {
+  const tp = tipsterPickFor(m);
+  const tFav = tp ? (tp.fav === m.a.id ? m.a : m.b) : null;
+  const shown = tp
+    ? `<div class="block"><div class="analysis" style="border-color:rgba(250,204,21,.5)">
+        <div class="an-head">${icon('crown')}<div><b>Pick del tipster: ${esc(tFav.n)} gana</b><small>${tp.mode === 'live' ? 'Pick en vivo' : 'Pick prepartido'}${tp.o ? ` · cuota ${odds(tp.o)}` : ''}</small></div></div>
+        ${tp.note ? `<p class="tipster-note" style="margin:0">💬 ${esc(tp.note)}</p>` : ''}
+        ${tp.res === 'hit' ? '<div class="badge win" style="margin-top:10px">✓ Resultado: acierto</div>' : tp.res === 'miss' ? '<div class="badge loss" style="margin-top:10px">✗ Resultado: fallo</div>' : ''}
+      </div></div>`
+    : '<div class="block"><p class="note">El sistema no publica pick en este partido: lo ve demasiado parejo (menos de 55% de confianza).</p></div>';
+  if (!isAdmin() || m.st === 'f') return shown;
+
+  const np = adminNoPick[m.id] || {};
+  if (!pickEdit.open) {
+    return `${shown}<button class="btn ghost" style="margin-top:4px" data-pe-open="1">${icon('crown')} ${tp ? 'Cambiar pick del tipster' : 'Elegir pick (admin)'}</button>`;
+  }
+  const mode = pickEdit.mode || (lv || m.st === 'l' ? 'live' : 'pre');
+  const side = pickEdit.side;
+  const sideBtn = (k, p, o) => {
+    const conf = np.c != null ? (np.fav === p.id ? np.c : 100 - np.c) : null;
+    return `<button type="button" class="pe-side ${side === k ? 'on' : ''}" data-pe-side="${k}">${avatar(p, 'avatar sm')}<b>${esc(p.n)}</b><small>Cuota prepartido <b>${o ? odds(o) : '—'}</b></small>${conf != null ? `<small>Modelo: ${conf}%</small>` : ''}</button>`;
+  };
+  const chosen = side === 'a' ? m.a : side === 'b' ? m.b : null;
+  return `${shown}
+  <div class="block pe-box">
+    <div class="block-h"><span class="overline">${icon('crown')} Elegir pick (solo admin)</span><button class="mini-btn" data-pe-close="1">Cancelar</button></div>
+    <div class="pe-sides">${sideBtn('a', m.a, np.oA)}${sideBtn('b', m.b, np.oB)}</div>
+    <div class="seg seg-full" style="margin:12px 0"><button type="button" data-pe-mode="pre" class="${mode === 'pre' ? 'on' : ''}">Prepartido</button><button type="button" data-pe-mode="live" class="${mode === 'live' ? 'on' : ''}">En vivo</button></div>
+    ${
+      chosen
+        ? `<div class="analysis"><div class="an-head">${icon('bolt')}<div><b>Análisis IA</b><small>Argumentos a favor y en contra de ${esc(chosen.n)}</small></div></div>${whyListHtml(side === 'a' ? np.whyA : np.whyB)}</div>
+           <input class="inline-input" id="pe-note" maxlength="160" placeholder="Nota (opcional)" style="width:100%;margin-top:12px;border-color:var(--line)" value="${esc(tp?.note || '')}">
+           <button class="btn primary" style="margin-top:10px" data-pe-save="${m.id}">Publicar: ${esc(chosen.n)} gana${(side === 'a' ? np.oA : np.oB) ? ` · cuota ${odds(side === 'a' ? np.oA : np.oB)}` : ''}</button>`
+        : '<p class="note">Toca un jugador para ver su Análisis IA y publicar el pick.</p>'
+    }
+    ${tp ? `<button class="btn ghost" style="margin-top:8px;color:var(--loss)" data-tdel="${m.id}">Borrar pick del tipster</button>` : ''}
+  </div>`;
+}
+
 // Enfrentamientos directos en lista, estilo Sofascore: fecha y torneo a la
 // izquierda, los dos jugadores con su marcador en sets, el ganador en negrita.
 function h2hListHtml(m, winsA, total) {
@@ -1548,6 +1613,8 @@ function h2hListHtml(m, winsA, total) {
 function openMatch(id) {
   const m = allById().get(Number(id));
   if (!m) return;
+  Object.assign(pickEdit, { side: null, mode: null, open: false });
+  tapFx(); // "tic" y vibración al abrir un partido
   const pick = m.pick || (m.c ? m : null);
   const draw = () => {
     const lv = liveFor(m);
@@ -1621,7 +1688,7 @@ function openMatch(id) {
         ${pick.res === 'hit' ? '<div class="badge win" style="margin-top:10px">✓ Resultado: acierto</div>' : pick.res === 'miss' ? '<div class="badge loss" style="margin-top:10px">✗ Resultado: fallo</div>' : ''}
       </div>
     </div>`
-        : '<div class="block"><p class="note">Este partido no tiene pick: el sistema lo ve demasiado parejo (menos de 55% de confianza) y prefiere no recomendarlo.</p></div>'
+        : noPickBlock(m, lv)
     }`;
   };
   draw();
@@ -1970,8 +2037,37 @@ document.addEventListener('click', async (ev) => {
   const del = ev.target.closest('[data-tdel]');
   if (del && isAdmin()) {
     await FB.deleteTipster(del.dataset.tdel);
+    await loadTipster(true);
     toast('Pick del tipster borrado');
     renderAdminPanel();
+    if (!$sheet.hidden) $sheet._redraw?.();
+    return;
+  }
+  // Editor de pick del admin en la ficha del partido
+  const pe = ev.target.closest('[data-pe-open], [data-pe-close], [data-pe-side], [data-pe-mode], [data-pe-save]');
+  if (pe && isAdmin()) {
+    if (pe.dataset.peOpen) pickEdit.open = true;
+    if (pe.dataset.peClose) Object.assign(pickEdit, { open: false, side: null });
+    if (pe.dataset.peSide) pickEdit.side = pe.dataset.peSide;
+    if (pe.dataset.peMode) pickEdit.mode = pe.dataset.peMode;
+    if (pe.dataset.peSave) {
+      const m = allById().get(Number(pe.dataset.peSave));
+      const np = adminNoPick[m.id] || {};
+      const fav = pickEdit.side === 'a' ? m.a : m.b;
+      const op = pickEdit.side === 'a' ? m.b : m.a;
+      const mode = pickEdit.mode || (liveFor(m) || m.st === 'l' ? 'live' : 'pre');
+      try {
+        pe.disabled = true;
+        await FB.saveTipster({ mid: m.id, fav: fav.id, favName: fav.n, opName: op.n, at: m.at, tn: m.tn, note: (document.getElementById('pe-note')?.value || '').trim().slice(0, 160), odds: (pickEdit.side === 'a' ? np.oA : np.oB) ?? null, mode });
+        await loadTipster(true);
+        Object.assign(pickEdit, { open: false, side: null });
+        toast(`Pick publicado: ${fav.n} gana`);
+      } catch (e) {
+        toast(e.code === 'permission-denied' ? 'Sin permiso: revisa las reglas de Firestore' : FB.errorText(e));
+      }
+    }
+    $sheet._redraw?.();
+    return;
   }
 });
 document.addEventListener('submit', async (ev) => {

@@ -131,7 +131,7 @@ export async function loadAdminLedger() {
   // Formato actual { summary, ledger }; el primero era solo la lista.
   return Array.isArray(parsed)
     ? { updatedAt: d.updatedAt, summary: null, rows: parsed }
-    : { updatedAt: d.updatedAt, summary: parsed.summary || null, rows: parsed.ledger || [], users: parsed.users ?? null };
+    : { updatedAt: d.updatedAt, summary: parsed.summary || null, rows: parsed.ledger || [], users: parsed.users ?? null, nopick: parsed.nopick || {} };
 }
 
 // ---------- Notificaciones push ----------
