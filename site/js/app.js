@@ -369,11 +369,10 @@ async function renderNotificaciones() {
   <button class="btn ${here ? 'ghost' : 'primary'}" style="margin-top:10px" id="${here ? 'btn-push-off' : 'btn-push-on'}" ${denied ? 'disabled' : ''}>${here ? 'Desactivar en este dispositivo' : '🔔 Activar notificaciones'}</button>
   <div class="overline" style="margin:22px 4px 8px">Quiero recibir</div>
   <div class="list">
-    ${pref('start', '▶️', 'Empezó un pick que sigo', 'Cuando arranca el partido')}
-    ${pref('end', '✅', 'Resultado de mis picks', 'Si acertó o falló, con el marcador')}
     ${pref('featured', '⭐', 'Nuevo pick destacado', 'El pick de más confianza del momento')}
+    ${pref('end', '✅', 'Resultado de mis picks seguidos', 'Si ganó o perdió, con el marcador')}
   </div>
-  <p class="note" style="margin-top:14px">Los avisos de inicio y resultado son de los picks que sigues con el ♥. Pueden llegar con unos minutos de diferencia: el sistema revisa cada ~10 minutos.</p>`;
+  <p class="note" style="margin-top:14px">Solo te avisamos de los picks destacados y del resultado de los picks que sigues con el ♥. Pueden llegar con unos minutos de diferencia: el sistema revisa cada ~10 minutos.</p>`;
 }
 
 async function pushOn() {
@@ -1433,20 +1432,39 @@ function openMatch(id) {
   });
 }
 
+// Avisos de la campana: SOLO picks destacados (nuevos y su resultado) y
+// el resultado de los picks que el usuario sigue. Nada del resto del sistema.
+function notifItems() {
+  const items = new Map();
+  const map = allById();
+  // Resultados de mis picks seguidos
+  for (const id of follows) {
+    const p = map.get(id);
+    if (!p || (p.res !== 'hit' && p.res !== 'miss')) continue;
+    const fav = p.fav === p.a.id ? p.a : p.b;
+    items.set(id, { at: p.at, ic: p.res === 'hit' ? 'trophy' : 'x', t: p.res === 'hit' ? `✅ Ganó tu pick: ${fav.n}` : `❌ Perdió tu pick: ${fav.n}`, s: `${p.a.n} ${p.sa}-${p.sb} ${p.b.n}`, id });
+  }
+  // Destacados ya resueltos
+  for (const x of data.stats?.featured?.last || []) {
+    if (items.has(x.id)) continue;
+    items.set(x.id, { at: x.at, ic: x.res === 'hit' ? 'trophy' : 'x', t: `⭐ Destacado ${x.res === 'hit' ? '✅ acertado' : '❌ fallado'}: ${x.fav}`, s: `${x.c}% de confianza${x.o ? ` · cuota ${odds(x.o)}` : ''}`, id: x.id });
+  }
+  // Destacado actual (nuevo)
+  const cur = upcomingPicks().find((p) => p.ft);
+  if (cur && !items.has(cur.id)) {
+    const fav = cur.fav === cur.a.id ? cur.a : cur.b;
+    items.set(cur.id, { at: cur.at, ic: 'flame', t: `⭐ Nuevo pick destacado: ${fav.n} gana`, s: `${cur.a.n} vs ${cur.b.n} · ${cur.c}% · ${fmtTime(cur.at)}`, id: cur.id, fresh: true });
+  }
+  return [...items.values()].sort((a, b) => (a.fresh ? -1 : b.fresh ? 1 : a.at < b.at ? 1 : -1));
+}
+
 function openNotifications() {
-  const items = [];
-  for (const p of data.picks.slice(0, 12)) {
-    const fav = p.fav === p.a.id ? p.a : p.b;
-    items.push({ at: p.at, ic: 'flame', t: `Pick: ${fav.n} gana`, s: `${p.a.n} vs ${p.b.n} · ${p.c}% · ${fmtTime(p.at)}`, id: p.id });
-  }
-  for (const p of data.results.slice(0, 12)) {
-    const fav = p.fav === p.a.id ? p.a : p.b;
-    items.push({ at: p.at, ic: p.res === 'hit' ? 'trophy' : 'x', t: `${p.res === 'hit' ? '✅ Acierto' : '❌ Fallo'}: ${fav.n}`, s: `${p.a.n} ${p.sa}-${p.sb} ${p.b.n}`, id: p.id });
-  }
-  items.sort((a, b) => (a.at < b.at ? 1 : -1));
+  const items = notifItems();
+  writeLocal('cr_notif_keys', items.map((i) => i.t));
   $sheetBody.innerHTML = `
     <h2 style="margin:6px 0 4px;font-size:20px">Notificaciones</h2>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 14px">Picks nuevos y resultados recientes</p>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 14px">Picks destacados y resultados de los picks que sigues</p>
+    ${FB.enabled ? `<a class="btn ghost" style="margin-bottom:12px" href="#/notificaciones">${icon('bell')} Recibir estos avisos en el celular</a>` : ''}
     ${TELEGRAM_URL ? `<a class="btn primary" style="margin-bottom:12px" href="${esc(TELEGRAM_URL)}" target="_blank" rel="noopener">${icon('telegram')} Recibir avisos por Telegram</a>` : ''}
     <div class="list">${items.length ? items.slice(0, 20).map((i) => `<button class="row" data-open="${i.id}"><span class="ic">${icon(i.ic)}</span><span class="tx"><b>${esc(i.t)}</b><small>${esc(i.s)}</small></span></button>`).join('') : '<div class="row"><span class="tx"><small>Sin novedades por ahora.</small></span></div>'}</div>`;
   $sheet.hidden = false;
@@ -1842,11 +1860,13 @@ route();
 await loadData();
 route();
 
-// Punto rojo en la campana si hay picks nuevos desde la última vez.
-const seen = readLocal('cr_notif_seen', 0);
-if (data.picks.some((p) => new Date(p.at).getTime() > seen - 6 * 3600e3) && Date.now() - seen > 30 * 60e3) {
-  document.querySelector('#btn-notif .dot').hidden = false;
+// Punto rojo en la campana si hay un aviso (destacado o resultado de un
+// seguido) que todavía no se vio.
+function updateBellDot() {
+  const seenKeys = new Set(readLocal('cr_notif_keys', []));
+  document.querySelector('#btn-notif .dot').hidden = !notifItems().some((i) => !seenKeys.has(i.t));
 }
+updateBellDot();
 
 // Datos nuevos cada minuto (el sync corre cada ~10 min).
 setInterval(async () => {
@@ -1855,6 +1875,7 @@ setInterval(async () => {
   const y = window.scrollY;
   route();
   window.scrollTo(0, y);
+  updateBellDot();
 }, 60000);
 
 // Botón "Entrar" visible arriba cuando no hay sesión; con sesión, el

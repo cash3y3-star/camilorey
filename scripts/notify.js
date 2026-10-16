@@ -116,10 +116,8 @@ async function runNotifications(state, helpers) {
       events.push({ mid, kind: 'end', title: won ? `✅ ¡Pick acertado! ${fav}` : `❌ Pick fallado: ${fav}`, body: `${label} · ${m.sa}-${m.sb}`, url: `${SITE}#/seguidos`, tag: `m${mid}` });
       N[key].f = 1;
       N[key].s = 1;
-    } else if (m.st !== 'f' && !N[key].s && (m.st === 'l' || new Date(m.at).getTime() <= now)) {
-      events.push({ mid, kind: 'start', title: `▶️ Empezó tu pick: ${fav}`, body: `${label} · sigue el marcador en vivo`, url: `${SITE}#/envivo`, tag: `m${mid}` });
-      N[key].s = 1;
     }
+    // Por pedido: no se avisa cuando empieza el partido, solo el resultado.
   }
   // Pick destacado nuevo.
   if (helpers.featuredId && N._featured !== helpers.featuredId) {
