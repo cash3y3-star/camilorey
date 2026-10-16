@@ -120,6 +120,16 @@ export async function saveProfile({ name, photo }) {
   await f.F.setDoc(f.F.doc(f.db, 'users', currentUser.uid), patch, { merge: true });
 }
 
+// Historial de apuestas (solo admin: las reglas de Firestore rechazan a
+// cualquier otra cuenta). Lo escribe GitHub Actions en admin/ledger.
+export async function loadAdminLedger() {
+  const f = await load();
+  const snap = await f.F.getDoc(f.F.doc(f.db, 'admin', 'ledger'));
+  if (!snap.exists()) return { updatedAt: null, rows: [] };
+  const d = snap.data();
+  return { updatedAt: d.updatedAt, rows: JSON.parse(d.data || '[]') };
+}
+
 export async function loadFollows() {
   if (!currentUser) return null;
   const f = await load();

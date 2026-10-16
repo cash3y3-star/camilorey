@@ -618,9 +618,27 @@ function writeSite(meta) {
     hits: ledger.filter((b) => b.res === 'hit').length,
     maxDrawdown,
     series: [...balByDay.entries()].map(([d, bal]) => ({ d, bal })),
-    ledger: ledger.slice(-150).reverse(),
+    // El historial apuesta por apuesta NO va en este archivo público: solo lo
+    // ve el admin, desde Firestore (ver pushPrivateLedger).
     pendingStakes: pendingView.filter((p) => p.o).map((p) => ({ id: p.id, stake: computeStake(p.c) }))
   });
+  privateLedger = ledger
+    .slice(-1000)
+    .reverse()
+    .map((b) => ({
+      id: b.id,
+      at: b.at,
+      ph: b.ph,
+      a: b.a.n,
+      b: b.b.n,
+      fav: b.fav === b.a.id ? b.a.n : b.b.n,
+      c: b.c,
+      o: b.o,
+      stake: b.stake,
+      profit: b.profit,
+      bal: b.bal,
+      res: b.res
+    }));
 
   writeJson(path.join(OUT_DIR, 'picks.json'), pendingView);
   writeJson(path.join(OUT_DIR, 'results.json'), resolved.slice(0, 300).map((p) => pickView(p)));
@@ -636,6 +654,35 @@ function writeSite(meta) {
     pendingCount: pendingView.length,
     model: meta.model
   });
+}
+
+// ---------------- historial privado (solo admin) ----------------
+
+// Se escribe en Firestore (admin/ledger) por la API REST. Las reglas de
+// Firestore solo aceptan la escritura si trae la clave del bot
+// (secret FIRESTORE_BOT_KEY) y solo dejan leerlo a la cuenta admin.
+const FIREBASE_PROJECT = 'camilorey-1399c';
+const FIREBASE_API_KEY = 'AIzaSyAjEK6Ca7_NEDiPMJv9iqwNLx1DY8WOog0';
+let privateLedger = null;
+
+async function pushPrivateLedger() {
+  const botKey = process.env.FIRESTORE_BOT_KEY;
+  if (!botKey || !privateLedger) return;
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/admin/ledger?key=${FIREBASE_API_KEY}`;
+  const body = {
+    fields: {
+      botKey: { stringValue: botKey },
+      updatedAt: { stringValue: new Date().toISOString() },
+      data: { stringValue: JSON.stringify(privateLedger) }
+    }
+  };
+  try {
+    const r = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) console.error(`Historial privado: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
+    else console.log(`Historial privado actualizado (${privateLedger.length} apuestas)`);
+  } catch (e) {
+    console.error(`Historial privado: ${e.message}`);
+  }
 }
 
 // ---------------- corrida ----------------
@@ -754,6 +801,7 @@ async function run() {
   prune();
   saveState();
   writeSite({ model: modelInfo });
+  await pushPrivateLedger();
   console.log('Resumen:', totals);
 }
 

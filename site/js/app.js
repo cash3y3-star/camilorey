@@ -8,7 +8,7 @@
 import { icon, hydrateIcons } from './icons.js?v=__V__';
 import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
-import { TELEGRAM_URL, SUPPORT_EMAIL } from './config.js?v=__V__';
+import { TELEGRAM_URL, SUPPORT_EMAIL, ADMIN_EMAIL } from './config.js?v=__V__';
 
 const TZ = 'America/Bogota';
 const $view = document.getElementById('view');
@@ -549,20 +549,38 @@ function viewBankroll() {
     <div class="tile"><div class="overline">ROI</div><div class="val ${r?.roi > 0 ? 'pos' : r?.roi < 0 ? 'neg' : ''}">${pct(r?.roi)}</div><div class="hint">${r?.staked || 0} con cuota</div></div>
   </div>
 
-  <div class="section-h"><h2>Historial de apuestas</h2><span class="badge">${b?.ledger?.length || 0}</span></div>
   ${
-    b?.ledger?.length
-      ? `<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
-      ${b.ledger
-        .map((x) => {
-          const fav = x.fav === x.a.id ? x.a : x.b;
-          return `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a.n)} vs ${esc(x.b.n)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(fav.n)} <span class="conf">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${cop(x.stake)}</td><td class="num ${x.profit >= 0 ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ ' : '✗ '}${signed(x.profit)}</td><td class="num">${cop(x.bal)}</td></tr>`;
-        })
-        .join('')}
-      </tbody></table></div>`
-      : empty('wallet', 'Aún no hay apuestas resueltas', 'Cuando terminen los partidos con pick y cuota, cada apuesta aparece aquí con su ganancia o pérdida.')
+    isAdmin()
+      ? `<div class="section-h"><h2>🔒 Historial de apuestas</h2><span class="badge red">Solo admin</span></div><div id="admin-ledger">${skeleton(2)}</div>`
+      : ''
   }
   ${footer()}`;
+}
+
+function isAdmin() {
+  return Boolean(account?.email && account.email.toLowerCase() === ADMIN_EMAIL);
+}
+
+// Carga el historial privado (Firestore admin/ledger) y lo pinta.
+async function renderAdminLedger() {
+  const box = document.getElementById('admin-ledger');
+  if (!box || !isAdmin()) return;
+  try {
+    const { rows, updatedAt } = await FB.loadAdminLedger();
+    if (!rows.length) {
+      box.innerHTML = empty('wallet', 'Aún no hay apuestas resueltas', 'Cuando terminen los partidos con pick y cuota, cada apuesta aparece aquí con su ganancia o pérdida.');
+      return;
+    }
+    box.innerHTML = `<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
+      ${rows
+        .map(
+          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a)} vs ${esc(x.b)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(x.fav)} <span class="conf">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${cop(x.stake)}</td><td class="num ${x.profit >= 0 ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ ' : '✗ '}${signed(x.profit)}</td><td class="num">${cop(x.bal)}</td></tr>`
+        )
+        .join('')}
+      </tbody></table></div><p class="foot" style="margin-top:8px">${rows.length} apuestas · actualizado ${updatedAt ? fmtTime(updatedAt) : '—'}</p>`;
+  } catch (e) {
+    box.innerHTML = `<div class="note">No se pudo cargar el historial (${esc(e.code || e.message)}). Revisa que las reglas de Firestore estén actualizadas.</div>`;
+  }
 }
 
 function viewPerfil() {
@@ -864,6 +882,7 @@ function route() {
     });
   }
   renderCounter();
+  if (tab === 'bankroll') renderAdminLedger();
 }
 
 // Actualiza solo los marcadores en vivo de las tarjetas visibles.

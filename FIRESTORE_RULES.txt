@@ -15,5 +15,15 @@ service cloud.firestore {
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // Historial de apuestas: solo lo lee la cuenta admin; solo lo escribe
+    // GitHub Actions con la clave del bot (secret FIRESTORE_BOT_KEY).
+    // CLAVE_DEL_BOT se reemplaza por la clave real al pegar en Firebase
+    // (nunca se sube al repo, que es público).
+    match /admin/{doc} {
+      allow read: if request.auth != null
+                  && request.auth.token.email == 'camilosimanca77@gmail.com';
+      allow create, update: if request.resource.data.botKey == 'CLAVE_DEL_BOT';
+    }
   }
 }

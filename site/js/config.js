@@ -19,5 +19,9 @@ export const FIREBASE_CONFIG = {
 // Link del canal de Telegram (opcional). Ej: 'https://t.me/micanal'
 export const TELEGRAM_URL = null;
 
+// Cuenta administradora: la única que ve el historial de apuestas.
+// (La protección real está en las reglas de Firestore, no acá.)
+export const ADMIN_EMAIL = 'camilosimanca77@gmail.com';
+
 // Correo de contacto que se muestra en Ayuda.
 export const SUPPORT_EMAIL = 'lospeepff@gmail.com';
