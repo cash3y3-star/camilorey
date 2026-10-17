@@ -1,4 +1,5 @@
 /* CamiloRey — negro con rojo, estilo app (móvil primero) */
+@font-face { font-family: 'Pirata One'; font-style: normal; font-weight: 400; font-display: swap; src: url('../fonts/pirata-one-latin.woff2') format('woff2'); }
 :root {
   --red: #e10600;
   --red-2: #ff2a1f;
@@ -59,7 +60,14 @@ svg { display: block; }
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -0.02em; font-size: 19px; }
 .brand-mark { display: block; width: 34px; height: 34px; border-radius: 10px; background: #000; object-fit: cover; }
-.brand-name b { color: var(--red-2); font-weight: 800; }
+/* Nombre del sitio: letra gótica (Pirata One, guardada en fonts/), CAMILO
+   plateado y REY rojo con la corona encima, como el diseño elegido. */
+.brand-name { position: relative; font-family: 'Pirata One', 'Times New Roman', serif; font-weight: 400; font-size: 31px; line-height: 1; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; padding-top: 8px; }
+.brand-name .bn-1 { background: linear-gradient(180deg, #ffffff 0%, #e4e4e7 45%, #9d9da6 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 0.9px #d4d4d8; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6)); }
+.brand-name .bn-2 { position: relative; color: var(--red); font-weight: 400; -webkit-text-stroke: 0.9px var(--red); text-shadow: 0 0 14px rgba(225, 6, 0, 0.35); }
+.bn-crown { position: absolute; left: -0.5em; top: -0.34em; width: 0.78em; height: 0.44em; fill: none; stroke: var(--red); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+:root[data-theme='light'] .brand-name .bn-1 { background-image: linear-gradient(180deg, #3f3f46 0%, #18181b 100%); -webkit-text-stroke-color: #27272a; filter: none; }
+:root[data-theme='light'] .brand-name .bn-2 { text-shadow: none; }
 .topbar-actions { display: flex; gap: 6px; align-items: center; }
 .login-btn { padding: 8px 14px; border-radius: 999px; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
 .login-btn:hover { background: var(--red-2); }
