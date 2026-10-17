@@ -280,7 +280,8 @@ async function askGemini(history) {
   const body = {
     systemInstruction: { parts: [{ text: systemPrompt() }] },
     contents,
-    generationConfig: { temperature: 0.4, maxOutputTokens: 700 }
+    // El tope incluye lo que el modelo "piensa" antes de responder (~400).
+    generationConfig: { temperature: 0.4, maxOutputTokens: 2048 }
   };
   let lastErr;
   for (const model of GEMINI_MODELS) {

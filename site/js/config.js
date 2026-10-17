@@ -35,4 +35,5 @@ export const SUPPORT_EMAIL = 'lospeepff@gmail.com';
 // Está limitada en Google Cloud a este sitio y sin tarjeta no cobra nada.
 export const GEMINI_KEY = '__GEMINI_KEY__';
 // Modelos en orden de preferencia: si uno agota su cupo gratis, se usa el siguiente.
-export const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+// (Los 2.5 ya no están disponibles para cuentas nuevas.)
+export const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
