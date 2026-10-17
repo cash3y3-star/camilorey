@@ -185,6 +185,13 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
 .float-active { bottom: calc(var(--tabbar-h) + 70px + env(safe-area-inset-bottom, 0px)); }
 .chat-panel { position: fixed; z-index: 45; right: 12px; bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom, 0px)); width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100vh - var(--tabbar-h) - 90px)); display: flex; flex-direction: column; background: var(--bg-2); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55); overflow: hidden; animation: up 0.2s ease; }
 .chat-panel[hidden] { display: none; }
+/* Minimizada: solo la barra del título, abajo */
+.chat-panel.min { height: auto; width: min(300px, calc(100vw - 24px)); cursor: pointer; }
+.chat-panel.min > :not(.chat-head) { display: none; }
+.chat-panel.min .chat-head { padding: 8px 8px 8px 10px; }
+.chat-panel.min .chat-ava { width: 30px; height: 30px; }
+.chat-head .head-dot { position: static; width: 12px; height: 12px; border-radius: 50%; background: #facc15; flex: none; }
+.chat-head .head-dot[hidden] { display: none; }
 .chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; background: linear-gradient(135deg, #e11d2e, #8f0f19); color: #fff; }
 .chat-ava { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.25); }
 .chat-ava .icon { width: 18px; height: 18px; }

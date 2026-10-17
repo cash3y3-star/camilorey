@@ -20,6 +20,7 @@ let opts = null; // { FB, getUser, isPremium, isAdmin, context, openLogin, openA
 let msgs = [];
 let human = false;
 let open = false;
+let mini = false; // ventana minimizada (solo la barra del título)
 let busy = false;
 let unsub = null;
 let unread = false;
@@ -98,10 +99,11 @@ export function syncUser() {
   opts.FB.watchMyChat((doc) => {
     msgs = doc?.msgs || [];
     human = Boolean(doc?.human);
-    setUnread(Boolean(doc?.unreadUser) && !open);
+    // Minimizada cuenta como "no vista": queda el punto hasta abrirla.
+    setUnread(Boolean(doc?.unreadUser) && (!open || mini));
     if (open) {
       render();
-      if (doc?.unreadUser) opts.FB.markMyChatRead();
+      if (doc?.unreadUser && !mini) opts.FB.markMyChatRead();
     }
   }).then((fn) => (unsub = fn));
 }
@@ -112,9 +114,22 @@ function setUnread(v) {
   if (dot) dot.hidden = !v;
 }
 
+function setMini(v) {
+  mini = v;
+  document.getElementById('chat-panel').classList.toggle('min', v);
+  render();
+  if (!v) {
+    setUnread(false);
+    if (opts.getUser()) opts.FB.markMyChatRead();
+    setTimeout(() => document.querySelector('#chat-panel textarea')?.focus(), 50);
+  }
+}
+
 function toggle(v) {
   open = v;
+  mini = false;
   const panel = document.getElementById('chat-panel');
+  panel.classList.remove('min');
   panel.hidden = !v;
   document.getElementById('chat-fab').hidden = v;
   if (v) {
@@ -154,6 +169,8 @@ function render() {
     <div class="chat-head">
       <div class="chat-ava">${icon(human ? 'users' : 'bolt')}</div>
       <div class="chat-title"><b>Soporte en vivo</b><small>${human ? 'Te va a responder una persona' : aiReady() ? 'Asistente con IA · responde al instante' : 'Te responde una persona'}</small></div>
+      <i class="chat-dot head-dot" ${unread ? '' : 'hidden'}></i>
+      <button type="button" class="chat-x" data-chat-min aria-label="${mini ? 'Abrir' : 'Minimizar'}">${icon(mini ? 'up' : 'minus')}</button>
       <button type="button" class="chat-x" data-chat-close aria-label="Cerrar">${icon('x')}</button>
     </div>
     <div class="chat-body" id="chat-body">
@@ -181,7 +198,10 @@ function render() {
 async function onPanelClick(e) {
   if (e.target.closest('[data-chat-go]')) return toggle(false); // va a registro / login
   const t = e.target.closest('button');
+  // Minimizada: tocar la barra (fuera de la X) la vuelve a abrir.
+  if (mini && !t?.hasAttribute('data-chat-close') && e.target.closest('.chat-head')) return setMini(false);
   if (!t) return;
+  if (t.hasAttribute('data-chat-min')) return setMini(!mini);
   if (t.hasAttribute('data-chat-close')) return toggle(false);
   if (t.hasAttribute('data-chat-human')) return askHuman();
   if (t.hasAttribute('data-chat-ai')) {
@@ -327,6 +347,15 @@ PREMIUM
 - Incluye: picks de alta confianza (60% o más) antes del partido, Análisis IA de cada pick, Mi Bankroll con criterio de Kelly (Seguro, Equilibrado, Agresivo) y notificaciones en el celular (nuevo pick destacado y resultado de los picks seguidos).
 - Cómo activarlo: 1) crear una cuenta gratis (Google o correo), 2) escribir a ${SUPPORT_EMAIL} con el correo de la cuenta, 3) Camilo lo activa y se desbloquea al instante (aparece una bienvenida). El precio y el pago se acuerdan por ese correo o con "Hablar con una persona": no inventes precios ni medios de pago.
 - Notificaciones: Perfil > Notificaciones > activar (en iPhone primero hay que agregar el sitio a la pantalla de inicio).
+
+COMBINADAS (parlays)
+Si el usuario pide una combinada (doble, triple, parlay, "combinada de N", "con cuota X"), ármala SOLO con los picks del sistema de esta lista, que ya están calculados con exactitud:
+${c.combos}
+- Si pide algo que ya está arriba (doble, triple, cuota alta), copia esa combinada tal cual, con su cuota total y su probabilidad.
+- Si pide una a medida (otro número de selecciones u otra cuota), elige de la lista de picks disponibles: de mayor confianza primero, sin repetir jugador ni partido, máximo 5 selecciones. La cuota total es la MULTIPLICACIÓN de las cuotas y la probabilidad estimada es la multiplicación de las confianzas (en decimal); redondea la cuota a 2 decimales y la probabilidad a entero. Revisa la cuenta antes de responder.
+- Presenta cada selección en una línea: jugador que gana, partido, hora, confianza y cuota. Luego la cuota total y la probabilidad estimada de acertar todas.
+- Sé honesto: en una combinada TODAS las selecciones tienen que acertar, así que la probabilidad baja mucho con cada selección (por eso paga más). Recomienda montos pequeños. Los picks se recalculan hasta 5 minutos antes de cada partido, así que conviene revisar la combinada en el sitio antes de apostar.
+- Nunca uses partidos, jugadores o cuotas que no estén en la lista.${c.premiumLocked ? '\n- Este usuario no es Premium: hay picks de alta confianza (60% o más) bloqueados que no están en su lista. Si pregunta por combinadas más seguras, menciona que con Premium puede usar esos picks.' : ''}
 
 REGLAS
 - Nunca garantices ganancias ni digas que un pick es seguro. Las apuestas tienen riesgo: recomienda apostar solo lo que se pueda perder, con responsabilidad y siendo mayor de edad.

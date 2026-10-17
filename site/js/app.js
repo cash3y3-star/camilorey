@@ -713,6 +713,20 @@ async function renderAdminDaily(reload = true) {
   if (sc) sc.scrollLeft = on ? on.getBoundingClientRect().left - sc.getBoundingClientRect().left + sc.scrollLeft - sc.clientWidth / 2 + on.clientWidth / 2 : sc.scrollWidth;
 }
 
+// Pantalla propia del admin para el chat (la abre el botón flotante).
+function viewSoporte() {
+  if (!isAdmin()) return `<div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Soporte en vivo</h1></div>${empty('shield', 'Solo administrador', 'Entra con la cuenta admin para ver las conversaciones.')}`;
+  setTimeout(() => {
+    startAdminChats();
+    renderAdminChats();
+  }, 0);
+  return `
+  <div class="subhead"><a class="back" href="javascript:history.back()">${icon('left')} Atrás</a><h1>Soporte en vivo</h1></div>
+  <div class="section-h" id="admin-chats"><h2>💬 Conversaciones</h2><span class="badge" id="admin-chats-count"></span></div>
+  <div id="admin-chats-box">${skeleton(2)}</div>
+  ${footer()}`;
+}
+
 // ---------- Soporte en vivo: conversaciones (solo admin) ----------
 // Se escuchan en vivo desde que entra la cuenta admin: el botón flotante
 // muestra un punto si hay mensajes sin leer y el panel se actualiza solo.
@@ -781,7 +795,14 @@ function renderAdminChats() {
       </div>
     </div>`
     : '';
+  // Si llega un mensaje mientras escribes, no se pierde lo escrito.
+  const oldTa = box.querySelector('#admin-chat-form textarea');
+  const draft = oldTa?.value || '';
+  const hadFocus = oldTa && document.activeElement === oldTa;
   box.innerHTML = `${thread}<div class="list" style="margin-top:${sel ? 12 : 0}px">${rows}</div>`;
+  const newTa = box.querySelector('#admin-chat-form textarea');
+  if (newTa && draft) newTa.value = draft;
+  if (newTa && hadFocus) newTa.focus();
   const body = document.getElementById('admin-chat-body');
   if (body) body.scrollTop = body.scrollHeight;
   if (sel?.unreadAdmin) FB.adminMarkRead(sel.id).catch(() => {});
@@ -793,14 +814,14 @@ document.addEventListener('submit', async (ev) => {
   const ta = ev.target.querySelector('textarea');
   const text = ta.value.trim();
   if (!text || !ui.chatSel) return;
-  ta.disabled = true;
+  ta.value = ''; // se vacía antes: la lista se redibuja en vivo al llegar la respuesta
   try {
     await FB.adminReply(ui.chatSel, text);
-    ta.value = '';
   } catch (e) {
+    const cur = document.querySelector('#admin-chat-form textarea');
+    if (cur && !cur.value) cur.value = text;
     toast(`No se pudo enviar: ${e.code || e.message}`);
   }
-  ta.disabled = false;
 });
 
 async function renderAdminPanel() {
@@ -2071,6 +2092,7 @@ const ROUTES = {
   cuenta: viewCuenta,
   jugador: viewJugador,
   admin: viewAdmin,
+  soporte: viewSoporte,
   notificaciones: viewNotificaciones,
   premium: viewPremium,
   tema: viewTema,
@@ -2546,6 +2568,8 @@ updateBellDot();
 setInterval(async () => {
   if (document.visibilityState === 'hidden' || !$sheet.hidden) return;
   await loadData();
+  // No redibujar si la persona está escribiendo (ej. respondiendo un chat).
+  if (document.activeElement?.matches?.('#view textarea, #view input, #view select')) return;
   // Revisa la membresía cada minuto: si el admin la acaba de activar, se
   // desbloquea sin recargar y aparece la bienvenida.
   if (account) await refreshPremium();
@@ -2591,13 +2615,72 @@ function startFirebase() {
   });
   FB.countVisit().catch(() => {});
 }
-if (readLocal('cr_had_session', false) || /^#\/(login|registro|cuenta|admin|notificaciones|bankroll|premium)/.test(location.hash)) startFirebase();
+if (readLocal('cr_had_session', false) || /^#\/(login|registro|cuenta|admin|soporte|notificaciones|bankroll|premium)/.test(location.hash)) startFirebase();
 else if ('requestIdleCallback' in window) requestIdleCallback(startFirebase, { timeout: 2500 });
 else setTimeout(startFirebase, 1500);
 // Cualquier toque a algo de la cuenta también la arranca al momento.
 window.addEventListener('hashchange', startFirebase, { once: true });
 
 // ---------- Soporte en vivo (chat con IA + persona) ----------
+
+// Combinadas para el chat: las cuentas (cuota total y probabilidad) se hacen
+// aquí, exactas, y la IA solo las presenta. Solo con picks que el usuario
+// puede ver (los Premium bloqueados no entran), con cuota, que empiezan en
+// más de 5 min y sin repetir jugador (dos partidos del mismo jugador no son
+// independientes).
+function comboCandidates() {
+  const now = Date.now();
+  return data.picks
+    .filter((p) => !p.locked && p.fav && p.o && p.o >= 1.15 && p.o <= 3.5 && p.res === 'pending' && new Date(p.at).getTime() > now + 5 * 60e3 && new Date(p.at).getTime() < now + 24 * 3600e3)
+    .sort((a, b) => b.c - a.c || (a.at < b.at ? -1 : 1));
+}
+
+function pickCombo(cands, { legs, minOdds = 0, maxLegs = legs }) {
+  const out = [];
+  const used = new Set();
+  for (const p of cands) {
+    if (used.has(p.a.id) || used.has(p.b.id)) continue;
+    out.push(p);
+    used.add(p.a.id);
+    used.add(p.b.id);
+    const odds = out.reduce((s, x) => s * x.o, 1);
+    if (out.length >= legs && odds >= minOdds) break;
+    if (out.length >= maxLegs) break;
+  }
+  return out.length >= 2 ? out : null;
+}
+
+function comboText(name, legs) {
+  if (!legs) return '';
+  const odds = legs.reduce((s, x) => s * x.o, 1);
+  const prob = legs.reduce((s, x) => s * (x.c / 100), 1);
+  const legTxt = legs
+    .map((p) => {
+      const fav = p.fav === p.a.id ? p.a : p.b;
+      return `   - ${fav.n} gana (${p.a.n} vs ${p.b.n}, ${dayLabel(dayKey(p.at))} ${fmtTime(p.at)}) · confianza ${p.c}% · cuota ${p.o.toFixed(2)}`;
+    })
+    .join('\n');
+  return `* ${name}: ${legs.length} selecciones · CUOTA TOTAL ${odds.toFixed(2)} · probabilidad estimada de acertar todas ${Math.round(prob * 100)}%\n${legTxt}`;
+}
+
+function combosForChat() {
+  const cands = comboCandidates();
+  if (cands.length < 2) return '- Ahora mismo no hay suficientes picks con cuota por jugar para armar una combinada (se necesitan al menos 2). Explícalo y sugiere volver más tarde.';
+  const lines = [
+    comboText('Doble (las 2 de más confianza)', pickCombo(cands, { legs: 2 })),
+    comboText('Triple (las 3 de más confianza)', pickCombo(cands, { legs: 3 })),
+    comboText('Cuota alta (~3 o más, máximo 4 selecciones)', pickCombo(cands, { legs: 2, minOdds: 3, maxLegs: 4 }))
+  ].filter(Boolean);
+  const list = cands
+    .slice(0, 15)
+    .map((p) => {
+      const fav = p.fav === p.a.id ? p.a : p.b;
+      return `   - ${fav.n} gana (${p.a.n} vs ${p.b.n}, ${dayLabel(dayKey(p.at))} ${fmtTime(p.at)}) · confianza ${p.c}% · cuota ${p.o.toFixed(2)}`;
+    })
+    .join('\n');
+  return `${[...new Set(lines)].join('\n')}\n- Picks disponibles para combinadas a medida (de más a menos confianza; no repitas jugador ni partido):\n${list}`;
+}
+
 function chatContext() {
   const s = data.stats;
   const h = s?.model?.holdout;
@@ -2615,7 +2698,9 @@ function chatContext() {
     user: account ? `${account.displayName || 'sin nombre'} (${account.email || 'sin correo'}), con sesión iniciada` : 'visitante sin sesión iniciada',
     premium: isAdmin() ? 'es el administrador del sitio' : isPremiumUser() ? `sí, activo${membership?.until ? ` hasta ${membership.until.toLocaleDateString('es-CO')}` : ''}` : 'no',
     model: h?.all ? `Acierto del modelo medido en partidos que no vio: ${h.all.acc}% en todos, ${h.c55?.acc}% en los de 55% o más y ${h.c60?.acc}% en los de 60% o más. Es una medición, no una garantía.` : '',
-    extra: lines.join('\n')
+    extra: lines.join('\n'),
+    combos: combosForChat(),
+    premiumLocked: !isPremiumUser() && data.picks.some((p) => p.locked && new Date(p.at).getTime() > Date.now())
   };
 }
 
@@ -2627,8 +2712,8 @@ initChat({
   context: chatContext,
   openLogin: () => (location.hash = '#/login'),
   openAdmin: () => {
-    location.hash = '#/admin';
-    setTimeout(() => document.getElementById('admin-chats')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 500);
+    location.hash = '#/soporte';
+    window.scrollTo(0, 0);
   },
   onTap: () => {
     tapFx();
