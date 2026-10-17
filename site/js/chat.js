@@ -164,7 +164,12 @@ function render() {
   const name = (u?.displayName || '').split(' ')[0];
   const welcome = `Hola${name ? ` ${name}` : ''}. Soy el asistente de CamiloRey. Te ayudo con los picks, Premium, tu cuenta, el bankroll o las notificaciones. ¿En qué te ayudo?`;
   const list = [{ id: 'w', r: 'ai', t: welcome }, ...msgs];
-  const who = { u: 'Tú', ai: 'Asistente IA', admin: 'Camilo · Soporte' };
+  // Los mensajes del admin llevan su etiqueta de CEO (dorada, con corona).
+  const who = {
+    u: 'Tú',
+    ai: `<span class="ceo-name">Asistente IA <span class="sup-badge">${icon('chat')}SOPORTE</span></span>`,
+    admin: `<span class="ceo-name">Camilo Rey <span class="ceo-badge">${icon('crown')}CEO</span> <span class="ceo-role">Administrador</span></span>`
+  };
   panel.innerHTML = `
     <div class="chat-head">
       <div class="chat-ava">${icon(human ? 'users' : 'bolt')}</div>
@@ -175,7 +180,7 @@ function render() {
     </div>
     <div class="chat-body" id="chat-body">
       ${list.map((m) => `<div class="cmsg ${m.r === 'u' ? 'me' : m.r}"><small>${who[m.r] || ''}</small><div class="bub">${fmt(m.t)}</div></div>`).join('')}
-      ${busy ? '<div class="cmsg ai"><small>Asistente IA</small><div class="bub typing"><i></i><i></i><i></i></div></div>' : ''}
+      ${busy ? `<div class="cmsg ai"><small>${who.ai}</small><div class="bub typing"><i></i><i></i><i></i></div></div>` : ''}
       ${human ? `<div class="chat-note">${icon('info')} Le avisamos a Camilo. Te responde aquí mismo apenas pueda${u ? '' : ''}. También puedes escribir a <b>${esc(SUPPORT_EMAIL)}</b>.</div>` : ''}
     </div>
     <form class="chat-form" autocomplete="off">
