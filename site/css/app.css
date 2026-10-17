@@ -628,3 +628,16 @@ select.inline-input { appearance: auto; }
   .mid { min-width: 80px; }
   .avatar { width: 40px; height: 40px; }
 }
+
+/* Pantalla de bloqueo: el sitio es solo para miembros */
+body.locked .tabbar, body.locked #btn-notif { display: none; }
+.lock { max-width: 420px; margin: 0 auto; padding: 28px 0 40px; text-align: center; }
+.lock-logo { display: block; width: 132px; height: 132px; margin: 0 auto 18px; border-radius: 28px; box-shadow: 0 14px 40px rgba(225, 6, 0, 0.35); }
+.lock h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -0.02em; }
+.lock > p { margin: 0 0 20px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.lock .lock-wait { margin-top: 8px; }
+.lock-card { margin: 0 0 16px; font-size: 14px; line-height: 1.6; text-align: left; }
+.lock .note { margin-top: 14px; text-align: left; }
+.btn.tg { background: #229ed9; color: #fff; }
+.btn.tg:hover { background: #1c8bc0; }
+.btn.tg .icon { width: 18px; height: 18px; }

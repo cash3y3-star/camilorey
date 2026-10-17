@@ -52,6 +52,12 @@ jobs:
           mkdir -p ~/.cache/push-node && cd ~/.cache/push-node
           [ -d node_modules/web-push ] || npm install --no-audit --no-fund web-push@3.6.7
 
+      # El estado guardado va cifrado (el repositorio es público).
+      - name: Abrir estado
+        env:
+          STATE_SECRET: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: node scripts/vault.js open-state data
+
       - name: Actualizar partidos y picks
         env:
           FIRESTORE_BOT_KEY: ${{ secrets.FIRESTORE_BOT_KEY }}
@@ -62,9 +68,20 @@ jobs:
           NODE_PATH: /home/runner/.cache/push-node/node_modules
         run: node scripts/update.js
 
+      # Sitio solo para miembros: los datos se publican cifrados y la llave
+      # está en Firestore (solo la leen cuentas con acceso vigente).
+      - name: Cifrar datos del sitio
+        env:
+          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+          BOT_PASSWORD: ${{ secrets.BOT_PASSWORD }}
+        run: node scripts/vault.js seal-site
+
       - name: Guardar estado
+        env:
+          STATE_SECRET: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: |
-          cd data
+          node scripts/vault.js seal-state data state-out
+          cd state-out
           git init -q -b state
           git config user.name "camilorey-bot"
           git config user.email "camilorey-bot@users.noreply.github.com"
@@ -97,8 +114,11 @@ jobs:
         run: node scripts/update.js --history
 
       - name: Guardar estado (historial)
+        env:
+          STATE_SECRET: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: |
-          cd data
+          node scripts/vault.js seal-state data state-out
+          cd state-out
           git add -A
           git diff --cached --quiet && exit 0
           git commit -q -m "estado (historial) $(date -u +%FT%TZ)"

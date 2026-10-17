@@ -20,8 +20,8 @@ export const FIREBASE_CONFIG = {
 // secreto en GitHub Actions).
 export const VAPID_PUBLIC_KEY = 'BC4ijSXVGAin17xn3kLYtpYgUR1Hhy7AApRvjcXIsfwQd36uFw8__LL2TbpBdSezM380neDfWznGrjLGA9r799c';
 
-// Link del canal de Telegram (opcional). Ej: 'https://t.me/micanal'
-export const TELEGRAM_URL = null;
+// Telegram de CamiloRey: ahí se pide y se paga el acceso al sitio.
+export const TELEGRAM_URL = 'https://t.me/SoyCamiloRey';
 
 // Cuenta administradora: la única que ve el historial de apuestas.
 // (La protección real está en las reglas de Firestore, no acá.)

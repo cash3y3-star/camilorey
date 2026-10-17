@@ -211,4 +211,4 @@ async function countUsers() {
   }
 }
 
-module.exports = { runNotifications, botToken, toFs, countUsers };
+module.exports = { runNotifications, botToken, toFs, countUsers, activeMembers, DOCS };

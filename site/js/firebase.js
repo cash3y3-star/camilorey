@@ -17,6 +17,7 @@ import { FIREBASE_CONFIG } from './config.js?v=__V__';
 const V = '10.12.2';
 let fb = null; // { auth, db, m: {módulos} }
 let currentUser = null;
+let authKnown = false; // ya se sabe si hay sesión (Firebase lo resuelve al cargar)
 const authListeners = new Set();
 
 export const enabled = Boolean(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey);
@@ -36,10 +37,13 @@ async function load() {
   auth.onAuthStateChanged(a, async (u) => {
     currentUser = u;
     if (u) await ensureUserDoc(u).catch(() => {});
+    authKnown = true;
     authListeners.forEach((fn) => fn(u));
   });
   return fb;
 }
+
+export const authReady = () => authKnown;
 
 export function onAuth(fn) {
   authListeners.add(fn);
@@ -166,6 +170,15 @@ export async function loadMembership() {
   return until ? { until, active: until.getTime() > Date.now() } : null;
 }
 
+// Llave de los datos cifrados del sitio (vault/key): solo la pueden leer
+// cuentas con acceso vigente y el admin (reglas). Sin permiso, falla.
+export async function loadVault() {
+  if (!currentUser) return null;
+  const f = await load();
+  const snap = await f.F.getDoc(f.F.doc(f.db, 'vault', 'key'));
+  return snap.exists() ? JSON.parse(snap.data().data || '{}') : null;
+}
+
 // Pick completo de los picks Premium y Análisis IA (solo Premium por reglas).
 export async function loadPremiumContent() {
   const f = await load();
@@ -197,8 +210,8 @@ export async function adminRemoveMember(email) {
 
 // ---------- Panel admin ----------
 
-// Picks del tipster: colección pública "tipster" (las reglas solo dejan
-// escribir a la cuenta admin). Id del documento = id del partido.
+// Picks del tipster: colección "tipster" (la leen los miembros; las reglas
+// solo dejan escribir a la cuenta admin). Id del documento = id del partido.
 export async function listTipster() {
   const f = await load();
   const snap = await f.F.getDocs(f.F.collection(f.db, 'tipster'));

@@ -28,11 +28,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Abrir estado
+        env:
+          STATE_SECRET: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: node scripts/vault.js open-state data
       - name: Cargar historial
         run: node scripts/update.js --backfill ${{ inputs.days }}
       - name: Guardar estado
+        env:
+          STATE_SECRET: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: |
-          cd data
+          node scripts/vault.js seal-state data state-out
+          cd state-out
           git init -q -b state
           git config user.name "camilorey-bot"
           git config user.email "camilorey-bot@users.noreply.github.com"

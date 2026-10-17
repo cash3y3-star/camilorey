@@ -30,6 +30,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Abrir estado
+        env:
+          STATE_SECRET: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: node scripts/vault.js open-state data
+
       - uses: actions/cache@v4
         with:
           path: ~/.cache/cutouts-node

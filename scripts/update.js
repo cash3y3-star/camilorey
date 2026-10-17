@@ -1,7 +1,7 @@
 // ============================================================
 // CamiloRey — actualización de partidos, picks y resultados
 //
-// Corre en GitHub Actions cada ~10 min (.github/workflows/update.yml).
+// Corre en GitHub Actions cada ~5 min (.github/workflows/update.yml).
 // No usa ninguna base de datos de pago: el estado vive en archivos JSON
 // dentro de data/ (rama "state" del repo, sobrescrita en cada corrida
 // para que el repo no crezca) y lo que ve la página se escribe en
@@ -1035,12 +1035,14 @@ let systemBankroll = null;
 let registeredUsers = null; // número real de cuentas (solo admin)
 let adminNoPick = null; // partidos sin pick: análisis de ambos lados y cuotas (solo admin)
 
-// Picks del tipster (colección pública "tipster" de Firestore, la escribe
-// el admin desde el panel): se resuelven con los resultados oficiales.
+// Picks del tipster (colección "tipster" de Firestore, la escribe el admin
+// desde el panel; solo la leen miembros y el bot): se resuelven con los
+// resultados oficiales.
 async function tipsterStats() {
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/tipster?pageSize=500&key=${FIREBASE_API_KEY}`;
-    const r = await fetch(url);
+    const headers = process.env.BOT_EMAIL ? { Authorization: `Bearer ${await require('./notify').botToken()}` } : {};
+    const r = await fetch(url, { headers });
     if (!r.ok) return null;
     const docs = (await r.json()).documents || [];
     let hit = 0;

@@ -1,6 +1,7 @@
 // ============================================================
 // CamiloRey — aplicación (una sola página, rutas con #/...)
-// Datos: site/data/*.json (los genera GitHub Actions cada ~10 min).
+// Datos: site/data/*.json (los genera GitHub Actions cada ~5 min), cifrados:
+// el sitio es solo para miembros (js/vault.js).
 // En vivo: js/live.js (Rushbet/Kambi directo, cada 2 s).
 // Cuenta y visitas: js/firebase.js (opcional).
 // ============================================================
@@ -9,6 +10,7 @@ import { icon, hydrateIcons } from './icons.js?v=__V__';
 import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
 import * as REST from './fsrest.js?v=__V__';
+import * as Vault from './vault.js?v=__V__';
 import { startI18n } from './i18n.js?v=__V__';
 import { tapFx, followFx, fxEnabled, setFx, sendFx, messageFx, endFx } from './feedback.js?v=__V__';
 import { initChat, syncUser as syncChatUser, fmt as chatFmt, isClosed as chatClosed, idleDue as chatIdleDue, closingMsgs as chatClosingMsgs, chatAvatar } from './chat.js?v=__V__';
@@ -31,6 +33,10 @@ let membership = null; // { until, active } de la colección members
 let premiumData = null; // contenido Premium (picks completos + Análisis IA)
 
 const isPremiumUser = () => isAdmin() || Boolean(membership?.active);
+// El sitio es solo para miembros: sin acceso vigente se ve la pantalla de
+// bloqueo (viewLock) y los datos no se pueden abrir (están cifrados).
+const hasAccess = () => Boolean(account) && isPremiumUser();
+const OPEN_ROUTES = new Set(['login', 'registro', 'ayuda', 'privacidad', 'terminos']);
 
 // Rellena los picks bloqueados y agrega el Análisis IA con el contenido
 // Premium (solo llega si la cuenta tiene membresía, por reglas).
@@ -65,11 +71,20 @@ function tipsterPickFor(m) {
 
 async function refreshPremium() {
   if (isAdmin()) adminNoPick = (await FB.loadAdminLedger().catch(() => ({}))).nopick || adminNoPick;
-  if (FB.enabled) await loadTipster(true);
   membership = account ? await FB.loadMembership().catch(() => membership) : null;
-  premiumData = isPremiumUser() ? await FB.loadPremiumContent().catch(() => premiumData) : null;
+  if (!hasAccess()) return clearData();
+  if (FB.enabled) await loadTipster(true);
+  premiumData = await FB.loadPremiumContent().catch(() => premiumData);
   applyPremium();
   maybePremiumWelcome();
+}
+
+// Sin acceso (cerró sesión o se le venció): no dejar nada en pantalla.
+function clearData() {
+  Object.assign(data, { stats: null, picks: [], results: [], calendar: { days: [], matches: [] }, bankroll: null, loaded: false, error: null });
+  premiumData = null;
+  tipsterCache = null;
+  Vault.forget();
 }
 
 // Bienvenida a Premium: se muestra una sola vez por cada activación o
@@ -224,18 +239,23 @@ function toast(msg) {
 
 // ---------------- datos ----------------
 
+// Los archivos llegan cifrados: Vault los abre con la llave del miembro.
 async function getJson(name) {
   const r = await fetch(`data/${name}.json?v=${Math.floor(Date.now() / 60000)}`, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
-  return r.json();
+  return Vault.open(await r.arrayBuffer());
 }
 
 async function loadData() {
+  if (!hasAccess()) return clearData();
   try {
     const [stats, picks, results, calendar] = await Promise.all([getJson('stats'), getJson('picks'), getJson('results'), getJson('calendar')]);
     Object.assign(data, { stats, picks, results, calendar, loaded: true, error: null });
     applyPremium();
   } catch (e) {
+    // Sin llave: el acceso se acaba de vencer o se lo quitaron. Se revisa la
+    // membresía y, si ya no tiene, se bloquea.
+    if (e instanceof Vault.NoAccess) await refreshPremium();
     data.error = e.message;
     data.loaded = true;
   }
@@ -470,7 +490,8 @@ function viewPremium() {
       ? ''
       : `<div class="card pad" style="margin-top:14px">
       <b>¿Cómo activarlo?</b>
-      <p style="font-size:13px;color:var(--muted);margin:6px 0 12px">1) ${account ? 'Ya tienes cuenta ✓' : '<a class="textlink" href="#/registro">Crea tu cuenta</a> (con Google o correo)'}.<br>2) Escríbenos a <b>${esc(SUPPORT_EMAIL)}</b> con el correo de tu cuenta${account?.email ? ` (<b>${esc(account.email)}</b>)` : ''}.<br>3) Te activamos Premium y se desbloquea al instante.</p>
+      <p style="font-size:13px;color:var(--muted);margin:6px 0 12px">1) ${account ? 'Ya tienes cuenta ✓' : '<a class="textlink" href="#/registro">Crea tu cuenta</a> (con Google o correo)'}.<br>2) Escríbenos por Telegram con el correo de tu cuenta${account?.email ? ` (<b>${esc(account.email)}</b>)` : ''}.<br>3) Te activamos Premium y se desbloquea al instante.</p>
+      <a class="btn primary tg" href="${esc(telegramLink(`Hola, quiero Premium en CamiloRey.${account?.email ? ` Mi correo es ${account.email}` : ''}`))}" target="_blank" rel="noopener">${icon('telegram')} Pedir Premium por Telegram</a>
     </div>`
   }
   ${footer()}`;
@@ -525,7 +546,7 @@ async function renderNotificaciones() {
     ${pref('featured', '⭐', 'Nuevo pick destacado', 'El pick de más confianza del momento')}
     ${pref('end', '✅', 'Resultado de mis picks seguidos', 'Si ganó o perdió, con el marcador')}
   </div>
-  <p class="note" style="margin-top:14px">Solo te avisamos de los picks destacados y del resultado de los picks que sigues con el ♥. Pueden llegar con unos minutos de diferencia: el sistema revisa cada ~10 minutos.</p>`;
+  <p class="note" style="margin-top:14px">Solo te avisamos de los picks destacados y del resultado de los picks que sigues con el ♥. Pueden llegar con unos minutos de diferencia: el sistema revisa cada ~5 minutos.</p>`;
 }
 
 async function pushOn() {
@@ -563,11 +584,11 @@ async function pushOff() {
 let tipsterCache = null; // picks del tipster leídos de Firestore
 
 async function loadTipster(force = false) {
-  if (!FB.enabled) return [];
+  if (!FB.enabled || !hasAccess()) return [];
   if (tipsterCache && !force) return tipsterCache;
   try {
-    // Lectura pública por REST: no necesita la librería de Firebase.
-    tipsterCache = await REST.listTipster();
+    // Solo miembros (reglas): va con la sesión, por la librería de Firebase.
+    tipsterCache = await FB.listTipster();
   } catch {
     tipsterCache = [];
   }
@@ -597,13 +618,13 @@ function viewAdmin() {
     <button class="btn primary" type="submit">Publicar pick</button>
   </form>
   <div id="admin-tipster">${skeleton(1)}</div>
-  <div class="section-h"><h2>⭐ Membresías Premium</h2></div>
+  <div class="section-h"><h2>⭐ Miembros · acceso al sitio</h2></div>
   <form class="card pad" id="member-form">
     <label class="field"><span>Correo de la cuenta del usuario (sirve si entra con Google o con correo)</span>
       <input name="email" type="email" required class="inline-input" style="width:100%;border-color:var(--line)" placeholder="usuario@gmail.com"></label>
     <div class="field"><span>Duración</span><div class="seg seg-full" id="member-days">${[7, 30, 90, 365].map((d) => `<button type="button" data-mdays="${d}" class="${d === 30 ? 'on' : ''}">${d === 365 ? '1 año' : d + ' días'}</button>`).join('')}</div></div>
-    <button class="btn primary" type="submit">Activar Premium</button>
-    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Si ya tenía Premium, los días se suman a su fecha de vencimiento. Al usuario le aparece automáticamente una bienvenida a Premium. <button type="button" class="textlink" id="btn-pw-preview">Ver cómo se ve</button></p>
+    <button class="btn primary" type="submit">Dar acceso</button>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Sin acceso vigente nadie puede ver el sitio. Si ya tenía acceso, los días se suman a su fecha de vencimiento; al vencerse se bloquea solo. Al usuario le aparece automáticamente una bienvenida. <button type="button" class="textlink" id="btn-pw-preview">Ver cómo se ve</button></p>
   </form>
   <div id="admin-members">${skeleton(1)}</div>
   <div class="section-h"><h2>📊 Visitas</h2></div>
@@ -888,7 +909,7 @@ async function renderAdminPanel() {
           })
           .join('')}</div>`
       : '<p class="note" style="margin-top:10px">Aún no has publicado picks del tipster.</p>';
-  // Membresías Premium
+  // Miembros (acceso al sitio)
   renderMembers();
   // Visitas por día
   const vbox = document.getElementById('admin-visits');
@@ -930,7 +951,7 @@ async function renderMembers() {
             return `<div class="row"><span class="ic">${active ? '⭐' : '⌛'}</span><span class="tx"><b>${esc(x.email)}</b><small>${active ? `Activo · vence ${esc(x.until.toLocaleDateString(LOC()))} (${left} días)` : `Vencido${x.until ? ' el ' + esc(x.until.toLocaleDateString(LOC())) : ''}`}</small></span><button class="mini-btn" data-mquit="${esc(x.email)}">Quitar</button></div>`;
           })
           .join('')}</div><p class="foot">${list.filter((x) => x.until && x.until.getTime() > now).length} activos · ${list.length} en total</p>`
-      : '<p class="note" style="margin-top:10px">Todavía no hay membresías.</p>';
+      : '<p class="note" style="margin-top:10px">Todavía no hay miembros.</p>';
   } catch (e) {
     box.innerHTML = `<p class="note">No se pudo leer (${esc(e.code || e.message)}). Hay que actualizar las reglas de Firestore.</p>`;
   }
@@ -952,7 +973,7 @@ document.addEventListener('click', async (ev) => {
       return;
     }
     await FB.adminRemoveMember(q.dataset.mquit);
-    toast('Premium quitado');
+    toast('Acceso quitado');
     renderMembers();
   }
 });
@@ -963,7 +984,7 @@ document.addEventListener('submit', async (ev) => {
   if (!email.includes('@')) return toast('Escribe un correo válido');
   try {
     const until = await FB.adminSetMember(email, memberDays);
-    toast(`⭐ Premium activo para ${email} hasta ${until.toLocaleDateString(LOC())}`);
+    toast(`⭐ Acceso activo para ${email} hasta ${until.toLocaleDateString(LOC())}`);
     ev.target.reset();
     renderMembers();
   } catch (e) {
@@ -1238,7 +1259,7 @@ function viewPicks() {
       <button data-pf="odds" class="${ui.pickFilter === 'odds' ? 'on' : ''}">Cuota +1.60</button>
     </div>
   </div>
-  <div class="card pad" style="display:flex;align-items:center;gap:10px;font-size:13px">${icon('clock')}<span style="flex:1">Se actualiza solo cada ~10 min${data.stats?.updatedAt ? ` · última: <b>${fmtTime(data.stats.updatedAt)}</b>` : ''}</span></div>
+  <div class="card pad" style="display:flex;align-items:center;gap:10px;font-size:13px">${icon('clock')}<span style="flex:1">Se actualiza solo cada ~5 min${data.stats?.updatedAt ? ` · última: <b>${fmtTime(data.stats.updatedAt)}</b>` : ''}</span></div>
   <div style="margin-top:12px">${!data.loaded ? skeleton(3) : list.length ? `<div class="grid-2">${list.map((p) => matchCard(p, p)).join('')}</div>` : errorBox() || empty('flame', 'Sin picks en este filtro', 'Los picks se publican unas horas antes de cada torneo.')}</div>
   ${footer()}`;
 }
@@ -1605,7 +1626,7 @@ async function renderAdminLedger() {
         <div class="tile"><div class="overline">Máx. caída</div><div class="val neg" style="font-size:17px">${b.maxDrawdown ? '−' + cop(b.maxDrawdown) : '—'}</div></div>
       </div>
       ${b.series?.length ? `<div class="card pad" style="margin-top:12px"><div class="overline">Evolución de la banca</div>${bankChart(b.series, b.start)}</div>` : ''}`
-      : '<div class="note">El resumen aparece en la próxima actualización (cada ~10 min).</div>';
+      : '<div class="note">El resumen aparece en la próxima actualización (cada ~5 min).</div>';
     // Todos los picks: los apostados mueven la banca; el resto se muestra
     // con su estado (pendiente, en juego, por resolver, sin cuota...).
     const ST = { pre: 'Pendiente', live: 'En juego', wait: 'Por resolver', nodds: 'Sin cuota · no se apostó', np: 'No publicado (<55%)' };
@@ -1666,7 +1687,7 @@ function viewPerfil() {
     <a class="row" href="#/tema"><span class="ic">${icon('moon')}</span><span class="tx"><b>Tema</b><small>${esc({ dark: 'Oscuro', light: 'Claro', system: 'Sistema' }[readLocal('cr_theme_raw', 'dark')] || 'Oscuro')}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/cuotas"><span class="ic">${icon('chart')}</span><span class="tx"><b>Formato de cuotas</b><small>${esc(ODDS_FORMATS[readLocal('cr_odds', 'decimal')]?.[0] || 'Decimal')} · ${esc(odds(1.57))}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/idioma"><span class="ic">${icon('globe')}</span><span class="tx"><b>Idioma</b><small>${readLocal('cr_lang', 'es') === 'en' ? 'English' : 'Español'}</small></span><span class="chev">${icon('chev')}</span></a>
-    ${TELEGRAM_URL ? `<a class="row" href="${esc(TELEGRAM_URL)}" target="_blank" rel="noopener"><span class="ic">${icon('telegram')}</span><span class="tx"><b>Canal de Telegram</b><small>Recibe los picks al instante</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
+    ${TELEGRAM_URL ? `<a class="row" href="${esc(TELEGRAM_URL)}" target="_blank" rel="noopener"><span class="ic">${icon('telegram')}</span><span class="tx"><b>Telegram de CamiloRey</b><small>Pagos, renovación y soporte</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
     <a class="row" href="#/ayuda"><span class="ic">${icon('help')}</span><span class="tx"><b>Ayuda y FAQ</b><small>Preguntas frecuentes, contacto</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/privacidad"><span class="ic">${icon('shield')}</span><span class="tx"><b>Privacidad</b><small>Datos y seguridad de cuenta</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/terminos"><span class="ic">${icon('doc')}</span><span class="tx"><b>Términos de servicio</b><small>Uso informativo, no es casa de apuestas</small></span><span class="chev">${icon('chev')}</span></a>
@@ -1749,7 +1770,7 @@ function viewIdioma() {
 
 const FAQ = [
   ['Predicciones', [
-    ['¿Cómo se generan las predicciones?', 'Cada ~10 minutos un proceso automático lee los torneos de la Liga Pro Checa, calcula para cada partido el rating de los jugadores, su racha, el historial entre ellos (H2H y patrones de alternancia), la forma del día y la cuota real de Rushbet, y con eso estima quién es el favorito. Cuando hay suficientes resultados, un modelo de machine learning reentrena solo y toma la decisión.'],
+    ['¿Cómo se generan las predicciones?', 'Cada ~5 minutos un proceso automático lee los torneos de la Liga Pro Checa, calcula para cada partido el rating de los jugadores, su racha, el historial entre ellos (H2H y patrones de alternancia), la forma del día y la cuota real de Rushbet, y con eso estima quién es el favorito. Cuando hay suficientes resultados, un modelo de machine learning reentrena solo y toma la decisión.'],
     ['¿Qué significa el % de confianza?', 'Es la probabilidad que el sistema le da al favorito de ganar, en una escala honesta de 50% (partido parejo) a 80% (el máximo: en el tenis de mesa nada es seguro y no vamos a prometer más). Solo publicamos picks desde 55%. Referencia: 55-61% confianza media, 62-67% buena, 68-80% alta. Aun con 75%, 1 de cada 4 picks se pierde: por eso mostramos todos los resultados.'],
     ['¿El marcador en vivo es en tiempo real?', 'Sí. Se lee directo del feed en vivo de Rushbet cada 2 segundos, con el marcador punto a punto y set por set.'],
     ['¿Los resultados son reales?', 'Sí. Cada pick se marca como acierto o fallo automáticamente cuando el partido termina, con el resultado oficial. No se borra ni se edita ningún pick.']
@@ -2109,7 +2130,6 @@ function openNotifications() {
     <h2 style="margin:6px 0 4px;font-size:20px">Notificaciones</h2>
     <p style="color:var(--muted);font-size:13px;margin:0 0 14px">Picks destacados y resultados de los picks que sigues</p>
     ${FB.enabled ? `<a class="btn ghost" style="margin-bottom:12px" href="#/notificaciones">${icon('bell')} Recibir estos avisos en el celular</a>` : ''}
-    ${TELEGRAM_URL ? `<a class="btn primary" style="margin-bottom:12px" href="${esc(TELEGRAM_URL)}" target="_blank" rel="noopener">${icon('telegram')} Recibir avisos por Telegram</a>` : ''}
     <div class="list">${items.length ? items.slice(0, 20).map((i) => `<button class="row" data-open="${i.id}"><span class="ic">${icon(i.ic)}</span><span class="tx"><b>${esc(i.t)}</b><small>${esc(i.s)}</small></span></button>`).join('') : '<div class="row"><span class="tx"><small>Sin novedades por ahora.</small></span></div>'}</div>`;
   $sheet.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -2123,6 +2143,39 @@ function closeSheet() {
   document.body.style.overflow = '';
   sheetUnsub?.();
   sheetUnsub = null;
+}
+
+// ---------------- pantalla de bloqueo ----------------
+
+// Enlace a Telegram con el mensaje ya escrito.
+const telegramLink = (text) => `${TELEGRAM_URL}?text=${encodeURIComponent(text)}`;
+
+function viewLock() {
+  const head = `<img class="lock-logo" src="icons/icon-512.png" alt="CamiloRey" width="132" height="132">`;
+  // Mientras Firebase dice si hay sesión (un instante al abrir).
+  if (!FB.authReady()) return `<section class="lock">${head}<p class="lock-wait">Cargando…</p></section>`;
+  if (!Vault.supported())
+    return `<section class="lock">${head}<h1>Actualiza tu navegador</h1><p>Este navegador es muy antiguo para abrir CamiloRey. Usa Chrome o Safari actualizados.</p></section>`;
+  const intro = '<p>Picks de tenis de mesa con IA, marcador en vivo y resultados verificados de la Liga Pro Checa.</p>';
+  if (!account) {
+    return `<section class="lock">${head}
+      <h1>Solo para miembros</h1>${intro}
+      <a class="btn primary" href="#/login">Entrar</a>
+      <a class="btn ghost" href="#/registro">Crear cuenta</a>
+      <a class="btn tg" href="${esc(telegramLink('Hola, quiero acceso a CamiloRey'))}" target="_blank" rel="noopener">${icon('telegram')} Pedir acceso por Telegram</a>
+      <p class="note">Crea tu cuenta y escríbenos por Telegram con tu correo: te activamos el acceso.</p>
+    </section>`;
+  }
+  const expired = membership && !membership.active;
+  const fecha = expired ? membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const msg = `Hola, quiero ${expired ? 'renovar' : 'activar'} mi acceso a CamiloRey. Mi correo es ${account.email || ''}`;
+  return `<section class="lock">${head}
+    <h1>${expired ? 'Tu acceso venció' : 'Tu cuenta no tiene acceso'}</h1>
+    <div class="card pad lock-card">Entraste como <b>${esc(account.email || userName())}</b>.<br>${expired ? `Tu acceso terminó el <b>${esc(fecha)}</b>.` : 'Todavía no tienes un acceso activo.'}</div>
+    <a class="btn primary tg" href="${esc(telegramLink(msg))}" target="_blank" rel="noopener">${icon('telegram')} ${expired ? 'Renovar' : 'Pedir acceso'} por Telegram</a>
+    <p class="note">Cuando te activemos, el sitio se abre solo en esta pantalla (no hace falta recargar).</p>
+    <button class="btn ghost" id="btn-logout">Cerrar sesión</button>
+  </section>`;
 }
 
 // ---------------- enrutador ----------------
@@ -2154,6 +2207,13 @@ const ROUTES = {
 
 function route() {
   const name = (location.hash.replace(/^#\/?/, '').split('/')[0] || 'inicio').toLowerCase();
+  document.body.classList.toggle('locked', !hasAccess());
+  if (!hasAccess() && !OPEN_ROUTES.has(name)) {
+    liveUnsub?.();
+    liveUnsub = null;
+    $view.innerHTML = viewLock();
+    return;
+  }
   const fn = ROUTES[name] || viewInicio;
   $view.innerHTML = fn(location.hash.replace(/^#\/?/, '').split('/')[1]);
   const tab = name === 'resultados' ? 'bankroll' : name;
@@ -2608,11 +2668,10 @@ window.addEventListener('hashchange', () => {
 
 hydrateIcons();
 startI18n();
+Vault.setLoader(() => FB.loadVault());
+// Primera pantalla: "Cargando…" hasta saber si hay sesión con acceso; los
+// datos se cargan en startFirebase (solo para miembros).
 route();
-await loadData();
-route();
-// Picks del tipster (REST, liviano): si hay alguno, se redibuja para mostrarlo en las tarjetas.
-loadTipster().then((t) => t.length && $sheet.hidden && route());
 
 // Punto rojo en la campana si hay un aviso (destacado o resultado de un
 // seguido) que todavía no se vio.
@@ -2622,15 +2681,15 @@ function updateBellDot() {
 }
 updateBellDot();
 
-// Datos nuevos cada minuto (el sync corre cada ~10 min).
+// Datos nuevos cada minuto (el sync corre cada ~5 min).
 setInterval(async () => {
   if (document.visibilityState === 'hidden' || !$sheet.hidden) return;
+  // Revisa el acceso cada minuto: si el admin lo acaba de activar, se
+  // desbloquea sin recargar (con la bienvenida); si venció, se bloquea.
+  if (account) await refreshPremium();
   await loadData();
   // No redibujar si la persona está escribiendo (ej. respondiendo un chat).
   if (document.activeElement?.matches?.('#view textarea, #view input, #view select')) return;
-  // Revisa la membresía cada minuto: si el admin la acaba de activar, se
-  // desbloquea sin recargar y aparece la bienvenida.
-  if (account) await refreshPremium();
   const y = window.scrollY;
   route();
   window.scrollTo(0, y);
@@ -2654,10 +2713,13 @@ function startFirebase() {
   if (fbStarted) return;
   fbStarted = true;
   FB.onAuth(async (u) => {
+    if (!FB.authReady()) return; // aviso inicial, antes de que Firebase sepa si hay sesión
     account = u;
     writeLocal('cr_had_session', Boolean(u));
     profile = u ? await FB.loadProfile().catch(() => null) : null;
     await refreshPremium();
+    // Datos solo con acceso vigente (refreshPremium ya los borró si no).
+    if (hasAccess()) await loadData();
     renderAuthHeader();
     syncChatUser();
     if (isAdmin()) startAdminChats();
@@ -2669,16 +2731,13 @@ function startFirebase() {
         FB.saveFollows([...follows]).catch(() => {});
       }
     }
-    if ($sheet.hidden) route();
+    // También con la bienvenida Premium abierta si detrás está el bloqueo o
+    // "Cargando…": si no, al cerrarla seguiría esa pantalla.
+    if ($sheet.hidden || $view.querySelector('.lock')) route();
   });
 }
-// La librería de Firebase (~170 KB) solo se descarga cuando hace falta: si
-// la persona ya tenía sesión, al ir a algo de la cuenta o al abrir el chat.
-// Un visitante sin cuenta no la necesita: la visita y los picks del tipster
-// van por REST (fsrest.js), con pedidos de pocos KB.
-const ACCOUNT_ROUTES = /^#\/(login|registro|cuenta|perfil|admin|soporte|notificaciones|bankroll|resultados|premium)/;
-if (readLocal('cr_had_session', false) || ACCOUNT_ROUTES.test(location.hash)) startFirebase();
-window.addEventListener('hashchange', () => ACCOUNT_ROUTES.test(location.hash) && startFirebase());
+// Firebase se carga siempre al abrir: sin sesión con acceso no se ve nada.
+startFirebase();
 REST.countVisit().catch(() => {});
 
 // ---------- Soporte en vivo (chat con IA + persona) ----------

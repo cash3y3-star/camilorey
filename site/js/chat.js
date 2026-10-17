@@ -488,7 +488,7 @@ ${c.extra}
 
 CÓMO FUNCIONA EL SITIO
 - Pestañas: Inicio (pick destacado, pick del tipster, partidos en vivo, campeones y jugadores en racha), Calendario (próximos y resultados de ayer, hoy y mañana), Picks (picks de partidos que aún no empiezan), En vivo (marcador en vivo de la Liga Pro Checa), Seguidos (picks que el usuario sigue con el corazón) y Mi Bankroll.
-- Los datos salen de tt.league-pro.com (partidos y resultados oficiales) y las cuotas de Rushbet. Todo se actualiza solo cada ~10 minutos; el marcador en vivo, cada 2 segundos.
+- Los datos salen de tt.league-pro.com (partidos y resultados oficiales) y las cuotas de Rushbet. Todo se actualiza solo cada ~5 minutos; el marcador en vivo, cada 2 segundos.
 - Cada partido trae un pick del sistema: el jugador que el modelo ve más probable ganador, con su confianza (escala honesta de 50% a 80%). De 50% a 54% es un partido parejo (baja confianza). El modelo está entrenado con miles de partidos reales de 2026 y usa el cruce directo (H2H) del año, los últimos cruces, la forma del día en el torneo, el rating y la cuota de Rushbet. ${c.model}
 - Al tocar un partido se abre su ficha: forma reciente L5/L10 (con rival, fecha y marcador), H2H completo de 2026, probabilidad de victoria y Análisis IA (este último es Premium).
 - Pick destacado: el pick público de mayor confianza (cuota entre 1.60 y 2.50) que aún no empieza. Pick del tipster: un pick elegido a mano por Camilo.

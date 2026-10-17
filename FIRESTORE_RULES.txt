@@ -46,10 +46,19 @@ service cloud.firestore {
       allow create, update: if isBot();
     }
 
-    // Picks del tipster: los ve todo el mundo, solo los publica el admin.
+    // Picks del tipster: solo miembros (el sitio es privado); los publica el
+    // admin y el bot los lee para calcular su efectividad.
     match /tipster/{doc} {
-      allow read: if true;
+      allow read: if isAdmin() || isPremium() || isBot();
       allow write: if isAdmin();
+    }
+
+    // Llave para abrir los datos cifrados del sitio: solo la leen cuentas
+    // con acceso vigente y el admin; la cambia el bot (cada día y cuando a
+    // alguien se le vence o se le quita el acceso).
+    match /vault/{doc} {
+      allow read: if isAdmin() || isPremium() || isBot();
+      allow create, update: if isBot();
     }
 
     // Membresías Premium: las activa el admin; cada usuario ve la suya;

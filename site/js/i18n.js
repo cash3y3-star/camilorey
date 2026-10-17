@@ -25,7 +25,7 @@ const DICT = {
   '✓ Acierto': '✓ Won', '✗ Fallo': '✗ Lost', 'sin historial': 'no history', PICK: 'PICK', gana: 'wins',
   'Nuestro pick': 'Our pick', 'últimos 7 días': 'last 7 days', 'Kelly sobre los picks que sigues': 'Kelly on the picks you follow',
   'Banca simulada de CamiloRey · solo admin': 'CamiloRey simulated bankroll · admin only',
-  'Se actualiza solo cada ~10 min · última:': 'Auto-updates every ~10 min · last:',
+  'Se actualiza solo cada ~5 min · última:': 'Auto-updates every ~5 min · last:',
   // ficha
   Torneo: 'Tournament', Cuota: 'Odds', Estado: 'Status', PROGRAMADO: 'SCHEDULED', FINAL: 'FINAL',
   'Seguir este pick': 'Follow this pick', 'Dejar de seguir': 'Unfollow', 'Forma reciente': 'Recent form',
