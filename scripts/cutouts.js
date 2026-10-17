@@ -79,6 +79,26 @@ async function main() {
   }
   console.log(`Recortes nuevos: ${ok}`);
   await makeThumbs(players, sharp);
+  await makeMids(sharp);
+}
+
+// Recortes medianos (260 px de alto, ~8 KB) para las tarjetas chicas
+// (campeones, seguidos): el recorte completo (420 px, ~25 KB) queda solo
+// para el perfil del jugador. Salen del recorte ya hecho: rápido, sin IA.
+async function makeMids(sharp) {
+  const dir = path.join(OUT, 'mid');
+  fs.mkdirSync(dir, { recursive: true });
+  const todo = fs.readdirSync(OUT).filter((f) => f.endsWith('.webp') && !fs.existsSync(path.join(dir, f)));
+  let ok = 0;
+  for (const f of todo) {
+    try {
+      await sharp(path.join(OUT, f)).resize({ height: 260, withoutEnlargement: true }).webp({ quality: 78 }).toFile(path.join(dir, f));
+      ok++;
+    } catch (e) {
+      console.error(`  mediano ${f}: ${e.message}`);
+    }
+  }
+  console.log(`Recortes medianos nuevos: ${ok}`);
 }
 
 // Miniaturas livianas de la foto de cada jugador (160x160 WebP, ~6 KB) para

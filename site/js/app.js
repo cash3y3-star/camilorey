@@ -8,6 +8,7 @@
 import { icon, hydrateIcons } from './icons.js?v=__V__';
 import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
+import * as REST from './fsrest.js?v=__V__';
 import { startI18n } from './i18n.js?v=__V__';
 import { tapFx, followFx, fxEnabled, setFx, sendFx, messageFx, endFx } from './feedback.js?v=__V__';
 import { initChat, syncUser as syncChatUser, fmt as chatFmt, isClosed as chatClosed, idleDue as chatIdleDue, closingMsgs as chatClosingMsgs, chatAvatar } from './chat.js?v=__V__';
@@ -565,7 +566,8 @@ async function loadTipster(force = false) {
   if (!FB.enabled) return [];
   if (tipsterCache && !force) return tipsterCache;
   try {
-    tipsterCache = await FB.listTipster();
+    // Lectura pública por REST: no necesita la librería de Firebase.
+    tipsterCache = await REST.listTipster();
   } catch {
     tipsterCache = [];
   }
@@ -1018,7 +1020,7 @@ async function renderJugador(id) {
   const upcoming = data.calendar.matches.filter((m) => m.st !== 'f' && (m.a.id === id || m.b.id === id));
   const photo = p.cut
     ? `<img class="fc-cut" src="${esc(p.cut)}" alt="">`
-    : p.av
+    : p.th || p.av
     ? `<img class="fc-raw" src="${esc(p.th || p.av)}" alt="" referrerpolicy="no-referrer">`
     : `<span class="fc-ini">${esc(initials(p.n))}</span>`;
   const fmtD = (iso) => new Intl.DateTimeFormat(LOC(), { day: '2-digit', month: '2-digit', timeZone: TZ }).format(new Date(iso));
@@ -1091,9 +1093,10 @@ function championsHtml() {
   <div class="section-h"><h2>👑 Campeones</h2><span class="badge">${list.length}</span></div>
   <div class="fgrid">${list
     .map((c) => {
-      const photo = c.champ.cut
-        ? `<img class="fc-cut" src="${esc(c.champ.cut)}" alt="" loading="lazy">`
-        : c.champ.av
+      // Recorte mediano (260 px): la tarjeta es chica; el grande (420 px) solo en el perfil.
+      const photo = c.champ.md || c.champ.cut
+        ? `<img class="fc-cut" src="${esc(c.champ.md || c.champ.cut)}" alt="" loading="lazy">`
+        : c.champ.th || c.champ.av
         ? `<img class="fc-raw" src="${esc(c.champ.th || c.champ.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         : `<span class="fc-ini">${esc(initials(c.champ.n))}</span>`;
       return `<article class="fcard champ" data-player="${c.champ.id}" style="cursor:pointer">
@@ -1269,9 +1272,9 @@ function followCard(p) {
   const tn = (p.tn || '').replace(/^Tournament\s*/i, '');
   const score = favSets != null ? `<span class="fc-score ${lv ? 'live' : ''}">${favSets}-${rivSets}${lv ? ` · ${esc(lv.ptsHome)}:${esc(lv.ptsAway)}` : ''}</span>` : '';
   // Foto: recorte sin fondo si existe; si no, la foto original encuadrada.
-  const photo = fav.cut
-    ? `<img class="fc-cut" src="${esc(fav.cut)}" alt="" loading="lazy">`
-    : fav.av
+  const photo = fav.md || fav.cut
+    ? `<img class="fc-cut" src="${esc(fav.md || fav.cut)}" alt="" loading="lazy">`
+    : fav.th || fav.av
     ? `<img class="fc-raw" src="${esc(fav.th || fav.av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : '';
   return `
@@ -1887,9 +1890,10 @@ function h2hFull(m, redraw) {
       .then((d) => h2hCache.set(key, d))
       .catch(() => h2hCache.set(key, null))
       .finally(() => $sheet._redraw === redraw && redraw());
-    return null;
+    return 'loading';
   }
   const d = h2hCache.get(key);
+  if (d === undefined) return 'loading';
   if (!d) return null;
   // Desde el punto de vista del jugador A de ESTE partido, solo antes de él.
   const list = d.l
@@ -2009,6 +2013,7 @@ function openMatch(id) {
         tab === 'H2H'
           ? (() => {
               const full = h2hFull(m, draw);
+              if (full === 'loading') return h2hTotal ? '<div class="note">Cargando enfrentamientos…</div>' : '<p class="note">Sin enfrentamientos directos registrados.</p>';
               if (full) {
                 const span = full.full ? 'en 2026' : `desde el ${full.since}`;
                 const loading = full.full ? '' : `<p class="note" style="margin-top:8px">${icon('info')} Se está cargando el historial completo de 2026 desde tt.league-pro; los enfrentamientos anteriores al ${full.since} aparecerán en las próximas horas.</p>`;
@@ -2606,6 +2611,8 @@ startI18n();
 route();
 await loadData();
 route();
+// Picks del tipster (REST, liviano): si hay alguno, se redibuja para mostrarlo en las tarjetas.
+loadTipster().then((t) => t.length && $sheet.hidden && route());
 
 // Punto rojo en la campana si hay un aviso (destacado o resultado de un
 // seguido) que todavía no se vio.
@@ -2664,13 +2671,15 @@ function startFirebase() {
     }
     if ($sheet.hidden) route();
   });
-  FB.countVisit().catch(() => {});
 }
-if (readLocal('cr_had_session', false) || /^#\/(login|registro|cuenta|admin|soporte|notificaciones|bankroll|premium)/.test(location.hash)) startFirebase();
-else if ('requestIdleCallback' in window) requestIdleCallback(startFirebase, { timeout: 2500 });
-else setTimeout(startFirebase, 1500);
-// Cualquier toque a algo de la cuenta también la arranca al momento.
-window.addEventListener('hashchange', startFirebase, { once: true });
+// La librería de Firebase (~170 KB) solo se descarga cuando hace falta: si
+// la persona ya tenía sesión, al ir a algo de la cuenta o al abrir el chat.
+// Un visitante sin cuenta no la necesita: la visita y los picks del tipster
+// van por REST (fsrest.js), con pedidos de pocos KB.
+const ACCOUNT_ROUTES = /^#\/(login|registro|cuenta|perfil|admin|soporte|notificaciones|bankroll|resultados|premium)/;
+if (readLocal('cr_had_session', false) || ACCOUNT_ROUTES.test(location.hash)) startFirebase();
+window.addEventListener('hashchange', () => ACCOUNT_ROUTES.test(location.hash) && startFirebase());
+REST.countVisit().catch(() => {});
 
 // ---------- Soporte en vivo (chat con IA + persona) ----------
 

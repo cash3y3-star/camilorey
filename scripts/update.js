@@ -398,16 +398,21 @@ const CUTOUT_DIR = path.join(ROOT, 'site', 'cutouts');
 const listWebp = (dir) => new Set((fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((f) => f.endsWith('.webp')).map((f) => Number(f.slice(0, -5))));
 const cutouts = listWebp(CUTOUT_DIR);
 const thumbs = listWebp(path.join(CUTOUT_DIR, 'thumbs')); // miniaturas 160px (scripts/cutouts.js)
+const mids = listWebp(path.join(CUTOUT_DIR, 'mid')); // recortes medianos 260px (tarjetas chicas)
 
+// Referencia de un jugador en los JSON de la página. Solo lo que se usa:
+// la foto original de tt.league-pro (150-300 KB) solo si no hay miniatura.
 function playerRef(id) {
   const p = state.players[id] || {};
+  const th = thumbs.has(Number(id)) ? `cutouts/thumbs/${id}.webp` : null;
   return {
     id,
     n: p.n || '?',
-    av: p.av || null,
-    th: thumbs.has(Number(id)) ? `cutouts/thumbs/${id}.webp` : null,
+    av: th ? null : p.av || null,
+    th,
     r: p.r ?? null,
-    cut: cutouts.has(Number(id)) ? `cutouts/${id}.webp` : null
+    cut: cutouts.has(Number(id)) ? `cutouts/${id}.webp` : null,
+    md: mids.has(Number(id)) ? `cutouts/mid/${id}.webp` : null
   };
 }
 
@@ -474,16 +479,10 @@ function detailView(m) {
     fa: formBefore(m.a, m.at),
     fb: formBefore(m.b, m.at),
     h2h: h2h.map((x) => (x.w === m.a ? 'A' : 'B')).join(''),
-    hN: all.length, // cruces directos en todo el historial (desde HISTORY_FROM)
-    // Lista de enfrentamientos (estilo Sofascore): fecha, torneo y sets
-    // desde el punto de vista del jugador A de ESTE partido.
-    h2hL: h2h.map((x) => ({
-      at: x.at,
-      tn: (state.tournaments[x.t]?.n || '').replace(/^Tournament\s*/i, ''),
-      ph: phaseOf(x),
-      sa: x.a === m.a ? x.sa : x.sb,
-      sb: x.a === m.a ? x.sb : x.sa
-    }))
+    hN: all.length // cruces directos en todo el historial (desde HISTORY_FROM)
+    // La lista completa del H2H (fecha, torneo, sets) va aparte, en
+    // data/h2h/{a}-{b}.json: la ficha la pide al abrir la pestaña H2H. Antes
+    // iba aquí y era la mitad del peso de calendar.json.
   };
 }
 
