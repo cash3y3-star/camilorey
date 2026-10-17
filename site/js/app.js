@@ -491,7 +491,7 @@ function viewPremium() {
       : `<div class="card pad" style="margin-top:14px">
       <b>¿Cómo activarlo?</b>
       <p style="font-size:13px;color:var(--muted);margin:6px 0 12px">1) ${account ? 'Ya tienes cuenta ✓' : '<a class="textlink" href="#/registro">Crea tu cuenta</a> (con Google o correo)'}.<br>2) Escríbenos por Telegram con el correo de tu cuenta${account?.email ? ` (<b>${esc(account.email)}</b>)` : ''}.<br>3) Te activamos Premium y se desbloquea al instante.</p>
-      <a class="btn primary tg" href="${esc(telegramLink(`Hola, quiero Premium en CamiloRey.${account?.email ? ` Mi correo es ${account.email}` : ''}`))}" target="_blank" rel="noopener">${icon('telegram')} Pedir Premium por Telegram</a>
+      <a class="btn primary tg" href="${esc(telegramLink(`Hola, buen día. Me gustaría obtener Premium en el Sistema de CamiloRey.${account?.email ? ` El correo de mi cuenta es ${account.email}.` : ''} ¡Muchas gracias!`))}" target="_blank" rel="noopener">${icon('telegram')} Pedir Premium por Telegram</a>
     </div>`
   }
   ${footer()}`;
@@ -2156,24 +2156,30 @@ function viewLock() {
   if (!FB.authReady()) return `<section class="lock">${head}<p class="lock-wait">Cargando…</p></section>`;
   if (!Vault.supported())
     return `<section class="lock">${head}<h1>Actualiza tu navegador</h1><p>Este navegador es muy antiguo para abrir CamiloRey. Usa Chrome o Safari actualizados.</p></section>`;
-  const intro = '<p>Picks de tenis de mesa con IA, marcador en vivo y resultados verificados de la Liga Pro Checa.</p>';
+  const intro = '<p>Un espacio exclusivo para nuestros miembros: picks de tenis de mesa analizados con inteligencia artificial, marcador en vivo y resultados verificados de la Liga Pro Checa.</p>';
   if (!account) {
     return `<section class="lock">${head}
-      <h1>Solo para miembros</h1>${intro}
-      <a class="btn primary" href="#/login">Entrar</a>
+      <div class="lock-over">Sistema de CamiloRey</div>
+      <h1>¡Te damos la bienvenida!</h1>${intro}
+      <a class="btn primary" href="#/login">Iniciar sesión</a>
       <a class="btn ghost" href="#/registro">Crear cuenta</a>
-      <a class="btn tg" href="${esc(telegramLink('Hola, quiero acceso a CamiloRey'))}" target="_blank" rel="noopener">${icon('telegram')} Pedir acceso por Telegram</a>
-      <p class="note">Crea tu cuenta y escríbenos por Telegram con tu correo: te activamos el acceso.</p>
+      <a class="btn tg" href="${esc(telegramLink('Hola, buen día. Me gustaría obtener acceso al Sistema de CamiloRey. ¿Me podrías indicar cómo hacerlo? ¡Muchas gracias!'))}" target="_blank" rel="noopener">${icon('telegram')} Solicitar acceso por Telegram</a>
+      <p class="note">¿Aún no eres miembro? Crea tu cuenta y escríbenos por Telegram con tu correo. Con gusto activamos tu acceso.</p>
     </section>`;
   }
   const expired = membership && !membership.active;
   const fecha = expired ? membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-  const msg = `Hola, quiero ${expired ? 'renovar' : 'activar'} mi acceso a CamiloRey. Mi correo es ${account.email || ''}`;
+  const msg = `Hola, buen día. Me gustaría ${expired ? 'renovar' : 'activar'} mi acceso al Sistema de CamiloRey. El correo de mi cuenta es ${account.email || ''}. Quedo pendiente. ¡Muchas gracias!`;
   return `<section class="lock">${head}
-    <h1>${expired ? 'Tu acceso venció' : 'Tu cuenta no tiene acceso'}</h1>
-    <div class="card pad lock-card">Entraste como <b>${esc(account.email || userName())}</b>.<br>${expired ? `Tu acceso terminó el <b>${esc(fecha)}</b>.` : 'Todavía no tienes un acceso activo.'}</div>
-    <a class="btn primary tg" href="${esc(telegramLink(msg))}" target="_blank" rel="noopener">${icon('telegram')} ${expired ? 'Renovar' : 'Pedir acceso'} por Telegram</a>
-    <p class="note">Cuando te activemos, el sitio se abre solo en esta pantalla (no hace falta recargar).</p>
+    <div class="lock-over">Sistema de CamiloRey</div>
+    <h1>Hola, ${esc(userName().split(' ')[0])}</h1>
+    <div class="card pad lock-card">${
+      expired
+        ? `Tu acceso finalizó el <b>${esc(fecha)}</b>. Gracias por ser parte del Sistema de CamiloRey: puedes renovarlo cuando quieras y seguir disfrutando de todos los picks.`
+        : 'Tu cuenta ya está creada, pero todavía no tiene un acceso activo. Escríbenos por Telegram y con gusto lo activamos.'
+    }<br><small>Cuenta: <b>${esc(account.email || '')}</b></small></div>
+    <a class="btn primary tg" href="${esc(telegramLink(msg))}" target="_blank" rel="noopener">${icon('telegram')} ${expired ? 'Renovar mi acceso' : 'Solicitar acceso'} por Telegram</a>
+    <p class="note">Apenas activemos tu acceso, el sitio se abrirá automáticamente en esta pantalla, sin necesidad de recargar.</p>
     <button class="btn ghost" id="btn-logout">Cerrar sesión</button>
   </section>`;
 }

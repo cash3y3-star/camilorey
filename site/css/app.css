@@ -641,3 +641,5 @@ body.locked .tabbar, body.locked #btn-notif { display: none; }
 .btn.tg { background: #229ed9; color: #fff; }
 .btn.tg:hover { background: #1c8bc0; }
 .btn.tg .icon { width: 18px; height: 18px; }
+.lock-over { margin: 0 0 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red-2); }
+.lock-card small { display: block; margin-top: 8px; color: var(--muted); font-size: 12.5px; }
