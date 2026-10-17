@@ -10,6 +10,7 @@
 
 import { icon } from './icons.js?v=__V__';
 import { GEMINI_KEY, GEMINI_MODELS, SUPPORT_EMAIL } from './config.js?v=__V__';
+import { sendFx, messageFx, endFx } from './feedback.js?v=__V__';
 
 const LOCAL_KEY = 'cr_chat';
 const LIMIT_KEY = 'cr_chat_n';
@@ -21,6 +22,13 @@ let msgs = [];
 let human = false;
 let open = false;
 let mini = false; // ventana minimizada (solo la barra del título)
+let confirmEnd = false; // mostrando "¿Se resolvió tu problema?"
+// Sonido al llegar mensajes: ids ya vistos (null = primera carga, sin sonido)
+// y los creados en este navegador (ya sonaron al crearse).
+let seenIds = null;
+let adminPhoto = null; // foto de perfil del admin (la guarda al responder)
+const localIds = new Set();
+const mark = (list) => list.forEach((m) => localIds.add(m.id));
 let busy = false;
 let unsub = null;
 let unread = false;
@@ -41,6 +49,69 @@ const writeLocal = (k, v) => {
 };
 const aiReady = () => GEMINI_KEY && !GEMINI_KEY.startsWith('__');
 const newId = () => `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+
+// ---------- Fin de la conversación ----------
+// Un chat se "finaliza" agregando un mensaje de sistema { r: 'sys', end: true,
+// by: 'u'|'admin'|'ai'|'auto', res: 'yes'|'no'|null } y, si corresponde, un
+// mensaje automático. Lo que se escriba después es una conversación nueva.
+export const IDLE_MIN = 10; // minutos sin respuesta del usuario para cerrar solo
+
+const isEnd = (m) => m && m.r === 'sys' && m.end;
+export const isClosed = (list) => isEnd((list || []).slice(-1)[0]);
+
+// Mensajes de la conversación actual (o de la última, si ya se cerró).
+export function currentSegment(list) {
+  const l = list || [];
+  const ends = l.map((m, i) => (isEnd(m) ? i : -1)).filter((i) => i >= 0);
+  if (!ends.length) return l;
+  const last = ends[ends.length - 1];
+  if (last === l.length - 1) return l.slice(ends.length > 1 ? ends[ends.length - 2] + 1 : 0);
+  return l.slice(last + 1);
+}
+
+// ¿Hay que cerrarlo por inactividad? Solo si el usuario escribió en esta
+// conversación y la última palabra la tiene soporte (IA o admin) hace más
+// de IDLE_MIN minutos (si el último en escribir es el usuario, se le debe
+// una respuesta: no se cierra).
+export function idleDue(list) {
+  if (isClosed(list)) return null;
+  const seg = currentSegment(list);
+  const last = seg[seg.length - 1];
+  if (!last || last.r === 'u' || !seg.some((m) => m.r === 'u') || !last.at) return null;
+  const due = new Date(last.at).getTime() + IDLE_MIN * 60e3;
+  return Date.now() >= due ? new Date(due).toISOString() : null;
+}
+
+export function closingMsgs(by, res, at = new Date().toISOString()) {
+  const R = res === 'yes' ? ' · Problema resuelto' : res === 'no' ? ' · Sin resolver' : '';
+  const reason = {
+    u: `Chat finalizado por el usuario${R}`,
+    admin: `Camilo Rey (CEO) finalizó el chat${R}`,
+    ai: `El asistente finalizó el chat${R}`,
+    auto: `Chat cerrado automáticamente: ${IDLE_MIN} minutos sin respuesta del usuario`
+  }[by];
+  const auto = {
+    'u:yes': '¡Qué bueno que se resolvió! Gracias por escribirnos. Si necesitas algo más, aquí estamos.',
+    'u:no': `Lamentamos no haber resuelto tu problema. Puedes escribir de nuevo cuando quieras, tocar "Hablar con una persona" o escribir a ${SUPPORT_EMAIL}.`,
+    'admin:yes': 'Tu caso quedó resuelto. ¡Gracias por confiar en CamiloRey! Si necesitas algo más, escríbenos de nuevo.',
+    'admin:no': `Cerramos este chat sin una solución definitiva. Si el problema sigue, escríbenos de nuevo o a ${SUPPORT_EMAIL} y lo revisamos.`,
+    'auto:null': 'Cerramos este chat porque no recibimos respuesta. Si todavía necesitas ayuda, escribe de nuevo y te atendemos.'
+  }[`${by}:${res}`];
+  const t0 = new Date(at).getTime();
+  const out = [{ id: newId(), r: 'sys', end: true, by, res: res || null, t: reason, at }];
+  if (auto) out.push({ id: newId(), r: 'ai', auto: true, t: auto, at: new Date(t0 + 1).toISOString() });
+  // El mensaje automático va ANTES del cierre en el tiempo de lectura: primero se explica, luego la línea de cierre.
+  return auto ? [out[1], { ...out[0], at: new Date(t0 + 2).toISOString() }] : out;
+}
+
+// Foto de perfil al lado de cada mensaje: imagen, o iniciales si no tiene;
+// la IA lleva el ícono del asistente.
+export function chatAvatar(kind, photo, name) {
+  if (kind === 'ai') return `<span class="cav ai">${icon('bolt')}</span>`;
+  const ini = esc((name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?');
+  const ring = kind === 'admin' ? ' admin' : '';
+  return photo ? `<span class="cav${ring}"><img src="${esc(photo)}" alt="" referrerpolicy="no-referrer"></span>` : `<span class="cav${ring}">${ini}</span>`;
+}
 
 // Texto de la IA → HTML seguro (negritas y saltos de línea).
 export const fmt = (t) =>
@@ -96,8 +167,17 @@ export function syncUser() {
     if (open) render();
     return;
   }
+  seenIds = null;
   opts.FB.watchMyChat((doc) => {
     msgs = doc?.msgs || [];
+    adminPhoto = doc?.adminPhoto || null;
+    // Mensajes nuevos que llegaron de afuera: respuesta del admin o cierre.
+    if (seenIds) {
+      const fresh = msgs.filter((m) => !seenIds.has(m.id) && !localIds.has(m.id));
+      if (fresh.some((m) => m.r === 'admin')) messageFx();
+      else if (fresh.some((m) => m.r === 'sys')) endFx();
+    }
+    seenIds = new Set(msgs.map((m) => m.id));
     human = Boolean(doc?.human);
     // Minimizada cuenta como "no vista": queda el punto hasta abrirla.
     setUnread(Boolean(doc?.unreadUser) && (!open || mini));
@@ -105,6 +185,7 @@ export function syncUser() {
       render();
       if (doc?.unreadUser && !mini) opts.FB.markMyChatRead();
     }
+    checkIdle();
   }).then((fn) => (unsub = fn));
 }
 
@@ -163,7 +244,13 @@ function render() {
   }
   const name = (u?.displayName || '').split(' ')[0];
   const welcome = `Hola${name ? ` ${name}` : ''}. Soy el asistente de CamiloRey. Te ayudo con los picks, Premium, tu cuenta, el bankroll o las notificaciones. ¿En qué te ayudo?`;
-  const list = [{ id: 'w', r: 'ai', t: welcome }, ...msgs];
+  // Solo la conversación actual (o la última, si ya se cerró).
+  const closed = isClosed(msgs);
+  const seg = currentSegment(msgs);
+  const list = [{ id: 'w', r: 'ai', t: welcome }, ...seg];
+  const canEnd = !closed && seg.some((m) => m.r === 'u');
+  const pf = opts.getProfile?.() || {};
+  const av = { u: chatAvatar('u', pf.photo, pf.name), ai: chatAvatar('ai'), admin: chatAvatar('admin', adminPhoto, 'Camilo Rey') };
   // Los mensajes del admin llevan su etiqueta de CEO (dorada, con corona).
   const who = {
     u: 'Tú',
@@ -179,21 +266,37 @@ function render() {
       <button type="button" class="chat-x" data-chat-close aria-label="Cerrar">${icon('x')}</button>
     </div>
     <div class="chat-body" id="chat-body">
-      ${list.map((m) => `<div class="cmsg ${m.r === 'u' ? 'me' : m.r}"><small>${who[m.r] || ''}</small><div class="bub">${fmt(m.t)}</div></div>`).join('')}
-      ${busy ? `<div class="cmsg ai"><small>${who.ai}</small><div class="bub typing"><i></i><i></i><i></i></div></div>` : ''}
-      ${human ? `<div class="chat-note">${icon('info')} Le avisamos a Camilo. Te responde aquí mismo apenas pueda${u ? '' : ''}. También puedes escribir a <b>${esc(SUPPORT_EMAIL)}</b>.</div>` : ''}
+      ${list
+        .map((m) =>
+          m.r === 'sys'
+            ? `<div class="chat-sys ${m.res === 'yes' ? 'ok' : m.res === 'no' ? 'ko' : ''}">${icon(m.res === 'yes' ? 'checkc' : m.by === 'auto' ? 'clock' : 'info')}<span>${esc(m.t)}</span></div>`
+            : `<div class="cline ${m.r === 'u' ? 'me' : ''}">${av[m.r] || ''}<div class="cmsg ${m.r === 'u' ? 'me' : m.r}"><small>${who[m.r] || ''}</small><div class="bub">${fmt(m.t)}</div></div></div>`
+        )
+        .join('')}
+      ${busy ? `<div class="cline">${av.ai}<div class="cmsg ai"><small>${who.ai}</small><div class="bub typing"><i></i><i></i><i></i></div></div></div>` : ''}
+      ${human && !closed ? `<div class="chat-note">${icon('info')} Le avisamos a Camilo. Te responde aquí mismo apenas pueda. También puedes escribir a <b>${esc(SUPPORT_EMAIL)}</b>.</div>` : ''}
+      ${!closed && canEnd ? `<div class="chat-idle">Si no respondes en ${IDLE_MIN} minutos, el chat se cierra solo.</div>` : ''}
     </div>
     <form class="chat-form" autocomplete="off">
-      <textarea name="msg" rows="1" maxlength="${MAX_LEN}" placeholder="${human ? 'Escríbele a Camilo…' : 'Escribe tu pregunta…'}" ${busy ? 'disabled' : ''}></textarea>
+      <textarea name="msg" rows="1" maxlength="${MAX_LEN}" placeholder="${closed ? 'Escribe para iniciar una nueva conversación…' : human ? 'Escríbele a Camilo…' : 'Escribe tu pregunta…'}" ${busy ? 'disabled' : ''}></textarea>
       <button class="chat-send" type="submit" aria-label="Enviar" ${busy ? 'disabled' : ''}>${icon('send')}</button>
     </form>
     <div class="chat-actions">
       ${
-        human
-          ? aiReady()
-            ? '<button type="button" class="textlink" data-chat-ai>Volver al asistente IA</button>'
-            : ''
-          : `<button type="button" class="textlink" data-chat-human>${icon('users')} Hablar con una persona</button>`
+        confirmEnd
+          ? `<span class="end-q">¿Se resolvió tu problema?</span>
+             <button type="button" class="mini-btn ok" data-chat-end="yes">Sí, resuelto</button>
+             <button type="button" class="mini-btn" data-chat-end="no">No</button>
+             <button type="button" class="textlink" data-chat-end="">Cancelar</button>`
+          : `${
+              closed
+                ? ''
+                : human
+                ? aiReady()
+                  ? '<button type="button" class="textlink" data-chat-ai>Volver al asistente IA</button>'
+                  : ''
+                : `<button type="button" class="textlink" data-chat-human>${icon('users')} Hablar con una persona</button>`
+            }${canEnd ? `<button type="button" class="textlink end-link" data-chat-endask>${icon('x')} Finalizar chat</button>` : ''}`
       }
     </div>`;
   const body = panel.querySelector('#chat-body');
@@ -208,6 +311,16 @@ async function onPanelClick(e) {
   if (!t) return;
   if (t.hasAttribute('data-chat-min')) return setMini(!mini);
   if (t.hasAttribute('data-chat-close')) return toggle(false);
+  if (t.hasAttribute('data-chat-endask')) {
+    confirmEnd = true;
+    return render();
+  }
+  if (t.hasAttribute('data-chat-end')) {
+    confirmEnd = false;
+    const res = t.getAttribute('data-chat-end');
+    if (!res) return render();
+    return endChat('u', res);
+  }
   if (t.hasAttribute('data-chat-human')) return askHuman();
   if (t.hasAttribute('data-chat-ai')) {
     human = false;
@@ -215,6 +328,27 @@ async function onPanelClick(e) {
     render();
   }
 }
+
+// Finaliza la conversación actual (usuario, IA o por inactividad).
+async function endChat(by, res, at) {
+  if (isClosed(msgs)) return;
+  const add = closingMsgs(by, res, at);
+  mark(add);
+  endFx();
+  msgs = [...msgs, ...add];
+  human = false;
+  confirmEnd = false;
+  render();
+  await save(add, { human: false, unreadAdmin: false }, (cur) => !isClosed(cur));
+}
+
+// Cierre por inactividad: se revisa al recibir cambios y cada 30 s.
+function checkIdle() {
+  if (!opts?.getUser() || busy) return;
+  const due = idleDue(msgs);
+  if (due) endChat('auto', null, due);
+}
+setInterval(checkIdle, 30e3);
 
 async function askHuman() {
   if (!opts.getUser()) {
@@ -240,7 +374,12 @@ async function onSubmit(e) {
   const text = (ta?.value || '').trim().slice(0, MAX_LEN);
   if (!text || busy || !opts.getUser()) return;
   ta.value = '';
+  confirmEnd = false;
+  // Escribir después de un cierre empieza una conversación nueva (con la IA).
+  if (isClosed(msgs)) human = false;
   const mine = { id: newId(), r: 'u', t: text, at: new Date().toISOString() };
+  mark([mine]);
+  sendFx();
   msgs = [...msgs, mine];
   if (human || !aiReady()) {
     if (!human && !opts.getUser()) {
@@ -273,20 +412,28 @@ async function onSubmit(e) {
     console.warn('Chat IA:', err);
   }
   busy = false;
+  // La IA marca [[FIN]] cuando el usuario confirma que se resolvió o se despide.
+  const fin = /\[\[FIN\]\]/.test(answer);
+  answer = answer.replace(/\s*\[\[FIN\]\]\s*/g, ' ').trim();
   const r = { id: newId(), r: 'ai', t: answer, at: new Date().toISOString() };
+  mark([r]);
+  messageFx();
   msgs = [...msgs, r];
   render();
-  await save([mine, r]);
+  await save([mine, r], { human: false });
+  if (fin) await endChat('ai', 'yes');
 }
 
 function saveLocal() {
   writeLocal(LOCAL_KEY, { msgs: msgs.slice(-60), human });
 }
 
-async function save(newMsgs, patch = {}) {
+async function save(newMsgs, patch = {}, onlyIf = null) {
   if (!opts.getUser()) return saveLocal();
+  // Nombre y foto del perfil: el admin los ve en su lista y en la conversación.
+  const pf = opts.getProfile?.() || {};
   try {
-    await opts.FB.pushMyChat(newMsgs, patch);
+    await opts.FB.pushMyChat(newMsgs, { name: pf.name || '', photo: pf.photo || null, ...patch }, onlyIf);
   } catch (e) {
     console.warn('Chat: no se pudo guardar', e);
     saveLocal();
@@ -296,8 +443,9 @@ async function save(newMsgs, patch = {}) {
 // ---------- IA ----------
 
 async function askGemini(history) {
-  const contents = history
-    .filter((m) => m.r === 'u' || m.r === 'ai' || m.r === 'admin')
+  // Solo la conversación actual (no las que ya se cerraron).
+  const contents = currentSegment(history)
+    .filter((m) => (m.r === 'u' || m.r === 'ai' || m.r === 'admin') && !m.auto)
     .slice(-16)
     .map((m) => ({ role: m.r === 'u' ? 'user' : 'model', parts: [{ text: m.r === 'admin' ? `(Respuesta de Camilo, el administrador): ${m.t}` : m.t }] }));
   // Gemini exige que la conversación empiece por el usuario.
@@ -361,6 +509,10 @@ ${c.combos}
 - Presenta cada selección en una línea: jugador que gana, partido, hora, confianza y cuota. Luego la cuota total y la probabilidad estimada de acertar todas.
 - Sé honesto: en una combinada TODAS las selecciones tienen que acertar, así que la probabilidad baja mucho con cada selección (por eso paga más). Recomienda montos pequeños. Los picks se recalculan hasta 5 minutos antes de cada partido, así que conviene revisar la combinada en el sitio antes de apostar.
 - Nunca uses partidos, jugadores o cuotas que no estén en la lista.${c.premiumLocked ? '\n- Este usuario no es Premium: hay picks de alta confianza (60% o más) bloqueados que no están en su lista. Si pregunta por combinadas más seguras, menciona que con Premium puede usar esos picks.' : ''}
+
+FIN DEL CHAT
+- Si el usuario confirma claramente que su problema quedó resuelto o se despide (por ejemplo "gracias, ya quedó", "listo, eso era todo", "chao"), despídete en una frase y escribe al final, exactamente, [[FIN]]. Eso cierra el chat. No lo uses si todavía tiene dudas.
+- El usuario también puede tocar "Finalizar chat". Si no responde en ${IDLE_MIN} minutos, el chat se cierra solo.
 
 REGLAS
 - Nunca garantices ganancias ni digas que un pick es seguro. Las apuestas tienen riesgo: recomienda apostar solo lo que se pueda perder, con responsabilidad y siendo mayor de edad.

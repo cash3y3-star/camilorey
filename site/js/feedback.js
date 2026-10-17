@@ -62,6 +62,30 @@ export function tapFx() {
   blip(880, 0);
 }
 
+// Chat: enviar un mensaje ("swoosh" corto hacia arriba).
+export function sendFx() {
+  if (!fxEnabled()) return;
+  vibrate(8);
+  blip(520, 0, 0.04, 0.05);
+  blip(780, 0.04, 0.05, 0.05);
+}
+
+// Chat: llega un mensaje nuevo (campanita de dos notas, como una notificación).
+export function messageFx() {
+  if (!fxEnabled()) return;
+  vibrate([25, 60, 25]);
+  blip(1046, 0, 0.12, 0.08);
+  blip(1318, 0.13, 0.18, 0.08);
+}
+
+// Chat: se cerró la conversación (dos notas hacia abajo).
+export function endFx() {
+  if (!fxEnabled()) return;
+  vibrate([15, 50, 30]);
+  blip(784, 0, 0.09, 0.06);
+  blip(523, 0.1, 0.16, 0.06);
+}
+
 // Seguir un pick (dos notas hacia arriba).
 export function followFx() {
   if (!fxEnabled()) return;

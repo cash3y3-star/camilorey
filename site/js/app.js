@@ -9,8 +9,8 @@ import { icon, hydrateIcons } from './icons.js?v=__V__';
 import { onLive, currentLive, findLive } from './live.js?v=__V__';
 import * as FB from './firebase.js?v=__V__';
 import { startI18n } from './i18n.js?v=__V__';
-import { tapFx, followFx, fxEnabled, setFx } from './feedback.js?v=__V__';
-import { initChat, syncUser as syncChatUser, fmt as chatFmt } from './chat.js?v=__V__';
+import { tapFx, followFx, fxEnabled, setFx, sendFx, messageFx, endFx } from './feedback.js?v=__V__';
+import { initChat, syncUser as syncChatUser, fmt as chatFmt, isClosed as chatClosed, idleDue as chatIdleDue, closingMsgs as chatClosingMsgs, chatAvatar } from './chat.js?v=__V__';
 import { TELEGRAM_URL, SUPPORT_EMAIL, ADMIN_EMAIL, VAPID_PUBLIC_KEY } from './config.js?v=__V__';
 
 const TZ = 'America/Bogota';
@@ -734,13 +734,22 @@ let adminChats = null;
 let adminChatsErr = null;
 let adminChatUnsub = null;
 let adminChatDel = null; // uid con "¿seguro?" de borrar pendiente
+let adminSeenIds = null; // mensajes ya vistos (para sonar solo con los nuevos)
 
 function startAdminChats() {
   if (adminChatUnsub || !isAdmin()) return;
   adminChatUnsub = true;
   FB.adminWatchChats((list, err) => {
+    // Sonido y vibración cuando un usuario escribe (no en la primera carga).
+    if (list) {
+      const ids = new Set(list.flatMap((c) => (c.msgs || []).map((m) => m.id)));
+      // Solo cuando te necesitan (pidió persona): lo que responde la IA no suena.
+      if (adminSeenIds && list.some((c) => c.human && (c.msgs || []).some((m) => m.r === 'u' && !adminSeenIds.has(m.id)))) messageFx();
+      adminSeenIds = ids;
+    }
     adminChats = list;
     adminChatsErr = list ? null : err;
+    adminIdleSweep();
     const dot = document.querySelector('#chat-fab .chat-dot');
     if (dot) dot.hidden = !(list || []).some((c) => c.unreadAdmin);
     renderAdminChats();
@@ -750,6 +759,24 @@ function startAdminChats() {
       adminChatsErr = e;
       renderAdminChats();
     });
+}
+
+// Cierre por inactividad también desde el lado del admin (por si el usuario
+// se fue del sitio): se revisa con cada cambio y cada 30 s.
+let adminChatEnd = null; // uid con "¿Quedó resuelto?" abierto
+function adminIdleSweep() {
+  for (const c of adminChats || []) {
+    const due = chatIdleDue(c.msgs);
+    if (due) FB.adminAppend(c.id, chatClosingMsgs('auto', null, due), { human: false, unreadAdmin: false }, (cur) => !chatClosed(cur)).catch(() => {});
+  }
+}
+setInterval(() => isAdmin() && adminIdleSweep(), 30e3);
+
+async function adminEndChat(uid, res) {
+  adminChatEnd = null;
+  endFx();
+  await FB.adminAppend(uid, chatClosingMsgs('admin', res), { human: false, unreadAdmin: false, unreadUser: true }, (cur) => !chatClosed(cur)).catch((e) => toast(e.message));
+  renderAdminChats();
 }
 
 function renderAdminChats() {
@@ -776,21 +803,35 @@ function renderAdminChats() {
   const rows = adminChats
     .map((c) => {
       const last = (c.msgs || []).slice(-1)[0];
+      const closed = chatClosed(c.msgs);
       return `<button type="button" class="row chat-row ${c.id === ui.chatSel ? 'on' : ''}" data-chatsel="${esc(c.id)}">
-        <span class="ic">${icon(c.human ? 'users' : 'bolt')}</span>
-        <span class="tx"><b>${esc(c.name || c.email || 'Usuario')}${c.unreadAdmin ? ' <span class="badge red">Nuevo</span>' : ''}${c.human ? ' <span class="badge">Pide persona</span>' : ''}</b><small>${esc(when(c.lastAt))} · ${esc((last?.t || '').slice(0, 70))}</small></span>
+        ${chatAvatar('u', c.photo, c.name || c.email)}
+        <span class="tx"><b>${esc(c.name || c.email || 'Usuario')}${c.unreadAdmin ? ' <span class="badge red">Nuevo</span>' : ''}${closed ? ' <span class="badge">Cerrado</span>' : c.human ? ' <span class="badge">Pide persona</span>' : ''}</b><small>${esc(when(c.lastAt))} · ${esc((last?.t || '').slice(0, 70))}</small></span>
       </button>`;
     })
     .join('');
   const thread = sel
     ? `<div class="card pad chat-thread">
-      <div class="block-h" style="margin:0 0 8px"><div><b>${esc(sel.name || 'Usuario')}</b><small style="display:block;color:var(--muted)">${esc(sel.email || '')}</small></div><button type="button" class="mini-btn" data-chatsel="">Cerrar</button></div>
+      <div class="block-h" style="margin:0 0 8px"><div style="display:flex;align-items:center;gap:10px">${chatAvatar('u', sel.photo, sel.name || sel.email)}<div><b>${esc(sel.name || 'Usuario')}</b><small style="display:block;color:var(--muted)">${esc(sel.email || '')}</small></div></div><button type="button" class="mini-btn" data-chatsel="">Cerrar</button></div>
       <div class="chat-body admin" id="admin-chat-body">${(sel.msgs || [])
-        .map((m) => `<div class="cmsg ${m.r === 'u' ? 'ai' : m.r === 'admin' ? 'me' : 'bot'}"><small>${esc(m.r === 'u' ? sel.name || 'Usuario' : who[m.r])} · ${esc(when(m.at))}</small><div class="bub">${chatFmt(m.t)}</div></div>`)
+        .map((m) =>
+          m.r === 'sys'
+            ? `<div class="chat-sys ${m.res === 'yes' ? 'ok' : m.res === 'no' ? 'ko' : ''}">${icon(m.res === 'yes' ? 'checkc' : m.by === 'auto' ? 'clock' : 'info')}<span>${esc(m.t)} · ${esc(when(m.at))}</span></div>`
+            : `<div class="cline ${m.r === 'admin' ? 'me' : ''}">${m.r === 'u' ? chatAvatar('u', sel.photo, sel.name || sel.email) : m.r === 'admin' ? chatAvatar('admin', userPhoto(), userName()) : chatAvatar('ai')}<div class="cmsg ${m.r === 'u' ? 'ai' : m.r === 'admin' ? 'me' : 'bot'}"><small>${esc(m.r === 'u' ? sel.name || 'Usuario' : m.auto ? 'Mensaje automático' : who[m.r])} · ${esc(when(m.at))}</small><div class="bub">${chatFmt(m.t)}</div></div></div>`
+        )
         .join('')}</div>
-      <form id="admin-chat-form" class="chat-form" style="margin-top:10px" autocomplete="off"><textarea name="msg" rows="2" maxlength="1000" placeholder="Escribe tu respuesta…" required></textarea><button class="chat-send" type="submit" aria-label="Enviar">${icon('send')}</button></form>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        ${sel.human ? `<button type="button" class="mini-btn" data-chatdone="${esc(sel.id)}">Marcar atendido (vuelve la IA)</button>` : ''}
+      <form id="admin-chat-form" class="chat-form" style="margin-top:10px" autocomplete="off"><textarea name="msg" rows="2" maxlength="1000" placeholder="${chatClosed(sel.msgs) ? 'Chat cerrado: si escribes, se abre de nuevo…' : 'Escribe tu respuesta…'}" required></textarea><button class="chat-send" type="submit" aria-label="Enviar">${icon('send')}</button></form>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+        ${
+          chatClosed(sel.msgs)
+            ? ''
+            : adminChatEnd === sel.id
+            ? `<span style="font-size:13px;font-weight:700">¿Quedó resuelto?</span>
+               <button type="button" class="mini-btn ok" data-chatend="yes">Resuelto</button>
+               <button type="button" class="mini-btn" data-chatend="no">Sin resolver</button>
+               <button type="button" class="textlink" data-chatend="">Cancelar</button>`
+            : `<button type="button" class="mini-btn" data-chatendask="${esc(sel.id)}">${icon('x')} Finalizar chat</button>`
+        }
         <button type="button" class="mini-btn" data-chatdel="${esc(sel.id)}">${adminChatDel === sel.id ? '¿Seguro? Toca otra vez para borrar' : 'Borrar conversación'}</button>
       </div>
     </div>`
@@ -815,8 +856,9 @@ document.addEventListener('submit', async (ev) => {
   const text = ta.value.trim();
   if (!text || !ui.chatSel) return;
   ta.value = ''; // se vacía antes: la lista se redibuja en vivo al llegar la respuesta
+  sendFx();
   try {
-    await FB.adminReply(ui.chatSel, text);
+    await FB.adminReply(ui.chatSel, text, userPhoto());
   } catch (e) {
     const cur = document.querySelector('#admin-chat-form textarea');
     if (cur && !cur.value) cur.value = text;
@@ -2264,9 +2306,18 @@ document.addEventListener('click', async (ev) => {
     if (ui.chatSel) document.getElementById('admin-chats')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
-  if (t.dataset.chatdone) {
-    await FB.adminMarkRead(t.dataset.chatdone, { human: false }).catch((e) => toast(e.message));
-    return;
+  if (t.dataset.chatendask) {
+    adminChatEnd = t.dataset.chatendask;
+    return renderAdminChats();
+  }
+  if (t.dataset.chatend !== undefined) {
+    const res = t.dataset.chatend;
+    const uid = adminChatEnd;
+    if (!res || !uid) {
+      adminChatEnd = null;
+      return renderAdminChats();
+    }
+    return adminEndChat(uid, res);
   }
   if (t.dataset.chatdel) {
     if (adminChatDel !== t.dataset.chatdel) {
@@ -2707,6 +2758,7 @@ function chatContext() {
 initChat({
   FB,
   getUser: () => account,
+  getProfile: () => ({ name: userName(), photo: userPhoto() }),
   isPremium: () => isPremiumUser(),
   isAdmin: () => isAdmin(),
   context: chatContext,

@@ -275,11 +275,13 @@ export async function watchMyChat(cb) {
 }
 
 // Agrega mensajes al chat del usuario actual (y marca para el admin si pidió persona).
-export async function pushMyChat(msgs, patch = {}) {
+// onlyIf(mensajesActuales): si devuelve false no se escribe (ej. no cerrar dos veces).
+export async function pushMyChat(msgs, patch = {}, onlyIf = null) {
   if (!currentUser) return;
   const f = await load();
   const ref = f.F.doc(f.db, 'chats', currentUser.uid);
   const cur = (await f.F.getDoc(ref)).data();
+  if (onlyIf && !onlyIf(cur?.msgs || [])) return;
   const all = [...(cur?.msgs || []), ...msgs].slice(-MAX_MSGS);
   await f.F.setDoc(
     ref,
@@ -312,12 +314,23 @@ export async function adminWatchChats(cb) {
   );
 }
 
-export async function adminReply(uid, text) {
+// photo: foto de perfil del admin, se guarda una vez en el chat (adminPhoto).
+export async function adminReply(uid, text, photo = null) {
   const f = await load();
   const ref = f.F.doc(f.db, 'chats', uid);
   const cur = (await f.F.getDoc(ref)).data();
   const msg = { id: `${Date.now()}a`, r: 'admin', t: text, at: new Date().toISOString() };
-  await f.F.setDoc(ref, { msgs: [...(cur?.msgs || []), msg].slice(-MAX_MSGS), lastAt: msg.at, unreadUser: true, unreadAdmin: false }, { merge: true });
+  await f.F.setDoc(ref, { msgs: [...(cur?.msgs || []), msg].slice(-MAX_MSGS), lastAt: msg.at, unreadUser: true, unreadAdmin: false, ...(photo ? { adminPhoto: photo } : {}) }, { merge: true });
+}
+
+// Admin: agrega mensajes (ej. cierre del chat) si onlyIf lo permite.
+export async function adminAppend(uid, msgs, patch = {}, onlyIf = null) {
+  const f = await load();
+  const ref = f.F.doc(f.db, 'chats', uid);
+  const cur = (await f.F.getDoc(ref)).data();
+  if (!cur || (onlyIf && !onlyIf(cur.msgs || []))) return false;
+  await f.F.setDoc(ref, { msgs: [...(cur.msgs || []), ...msgs].slice(-MAX_MSGS), lastAt: msgs[msgs.length - 1]?.at || new Date().toISOString(), ...patch }, { merge: true });
+  return true;
 }
 
 export async function adminMarkRead(uid, patch = {}) {
