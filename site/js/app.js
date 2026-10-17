@@ -2156,7 +2156,7 @@ function viewLock() {
   if (!FB.authReady()) return `<section class="lock">${head}<p class="lock-wait">Cargando…</p></section>`;
   if (!Vault.supported())
     return `<section class="lock">${head}<h1>Actualiza tu navegador</h1><p>Este navegador es muy antiguo para abrir CamiloRey. Usa Chrome o Safari actualizados.</p></section>`;
-  const intro = '<p>Un espacio exclusivo para nuestros miembros: picks de tenis de mesa analizados con inteligencia artificial, marcador en vivo y resultados verificados de la Liga Pro Checa.</p>';
+  const intro = '<p>Un espacio exclusivo para nuestros miembros: picks de tenis de mesa analizados con nuestro modelo IA, marcador en vivo y resultados verificados de la Liga Pro Checa.</p>';
   if (!account) {
     return `<section class="lock">${head}
       <div class="lock-over">Sistema de CamiloRey</div>
