@@ -132,6 +132,12 @@ async function runNotifications(state, helpers) {
       N[key].f = 1;
       N[key].s = 1;
     }
+    // El pick se revisa hasta 1 min antes del inicio: si cambió de jugador,
+    // se avisa (una vez por cambio) para que nadie juegue el pick viejo.
+    if (m.st === 's' && p.chg && (N[key].c || 0) < p.chg) {
+      events.push({ mid, kind: 'change', title: `🔄 Pick actualizado: ahora ${fav}`, body: `${label} · ${p.c}% de confianza · revisado antes de empezar`, url: `${SITE}#/seguidos`, tag: `m${mid}` });
+      N[key].c = p.chg;
+    }
     // Por pedido: no se avisa cuando empieza el partido, solo el resultado.
   }
   // Pick destacado nuevo.
@@ -160,7 +166,7 @@ async function runNotifications(state, helpers) {
 
   let sent = 0;
   for (const u of users) {
-    const prefs = { start: true, end: true, featured: true, ...u.notify };
+    const prefs = { start: true, end: true, change: true, featured: true, ...u.notify };
     const mine = events.filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && u.follows.map(Number).includes(e.mid)));
     if (u.email === 'camilosimanca77@gmail.com') mine.push(...chatEvents);
     if (!mine.length) continue;

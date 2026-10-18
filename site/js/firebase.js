@@ -144,7 +144,7 @@ export async function loadPushState() {
   if (!currentUser) return null;
   const f = await load();
   const d = (await f.F.getDoc(f.F.doc(f.db, 'users', currentUser.uid))).data() || {};
-  return { push: d.push || [], notify: { start: true, end: true, featured: true, ...(d.notify || {}) } };
+  return { push: d.push || [], notify: { start: true, end: true, change: true, featured: true, ...(d.notify || {}) } };
 }
 
 export async function savePushState({ push, notify }) {

@@ -529,7 +529,7 @@ async function renderNotificaciones() {
       : '<div class="note">Este navegador no permite notificaciones. Prueba con Chrome.</div>';
     return;
   }
-  const st = (await FB.loadPushState().catch(() => null)) || { push: [], notify: { start: true, end: true, featured: true } };
+  const st = (await FB.loadPushState().catch(() => null)) || { push: [], notify: { start: true, end: true, change: true, featured: true } };
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
   const here = Boolean(sub && st.push.some((s) => s.endpoint === sub.endpoint));
@@ -544,9 +544,10 @@ async function renderNotificaciones() {
   <div class="overline" style="margin:22px 4px 8px">Quiero recibir</div>
   <div class="list">
     ${pref('featured', '⭐', 'Nuevo pick destacado', 'El pick de más confianza del momento')}
+    ${pref('change', '🔄', 'Cambio en mis picks seguidos', 'Si al revisarlo antes de empezar el pick cambia de jugador')}
     ${pref('end', '✅', 'Resultado de mis picks seguidos', 'Si ganó o perdió, con el marcador')}
   </div>
-  <p class="note" style="margin-top:14px">Solo te avisamos de los picks destacados y del resultado de los picks que sigues con el ♥. Pueden llegar con unos minutos de diferencia: el sistema revisa cada ~5 minutos.</p>`;
+  <p class="note" style="margin-top:14px">Solo te avisamos de los picks destacados, de los cambios y del resultado de los picks que sigues con el ♥. Pueden llegar con unos minutos de diferencia: el sistema revisa cada ~5 minutos.</p>`;
 }
 
 async function pushOn() {

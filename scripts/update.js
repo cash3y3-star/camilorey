@@ -38,6 +38,11 @@ const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
 const HISTORY_FROM = '2026-01-01'; // historial completo del año (H2H, forma, rachas)
 const HISTORY_BUDGET_MS = 4 * 60e3; // tiempo por corrida para cargar días viejos que falten
+// El pick pendiente se recalcula en cada corrida (cada ~5 min) hasta 1 min
+// antes del inicio: así la última revisión cae en los 5 min previos al
+// partido, con la forma del día y la cuota más recientes. Antes se
+// congelaba 5 min antes y la última revisión podía quedar a 10 min.
+const FREEZE_BEFORE_MS = 60e3;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -337,15 +342,19 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       continue;
     }
     if (!makePicks || row.st !== 's') continue;
-    // Pick nuevo, o recálculo del pendiente hasta 5 min antes del inicio
+    // Pick nuevo, o recálculo del pendiente hasta 1 min antes del inicio
     // (mientras tanto cambian la forma del día y la cuota).
     const prev = state.picks[m.id];
-    if (prev && (prev.res !== 'pending' || new Date(row.at).getTime() <= Date.now() + 5 * 60e3)) continue;
+    if (prev && (prev.res !== 'pending' || new Date(row.at).getTime() <= Date.now() + FREEZE_BEFORE_MS)) continue;
 
     try {
       const odds = findOdds(rushbet, state.players[row.a].n, state.players[row.b].n, row.at);
       const pick = generatePick(row, odds, model, prev);
       if (prev?.dst != null) pick.dst = prev.dst;
+      // upd: última revisión; chg: veces que el pick cambió de jugador
+      // (notify.js avisa a quien sigue el partido).
+      pick.upd = new Date().toISOString();
+      pick.chg = (prev?.chg || 0) + (prev && prev.fav !== pick.fav ? 1 : 0);
       state.picks[m.id] = pick;
       if (!prev) totals.newPicks++;
       else if (prev.fav !== pick.fav) totals.flipped = (totals.flipped || 0) + 1;
