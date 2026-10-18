@@ -1,4 +1,5 @@
 /* CamiloRey — negro con rojo, estilo app (móvil primero) */
+@font-face { font-family: 'Pirata One'; font-style: normal; font-weight: 400; font-display: swap; src: url('../fonts/pirata-one-latin.woff2') format('woff2'); }
 :root {
   --red: #e10600;
   --red-2: #ff2a1f;
@@ -59,14 +60,14 @@ svg { display: block; }
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -0.02em; font-size: 19px; }
 .brand-mark { display: block; width: 34px; height: 34px; border-radius: 10px; background: #000; object-fit: cover; }
-/* Nombre del sitio: lettering gótico images/camilo-rey-gotico.svg (lleva la
-   fuente UnifrakturCook dentro: un SVG usado como imagen no carga fuentes
-   externas). Se mantiene la proporción del archivo (1200x260). */
-.brand { flex: 1; min-width: 0; }
-.brand-name { flex: 1; min-width: 0; display: flex; justify-content: center; }
-.bn-img { display: block; width: clamp(150px, 48vw, 240px); max-width: 100%; height: auto; aspect-ratio: 1200 / 260; }
-/* Tema claro: CAMILO es plateado; un contorno oscuro suave lo hace visible. */
-:root[data-theme='light'] .bn-img { filter: drop-shadow(0 0 0.6px #18181b) drop-shadow(0 0 0.6px #18181b); }
+/* Nombre del sitio en Pirata One (Google Fonts, guardada en fonts/): CAMILO
+   blanco plateado y REY rojo #FF1717, con una corona roja pequeña encima. */
+.brand-name { position: relative; font-family: 'Pirata One', 'Times New Roman', serif; font-weight: 400; font-size: clamp(27px, 8.8vw, 34px); line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; padding-top: 8px; }
+.brand-name .bn-1 { background: linear-gradient(180deg, #ffffff 0%, #ececef 45%, #a1a1aa 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 0.6px #e4e4e7; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); }
+.brand-name .bn-2 { position: relative; color: #ff1717; font-weight: 400; -webkit-text-stroke: 0.6px #ff1717; text-shadow: 0 0 10px rgba(255, 23, 23, 0.35); }
+.bn-crown { position: absolute; left: -0.48em; top: -0.3em; width: 0.7em; height: 0.42em; fill: none; stroke: #ff1717; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+:root[data-theme='light'] .brand-name .bn-1 { background-image: linear-gradient(180deg, #3f3f46 0%, #18181b 100%); -webkit-text-stroke-color: #27272a; filter: none; }
+:root[data-theme='light'] .brand-name .bn-2 { text-shadow: none; }
 .topbar-actions { display: flex; gap: 6px; align-items: center; }
 .login-btn { padding: 8px 14px; border-radius: 999px; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
 .login-btn:hover { background: var(--red-2); }
