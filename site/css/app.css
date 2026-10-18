@@ -1,5 +1,4 @@
 /* CamiloRey — negro con rojo, estilo app (móvil primero) */
-@font-face { font-family: 'UnifrakturCook'; font-style: normal; font-weight: 700; font-display: swap; src: url('../fonts/unifrakturcook-700.woff2') format('woff2'); }
 :root {
   --red: #e10600;
   --red-2: #ff2a1f;
@@ -60,20 +59,15 @@ svg { display: block; }
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -0.02em; font-size: 19px; }
 .brand-mark { display: block; width: 34px; height: 34px; border-radius: 10px; background: #000; object-fit: cover; }
-/* Nombre del sitio (opción 4 "Gótica / impacto"): letra gótica Old English
-   UnifrakturCook 700 (Google Fonts, guardada en fonts/), CAMILO blanco
-   metálico y REY rojo #FF1717 con sombra roja suave solo en REY. */
+/* Nombre del sitio: lettering propio en SVG (index.html), copiado de la
+   opción 4 "Gótica / impacto": letras angulosas con picos, CAMILO plateado,
+   REY rojo #FF1717 con brillo, corona y línea roja debajo. El texto real
+   queda para lectores de pantalla (.sr-only). */
 .brand { flex: 1; min-width: 0; }
-.brand-name { flex: 1; min-width: 0; text-align: center; font-family: 'UnifrakturCook', 'UnifrakturMaguntia', 'Old English Text MT', 'Times New Roman', serif; font-weight: 700; font-size: clamp(21px, 7.2vw, 30px); line-height: 1; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; }
-.bn-word { position: relative; display: inline-block; padding-top: 0.42em; }
-.brand-name .bn-1 { background: linear-gradient(180deg, #ffffff 0%, #ececef 45%, #a1a1aa 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); }
-.brand-name .bn-2 { color: #ff1717; font-weight: 700; text-shadow: 0 0 10px rgba(255, 23, 23, 0.45); }
-.bn-crown { position: absolute; left: 50%; top: 0; width: 0.62em; height: 0.36em; transform: translateX(-50%); fill: none; stroke: #ff1717; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
-.bn-crown circle { fill: #ff1717; stroke: none; }
-:root[data-theme='light'] .brand-name .bn-1 { background-image: linear-gradient(180deg, #3f3f46 0%, #18181b 100%); filter: none; }
-:root[data-theme='light'] .brand-name .bn-2 { text-shadow: 0 0 6px rgba(255, 23, 23, 0.25); }
-/* Celulares angostos: un poco más chico para no chocar con Entrar y el perfil. */
-@media (max-width: 370px) { .brand-name { font-size: 6.3vw; } }
+.brand-name { flex: 1; min-width: 0; display: flex; justify-content: center; --bn-a1: #ffffff; --bn-a2: #f0f0f3; --bn-a3: #b4b4bd; --bn-glow: 0.55; --bn-shadow: 0.8; }
+.bn-svg { display: block; width: clamp(118px, 40vw, 190px); height: auto; overflow: visible; }
+:root[data-theme='light'] .brand-name { --bn-a1: #3f3f46; --bn-a2: #27272a; --bn-a3: #18181b; --bn-glow: 0.3; --bn-shadow: 0.25; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .topbar-actions { display: flex; gap: 6px; align-items: center; }
 .login-btn { padding: 8px 14px; border-radius: 999px; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
 .login-btn:hover { background: var(--red-2); }
