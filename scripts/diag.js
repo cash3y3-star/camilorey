@@ -133,6 +133,35 @@ for (const [t, l] of [...tn.entries()].filter(([, l]) => l.length >= 8).sort((a,
   out(`  ${t}: ${pct(l.filter((r) => r.hit).length, l.length)}`);
 }
 
+// Prueba de la regla "no ir contra la casa" en TODOS los partidos terminados
+// con cuota (no solo los picks publicados).
+out('\n== Regla "seguir a la casa cuando el modelo va en contra" (historial con cuota) ==');
+const withOdds = fin.filter((m) => m.oa && m.ob);
+const sim = { n: 0, base: 0, rule: 0, against: 0, againstHit: 0, noRuleBand: {}, ruleBand: {} };
+const band = (c) => (c < 55 ? '50-54' : c < 60 ? '55-59' : c < 65 ? '60-64' : '65+');
+for (const m of withOdds) {
+  const { f } = featuresOf(m, ctx);
+  const { p, pm } = predict(model, f, m.oa, m.ob);
+  const favA = p >= 0.5;
+  const mktA = pm >= 0.5;
+  const hitBase = favA === (m.w === m.a);
+  const hitRule = (favA === mktA ? favA : mktA) === (m.w === m.a);
+  sim.n++;
+  sim.base += hitBase;
+  sim.rule += hitRule;
+  if (favA !== mktA) {
+    sim.against++;
+    sim.againstHit += hitBase;
+  }
+  const b = band(Math.round(Math.max(p, 1 - p) * 100));
+  (sim.noRuleBand[b] ||= [0, 0])[0] += hitBase;
+  sim.noRuleBand[b][1]++;
+}
+out(`partidos con cuota: ${sim.n}`);
+out(`  modelo actual: ${pct(sim.base, sim.n)} · con la regla: ${pct(sim.rule, sim.n)}`);
+out(`  modelo contra la casa: ${pct(sim.againstHit, sim.against)} (con la regla esos pasan a ${pct(sim.against - sim.againstHit, sim.against)})`);
+for (const [b, [h, n]] of Object.entries(sim.noRuleBand).sort()) out(`  franja ${b}: ${pct(h, n)}`);
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
