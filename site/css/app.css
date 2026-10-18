@@ -59,15 +59,14 @@ svg { display: block; }
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -0.02em; font-size: 19px; }
 .brand-mark { display: block; width: 34px; height: 34px; border-radius: 10px; background: #000; object-fit: cover; }
-/* Nombre del sitio: lettering propio en SVG (index.html), copiado de la
-   opción 4 "Gótica / impacto": letras angulosas con picos, CAMILO plateado,
-   REY rojo #FF1717 con brillo, corona y línea roja debajo. El texto real
-   queda para lectores de pantalla (.sr-only). */
+/* Nombre del sitio: lettering gótico images/camilo-rey-gotico.svg (lleva la
+   fuente UnifrakturCook dentro: un SVG usado como imagen no carga fuentes
+   externas). Se mantiene la proporción del archivo (1200x260). */
 .brand { flex: 1; min-width: 0; }
-.brand-name { flex: 1; min-width: 0; display: flex; justify-content: center; --bn-a1: #ffffff; --bn-a2: #f0f0f3; --bn-a3: #b4b4bd; --bn-glow: 0.55; --bn-shadow: 0.8; }
-.bn-svg { display: block; width: clamp(118px, 40vw, 190px); height: auto; overflow: visible; }
-:root[data-theme='light'] .brand-name { --bn-a1: #3f3f46; --bn-a2: #27272a; --bn-a3: #18181b; --bn-glow: 0.3; --bn-shadow: 0.25; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.brand-name { flex: 1; min-width: 0; display: flex; justify-content: center; }
+.bn-img { display: block; width: clamp(150px, 48vw, 240px); max-width: 100%; height: auto; aspect-ratio: 1200 / 260; }
+/* Tema claro: CAMILO es plateado; un contorno oscuro suave lo hace visible. */
+:root[data-theme='light'] .bn-img { filter: drop-shadow(0 0 0.6px #18181b) drop-shadow(0 0 0.6px #18181b); }
 .topbar-actions { display: flex; gap: 6px; align-items: center; }
 .login-btn { padding: 8px 14px; border-radius: 999px; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
 .login-btn:hover { background: var(--red-2); }
