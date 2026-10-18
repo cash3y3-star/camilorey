@@ -62,9 +62,9 @@ svg { display: block; }
 .brand-mark { display: block; width: 34px; height: 34px; border-radius: 10px; background: #000; object-fit: cover; }
 /* Nombre del sitio (opción 6): Teko 600 (Google Fonts, guardada en fonts/),
    inclinada estilo esports; CAMILO blanco plateado, REY rojo #FF1717 y la
-   corona roja con dos líneas encima, centrada. */
-.brand-name { display: inline-flex; flex-direction: column; align-items: center; font-family: 'Teko', 'Arial Narrow', sans-serif; font-weight: 600; font-size: clamp(32px, 10.6vw, 44px); line-height: 0.9; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; }
-.bn-crown { display: flex; align-items: center; gap: 0.14em; margin-bottom: 0.08em; }
+   corona roja con dos líneas debajo, centrada. */
+.brand-name { display: inline-flex; flex-direction: column; align-items: center; font-family: 'Teko', 'Arial Narrow', sans-serif; font-weight: 600; font-size: clamp(24px, 7.4vw, 34px); line-height: 0.9; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; }
+.bn-crown { display: flex; align-items: center; gap: 0.14em; margin-top: 0.04em; }
 .bn-crown svg { width: 0.62em; height: 0.4em; fill: none; stroke: #ff1717; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(255, 23, 23, 0.5)); }
 .bn-crown i { display: block; width: 1.5em; height: 0.07em; background: linear-gradient(90deg, rgba(255, 23, 23, 0), #ff1717); clip-path: polygon(0 50%, 100% 0, 100% 100%); }
 .bn-crown i:last-child { transform: scaleX(-1); }
@@ -72,7 +72,7 @@ svg { display: block; }
 .bn-1 { background: linear-gradient(180deg, #ffffff 0%, #ececef 42%, #b9b9c2 70%, #8e8e98 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.75)); }
 .bn-2 { color: #ff1717; text-shadow: 0 0 10px rgba(255, 23, 23, 0.4); }
 :root[data-theme='light'] .bn-1 { background-image: linear-gradient(180deg, #3f3f46 0%, #18181b 100%); filter: none; }
-@media (max-width: 360px) { .brand-name { font-size: 9.4vw; } }
+@media (max-width: 360px) { .brand-name { font-size: 6.8vw; } }
 .topbar-actions { display: flex; gap: 6px; align-items: center; }
 .login-btn { padding: 8px 14px; border-radius: 999px; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
 .login-btn:hover { background: var(--red-2); }
