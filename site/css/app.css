@@ -63,7 +63,7 @@ svg { display: block; }
 /* Nombre del sitio (opción 6): Teko 600 (Google Fonts, guardada en fonts/),
    inclinada estilo esports; CAMILO blanco plateado, REY rojo #FF1717 y la
    corona roja con dos líneas debajo, centrada. */
-.brand-name { display: inline-flex; flex-direction: column; align-items: center; font-family: 'Teko', 'Arial Narrow', sans-serif; font-weight: 600; font-size: clamp(24px, 7.4vw, 34px); line-height: 0.9; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; }
+.brand-name { display: inline-flex; flex-direction: column; align-items: center; font-family: 'Teko', 'Arial Narrow', sans-serif; font-weight: 600; font-size: clamp(24px, 7.4vw, 34px); line-height: 0.9; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; position: relative; top: 5px; }
 .bn-crown { display: flex; align-items: center; gap: 0.14em; margin-top: 0.04em; }
 .bn-crown svg { width: 0.62em; height: 0.4em; fill: none; stroke: #ff1717; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(255, 23, 23, 0.5)); }
 .bn-crown i { display: block; width: 1.5em; height: 0.07em; background: linear-gradient(90deg, rgba(255, 23, 23, 0), #ff1717); clip-path: polygon(0 50%, 100% 0, 100% 100%); }
