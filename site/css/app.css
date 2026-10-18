@@ -1,5 +1,5 @@
 /* CamiloRey — negro con rojo, estilo app (móvil primero) */
-@font-face { font-family: 'Grenze'; font-style: normal; font-weight: 600; font-display: swap; src: url('../fonts/grenze-600-latin.woff2') format('woff2'); }
+@font-face { font-family: 'UnifrakturCook'; font-style: normal; font-weight: 700; font-display: swap; src: url('../fonts/unifrakturcook-700.woff2') format('woff2'); }
 :root {
   --red: #e10600;
   --red-2: #ff2a1f;
@@ -60,20 +60,20 @@ svg { display: block; }
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -0.02em; font-size: 19px; }
 .brand-mark { display: block; width: 34px; height: 34px; border-radius: 10px; background: #000; object-fit: cover; }
-/* Nombre del sitio como el diseño elegido ("Gótica / impacto"): letra
-   gótica con remates en punta (Grenze 600, guardada en fonts/) alta,
-   centrada en la barra; CAMILO plateado, REY rojo, corona centrada encima
-   y un brillo rojo debajo. */
+/* Nombre del sitio (opción 4 "Gótica / impacto"): letra gótica Old English
+   UnifrakturCook 700 (Google Fonts, guardada en fonts/), CAMILO blanco
+   metálico y REY rojo #FF1717 con sombra roja suave solo en REY. */
 .brand { flex: 1; min-width: 0; }
-.brand-name { flex: 1; min-width: 0; text-align: center; font-family: 'Grenze', 'Times New Roman', serif; font-weight: 600; font-size: clamp(24px, 8.3vw, 34px); line-height: 1; letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap; }
-.bn-word { position: relative; display: inline-block; padding-top: 0.24em; transform: scale(0.86, 1.42); transform-origin: 50% 70%; }
-.bn-word::after { content: ''; position: absolute; left: 50%; bottom: -0.06em; width: 30%; height: 0.14em; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(ellipse at center, rgba(225, 6, 0, 0.75), rgba(225, 6, 0, 0) 70%); filter: blur(1.5px); }
-.brand-name .bn-1 { background: linear-gradient(180deg, #ffffff 0%, #ececef 40%, #a1a1aa 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 0.4px #e4e4e7; filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.7)); }
-.brand-name .bn-2 { color: var(--red); font-weight: 600; -webkit-text-stroke: 0.4px var(--red); text-shadow: 0 0 12px rgba(225, 6, 0, 0.4); }
-.bn-crown { position: absolute; left: 50%; top: 0.12em; width: 0.56em; height: 0.32em; transform: translateX(-50%); fill: none; stroke: var(--red); stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
-.bn-crown circle { fill: var(--red); stroke: none; }
-:root[data-theme='light'] .brand-name .bn-1 { background-image: linear-gradient(180deg, #3f3f46 0%, #18181b 100%); -webkit-text-stroke-color: #27272a; filter: none; }
-:root[data-theme='light'] .brand-name .bn-2 { text-shadow: none; }
+.brand-name { flex: 1; min-width: 0; text-align: center; font-family: 'UnifrakturCook', 'UnifrakturMaguntia', 'Old English Text MT', 'Times New Roman', serif; font-weight: 700; font-size: clamp(21px, 7.2vw, 30px); line-height: 1; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; }
+.bn-word { position: relative; display: inline-block; padding-top: 0.42em; }
+.brand-name .bn-1 { background: linear-gradient(180deg, #ffffff 0%, #ececef 45%, #a1a1aa 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); }
+.brand-name .bn-2 { color: #ff1717; font-weight: 700; text-shadow: 0 0 10px rgba(255, 23, 23, 0.45); }
+.bn-crown { position: absolute; left: 50%; top: 0; width: 0.62em; height: 0.36em; transform: translateX(-50%); fill: none; stroke: #ff1717; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.bn-crown circle { fill: #ff1717; stroke: none; }
+:root[data-theme='light'] .brand-name .bn-1 { background-image: linear-gradient(180deg, #3f3f46 0%, #18181b 100%); filter: none; }
+:root[data-theme='light'] .brand-name .bn-2 { text-shadow: 0 0 6px rgba(255, 23, 23, 0.25); }
+/* Celulares angostos: un poco más chico para no chocar con Entrar y el perfil. */
+@media (max-width: 370px) { .brand-name { font-size: 6.3vw; } }
 .topbar-actions { display: flex; gap: 6px; align-items: center; }
 .login-btn { padding: 8px 14px; border-radius: 999px; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
 .login-btn:hover { background: var(--red-2); }
