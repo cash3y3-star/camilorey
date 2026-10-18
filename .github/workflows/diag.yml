@@ -1,0 +1,53 @@
+name: Diagnóstico del modelo
+
+# Lee el estado, calcula el reporte (scripts/diag.js) y lo guarda CIFRADO
+# con scripts/diag_pub.pem en la rama "diag": el repo es público, así que
+# el reporte nunca sale en claro (ni en los registros de Actions).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/diag.js', '.github/workflows/diag.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Traer estado
+        run: |
+          mkdir -p data
+          git fetch origin state --depth=1 && git --work-tree=data checkout origin/state -- .
+          git reset -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Abrir estado
+        env:
+          STATE_SECRET: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: node scripts/vault.js open-state data
+
+      - name: Calcular reporte
+        run: node scripts/diag.js
+
+      - name: Cifrar y guardar
+        run: |
+          mkdir -p diag-enc
+          openssl rand -hex 32 > k.txt
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in diag-out/report.txt -out diag-enc/report.enc -pass file:k.txt
+          openssl pkeyutl -encrypt -pubin -inkey scripts/diag_pub.pem -in k.txt -out diag-enc/key.enc
+          rm -f k.txt diag-out/report.txt
+          cd diag-enc
+          git init -q -b diag
+          git config user.name "camilorey-bot"
+          git config user.email "camilorey-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "diag $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" diag
