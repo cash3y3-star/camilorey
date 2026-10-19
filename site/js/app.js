@@ -251,6 +251,7 @@ async function loadData() {
   try {
     const [stats, picks, results, calendar] = await Promise.all([getJson('stats'), getJson('picks'), getJson('results'), getJson('calendar')]);
     Object.assign(data, { stats, picks, results, calendar, loaded: true, error: null });
+    loadAnnounce();
     applyPremium();
   } catch (e) {
     // Sin llave: el acceso se acaba de vencer o se lo quitaron. Se revisa la
@@ -418,6 +419,45 @@ function errorBox() {
 // Fondo animado del saludo: alterna cada día (hora de Colombia) entre el
 // brillo que flota (A) y el destello (C), como pidió el usuario el 19-oct.
 const heroFx = () => (Math.floor(Date.parse(todayKey()) / 86400e3) % 2 ? 'fx-c' : 'fx-a');
+
+// ---------- Aviso para los miembros (site/announce.json) ----------
+// Lo escribe el admin (con Claude). audience "admin" = prueba, solo lo ve el
+// admin; "all" = todos los miembros. scripts/notify.js manda la misma
+// notificación una vez por persona. Se oculta al leerlo o al tocar Ocultar.
+let announce = null;
+async function loadAnnounce() {
+  try {
+    const r = await fetch(`announce.json?v=${Math.floor(Date.now() / 60000)}`, { cache: 'no-cache' });
+    announce = r.ok ? await r.json() : null;
+  } catch {
+    announce = null;
+  }
+  maybeAnnounce();
+}
+// Ventana emergente (en cualquier pestaña), una sola vez por aviso. Si la
+// persona tiene abierta la ficha de un partido, espera a la próxima recarga.
+function maybeAnnounce() {
+  if (!annVisible() || !$sheet.hidden || readLocal('cr_ann_seen', '') === announce.id) return;
+  writeLocal('cr_ann_seen', announce.id);
+  $sheetBody.innerHTML = `<div class="ann-modal">
+    <div class="ann-ic">${icon('bell')}</div>
+    <span class="overline">Aviso importante${announce.audience === 'all' ? '' : ' · prueba (solo admin)'}</span>
+    <h2>${esc(announce.title)}</h2>
+    <div class="ann-page">${(announce.sections || []).map((x) => `<h3>${esc(x.h)}</h3><p>${esc(x.t)}</p>`).join('')}</div>
+    <button type="button" class="btn primary" id="btn-ann-ok" style="margin-top:16px">Entendido</button>
+    <a class="btn ghost" href="#/bankroll" id="btn-ann-bank" style="margin-top:8px">Ir a Mi Bankroll</a>
+  </div>`;
+  $sheet.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+const annVisible = () => Boolean(announce?.id) && (announce.audience === 'all' || isAdmin());
+function viewAviso() {
+  if (!annVisible()) return `<div class="subhead"><a class="back" href="#/">${icon('left')} Inicio</a><h1>Aviso</h1></div>${empty('bell', 'Sin avisos', 'No hay avisos nuevos por ahora.')}`;
+  writeLocal('cr_ann_seen', announce.id);
+  return `<div class="subhead"><a class="back" href="#/">${icon('left')} Inicio</a><h1>${esc(announce.title)}</h1></div>
+  <div class="card pad ann-page">${(announce.sections || []).map((x) => `<h3>${esc(x.h)}</h3><p>${esc(x.t)}</p>`).join('')}</div>
+  <a class="btn primary" style="margin-top:14px" href="#/bankroll">Ir a Mi Bankroll</a>`;
+}
 
 function viewInicio() {
   // Estadísticas de Inicio: SOLO los picks destacados (con su resultado real).
@@ -2277,6 +2317,7 @@ const ROUTES = {
   cuotas: viewCuotas,
   idioma: viewIdioma,
   ayuda: viewAyuda,
+  aviso: viewAviso,
   privacidad: () => viewLegal('privacidad'),
   terminos: () => viewLegal('terminos'),
   login: () => viewLogin('login'),
@@ -2534,6 +2575,7 @@ document.addEventListener('click', async (ev) => {
     return route();
   }
   if (t.id === 'btn-pw-preview') return showPremiumWelcome(new Date(Date.now() + memberDays * 86400e3));
+  if (t.id === 'btn-ann-ok' || t.id === 'btn-ann-bank') closeSheet();
   if (t.id === 'btn-pw-start') {
     closeSheet();
     ui.pickFilter = 'high';

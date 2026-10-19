@@ -706,3 +706,14 @@ body.locked .tabbar, body.locked #btn-notif { display: none; }
 .btn.tg .icon { width: 18px; height: 18px; }
 .lock-over { margin: 0 0 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red-2); }
 .lock-card small { display: block; margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+
+/* Aviso para los miembros (Inicio y #/aviso) */
+.ann-ic { width: 38px; height: 38px; flex: none; border-radius: 12px; display: grid; place-items: center; background: var(--red); color: #fff; }
+.ann-ic .icon { width: 20px; height: 20px; }
+.ann-page h3 { margin: 14px 0 6px; font-size: 15px; }
+.ann-page h3:first-child { margin-top: 0; }
+.ann-page p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.ann-modal { display: flex; flex-direction: column; padding: 6px 0 4px; }
+.ann-modal .ann-ic { width: 46px; height: 46px; margin-bottom: 10px; }
+.ann-modal h2 { margin: 4px 0 14px; font-size: 21px; line-height: 1.25; }
+.ann-modal .btn { text-align: center; }

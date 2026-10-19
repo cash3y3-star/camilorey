@@ -1,0 +1,28 @@
+{
+  "id": "bankroll-2026-10-19",
+  "audience": "admin",
+  "title": "Cómo usar el Sistema CamiloRey y Mi Bankroll",
+  "preview": "No tienes que jugar todos los picks. Te explicamos cómo funciona el sistema y cómo usar tu bankroll.",
+  "push": {
+    "title": "Cómo usar el Sistema CamiloRey y Mi Bankroll",
+    "body": "No tienes que jugar todos los picks. Toca para ver cómo funciona el sistema y cómo usar tu bankroll."
+  },
+  "sections": [
+    {
+      "h": "Cómo funciona el sistema",
+      "t": "El modelo analiza cada partido de la Liga Pro Checa con datos reales de 2026: cruce directo entre los jugadores, forma del día, rating, la cuota de la casa y la tabla del grupo. Con eso da un pick y una confianza (%). Cada pick se vuelve a revisar hasta 5 minutos antes del partido, y si cambia, te avisamos."
+    },
+    {
+      "h": "No tienes que jugar todos los picks",
+      "t": "El sistema da un pick en cada partido, pero eso no significa que haya que apostarlos todos. Elige los que más te convenzan: los de mayor confianza, el pick destacado o los que coincidan con tu propio análisis. Sigue con el ♥ solo los que vayas a jugar."
+    },
+    {
+      "h": "Mi Bankroll",
+      "t": "Escribe tu banca inicial y el sistema te dice cuánto apostar en cada pick que sigues, según la confianza y la cuota (criterio de Kelly). Si la cuota no paga el riesgo, te sugiere no apostar. Si igual quieres jugarlo, toca \"Apostar igual\" y escribe el monto, pero queda marcado como no recomendado. Tu banca, tu ganancia y tu historial se actualizan solos con cada resultado."
+    },
+    {
+      "h": "Juega con responsabilidad",
+      "t": "Ningún pick es seguro, ni siquiera los de alta confianza. Apuesta solo lo que estés dispuesto a perder, no persigas pérdidas y respeta los montos que te sugiere tu bankroll."
+    }
+  ]
+}

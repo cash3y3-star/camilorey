@@ -171,13 +171,27 @@ async function runNotifications(state, helpers) {
   } catch (e) {
     console.error(`Push chat: ${e.message}`);
   }
-  if (!events.length && !chatEvents.length) return console.log('Push: sin eventos nuevos');
+  // Aviso para los miembros (site/announce.json): una notificación por
+  // persona y por aviso. audience "admin" = prueba, solo al admin.
+  let ann = null;
+  try {
+    ann = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'site', 'announce.json'), 'utf8'));
+  } catch {}
+  N._ann = N._ann || {};
+  const annSent = new Set(ann?.id ? N._ann[ann.id] || [] : []);
+  const annFor = (u) => Boolean(ann?.id && ann.push) && (ann.audience === 'all' || u.email === 'camilosimanca77@gmail.com') && !annSent.has(u.email);
+  const annEvent = ann?.push ? { kind: 'announce', title: ann.push.title, body: ann.push.body, url: `${SITE}#/aviso`, tag: `ann-${ann.id}` } : null;
+  if (!events.length && !chatEvents.length && !users.some(annFor)) return console.log('Push: sin eventos nuevos');
 
   let sent = 0;
   for (const u of users) {
     const prefs = { start: true, end: true, change: true, featured: true, ...u.notify };
     const mine = events.filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && (e.ft || u.follows.map(Number).includes(e.mid))));
     if (u.email === 'camilosimanca77@gmail.com') mine.push(...chatEvents);
+    if (annFor(u)) {
+      mine.push(annEvent);
+      annSent.add(u.email);
+    }
     if (!mine.length) continue;
     const alive = [];
     for (const sub of u.push) {
@@ -194,6 +208,7 @@ async function runNotifications(state, helpers) {
     }
     if (alive.length !== u.push.length) await savePush(token, u, alive);
   }
+  if (ann?.id) N._ann = { [ann.id]: [...annSent] }; // solo se recuerda el aviso actual
   // Limpia avisos viejos (partidos que ya no están en el estado).
   for (const k of Object.keys(N)) if (!k.startsWith('_') && !state.matches[k]) delete N[k];
   console.log(`Push: ${events.length + chatEvents.length} eventos, ${sent} notificaciones enviadas`);
