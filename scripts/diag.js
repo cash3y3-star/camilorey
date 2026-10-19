@@ -200,6 +200,16 @@ for (const m of Object.values(matches).filter((m) => [m.a, m.b].some((id) => has
   out(`    pick publicado: ${p ? `${nameOf(p.fav)} ${p.c}% (${p.res})` : '—'} · modelo actual P(${nameOf(m.a)})=${pr(model).toFixed(3)} · con ritmo P=${pr(fitMarket(trained['+ todo el ritmo'], fin.filter((x) => x.oa && x.ob), ctx)).toFixed(3)}`);
 }
 
+// Picks que el sistema cambió de jugador al revisarlos antes de empezar.
+out('\n== Picks cambiados antes de empezar (desde que existe la revisión) ==');
+const changed = Object.values(picks).filter((p) => p.chg);
+const ch = changed.filter((p) => p.res !== 'pending');
+out(`  cambiados: ${changed.length} (${changed.filter((p) => p.res === 'pending').length} pendientes) · de los jugados acertó ${pct(ch.filter((p) => p.res === 'hit').length, ch.length)}`);
+const revised = Object.values(picks).filter((p) => p.upd);
+out(`  picks con revisión registrada: ${revised.length}`);
+const lastRev = revised.filter((p) => matches[p.id]).map((p) => (new Date(matches[p.id].at) - new Date(p.upd)) / 60e3).filter((x) => x >= 0).sort((a, b) => a - b);
+if (lastRev.length) out(`  minutos entre la última revisión y el inicio: mediana ${lastRev[Math.floor(lastRev.length / 2)].toFixed(1)} · 90% en menos de ${lastRev[Math.floor(lastRev.length * 0.9)].toFixed(1)}`);
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');

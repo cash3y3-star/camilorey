@@ -2022,6 +2022,7 @@ function openMatch(id) {
       <div><small>Cuota</small><b>${odds(pick?.o)}</b></div>
       <div><small>Estado</small><b class="red" style="font-size:14px">${m.st === 'f' ? 'FINAL' : lv ? 'EN VIVO' : 'PROGRAMADO'}</b></div>
     </div>
+    ${pick && !pick.locked && pick.chg ? `<p class="note" style="margin:12px 0 0">${icon('info')} El sistema cambió este pick al revisarlo antes de empezar (con la forma del día y la cuota más recientes).</p>` : ''}
     ${pick?.locked ? `<div style="margin-top:12px">${premiumLock('Pick Premium de alta confianza', 'El sistema tiene un pick de 60% o más para este partido. Hazte Premium para ver a quién elige, su confianza, la cuota y el análisis.')}</div>` : ''}
     ${pick && !pick.locked && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     ${
@@ -2109,6 +2110,12 @@ function notifItems() {
     if (!p || (p.res !== 'hit' && p.res !== 'miss')) continue;
     const fav = p.fav === p.a.id ? p.a : p.b;
     items.set(id, { at: p.at, ic: p.res === 'hit' ? 'trophy' : 'x', t: p.res === 'hit' ? `✅ Ganó tu pick: ${fav.n}` : `❌ Perdió tu pick: ${fav.n}`, s: `${p.a.n} ${p.sa}-${p.sb} ${p.b.n}`, id });
+  }
+  // Picks seguidos (o el destacado) que cambiaron de jugador antes de empezar
+  for (const p of upcomingPicks()) {
+    if (!p.chg || p.locked || items.has(p.id) || !(follows.has(p.id) || p.ft)) continue;
+    const fav = p.fav === p.a.id ? p.a : p.b;
+    items.set(p.id, { at: p.at, ic: 'bolt', t: `🔄 ${p.ft ? 'Cambió el pick destacado' : 'Cambió tu pick'}: ahora ${fav.n}`, s: `${p.a.n} vs ${p.b.n} · ${p.c}% · ${fmtTime(p.at)}`, id: p.id, fresh: true });
   }
   // Destacados ya resueltos
   for (const x of data.stats?.featured?.last || []) {

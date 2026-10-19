@@ -134,11 +134,20 @@ async function runNotifications(state, helpers) {
     }
     // El pick se revisa hasta 1 min antes del inicio: si cambió de jugador,
     // se avisa (una vez por cambio) para que nadie juegue el pick viejo.
-    if (m.st === 's' && p.chg && (N[key].c || 0) < p.chg) {
-      events.push({ mid, kind: 'change', title: `🔄 Pick actualizado: ahora ${fav}`, body: `${label} · ${p.c}% de confianza · revisado antes de empezar`, url: `${SITE}#/seguidos`, tag: `m${mid}` });
-      N[key].c = p.chg;
-    }
     // Por pedido: no se avisa cuando empieza el partido, solo el resultado.
+  }
+  // Picks que cambiaron de jugador al revisarlos antes de empezar: aviso a
+  // quien sigue el partido y, si es el destacado, a todos (una vez por cambio).
+  for (const p of Object.values(state.picks)) {
+    const m = state.matches[p.id];
+    if (!p.chg || p.res !== 'pending' || !m || m.st !== 's') continue;
+    const isFt = p.id === helpers.featuredId;
+    if (!followed.has(p.id) && !isFt) continue;
+    const key = String(p.id);
+    N[key] = N[key] || {};
+    if ((N[key].c || 0) >= p.chg) continue;
+    N[key].c = p.chg;
+    events.push({ mid: p.id, ft: isFt, kind: 'change', title: `🔄 ${isFt ? 'Cambió el pick destacado' : 'Pick actualizado'}: ahora ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · revisado antes de empezar`, url: isFt ? SITE : `${SITE}#/seguidos`, tag: `m${p.id}` });
   }
   // Pick destacado nuevo.
   if (helpers.featuredId && N._featured !== helpers.featuredId) {
@@ -167,7 +176,7 @@ async function runNotifications(state, helpers) {
   let sent = 0;
   for (const u of users) {
     const prefs = { start: true, end: true, change: true, featured: true, ...u.notify };
-    const mine = events.filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && u.follows.map(Number).includes(e.mid)));
+    const mine = events.filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && (e.ft || u.follows.map(Number).includes(e.mid))));
     if (u.email === 'camilosimanca77@gmail.com') mine.push(...chatEvents);
     if (!mine.length) continue;
     const alive = [];

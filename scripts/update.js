@@ -678,7 +678,7 @@ function pickView(p, detailed = false) {
   const m = state.matches[p.id];
   const base = detailed ? detailView(m) : matchView(m);
   if (isLocked(p)) return { ...base, fav: null, c: null, o: null, res: p.res, ft: false, locked: true };
-  return { ...base, fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft) };
+  return { ...base, fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft), chg: p.chg || 0 };
 }
 
 function summarize(list) {
