@@ -1576,7 +1576,7 @@ function kellyBodyHtml() {
               ? `<span class="amt">${cop(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small><button type="button" class="mini-btn" data-kforce="${p.id}">Quitar</button></span>`
               : f
               ? `<span class="amt">${cop(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${cop(stake * (p.o - 1))}</small></span>`
-              : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 ? `<button type="button" class="mini-btn" data-kforce="${p.id}">Apostar igual</button>` : ''}</span>`;
+              : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 ? `<button type="button" class="mini-btn kforce" data-kforce="${p.id}">Apostar igual</button>` : ''}</span>`;
             return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}${force ? ` · apuesta mínima (${FORCED_PCT * 100}% de la banca)` : ''}</small></span>${amt}</div>`;
           })
           .join('')
