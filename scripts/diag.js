@@ -205,7 +205,7 @@ out('\n== Picks cambiados antes de empezar (desde que existe la revisión) ==');
 const changed = Object.values(picks).filter((p) => p.chg);
 const ch = changed.filter((p) => p.res !== 'pending');
 out(`  cambiados: ${changed.length} (${changed.filter((p) => p.res === 'pending').length} pendientes) · de los jugados acertó ${pct(ch.filter((p) => p.res === 'hit').length, ch.length)}`);
-const revised = Object.values(picks).filter((p) => p.upd);
+const revised = Object.values(picks).filter((p) => p.upd && matches[p.id] && matches[p.id].st !== 's');
 out(`  picks con revisión registrada: ${revised.length}`);
 const lastRev = revised.filter((p) => matches[p.id]).map((p) => (new Date(matches[p.id].at) - new Date(p.upd)) / 60e3).filter((x) => x >= 0).sort((a, b) => a - b);
 if (lastRev.length) out(`  minutos entre la última revisión y el inicio: mediana ${lastRev[Math.floor(lastRev.length / 2)].toFixed(1)} · 90% en menos de ${lastRev[Math.floor(lastRev.length * 0.9)].toFixed(1)}`);
