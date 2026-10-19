@@ -1457,6 +1457,10 @@ const RISK = {
   agresivo: { label: 'Agresivo', sub: 'Kelly completo', m: 1 }
 };
 const KELLY_CAP = 0.1;
+// "Apostar igual": si Kelly dice no apostar (la cuota no paga el riesgo),
+// la persona puede apostarle de todos modos con un monto mínimo fijo. Se
+// guarda la lista de picks forzados en su configuración (bank.force).
+const FORCED_PCT = 0.01;
 
 function kellyFraction(confidence, o, multiplier) {
   if (!o || o <= 1) return 0;
@@ -1496,8 +1500,11 @@ function userBank() {
   const rows = [];
   const pending = [];
   const byDay = new Map();
+  const forced = new Set((s.force || []).map(Number));
   for (const p of items) {
-    const f = kellyFraction(p.c, p.o, m);
+    const kf = kellyFraction(p.c, p.o, m);
+    const force = !kf && p.o > 1 && forced.has(p.id);
+    const f = force ? FORCED_PCT : kf;
     if (p.res === 'hit' || p.res === 'miss') {
       if (!f) {
         rows.push({ p, stake: 0, profit: 0, bal, skip: true });
@@ -1511,9 +1518,9 @@ function userBank() {
       if (p.res === 'hit') hits++;
       peak = Math.max(peak, bal);
       dd = Math.max(dd, peak - bal);
-      rows.push({ p, stake, profit, bal, f });
+      rows.push({ p, stake, profit, bal, f, force });
       byDay.set(dayKey(p.at), bal);
-    } else pending.push({ p, f });
+    } else pending.push({ p, f, force });
   }
   return {
     s,
@@ -1563,13 +1570,14 @@ function kellyBodyHtml() {
   <div class="list">${
     pendList.length
       ? pendList
-          .map(({ p, f, stake }) => {
+          .map(({ p, f, stake, force }) => {
             const fav = p.fav === p.a.id ? p.a : p.b;
-            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}</small></span>${
-              f
-                ? `<span class="amt">${cop(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${cop(stake * (p.o - 1))}</small></span>`
-                : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small></span>`
-            }</div>`;
+            const amt = force
+              ? `<span class="amt">${cop(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small><button type="button" class="mini-btn" data-kforce="${p.id}">Quitar</button></span>`
+              : f
+              ? `<span class="amt">${cop(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${cop(stake * (p.o - 1))}</small></span>`
+              : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 ? `<button type="button" class="mini-btn" data-kforce="${p.id}">Apostar igual</button>` : ''}</span>`;
+            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}${force ? ` · apuesta mínima (${FORCED_PCT * 100}% de la banca)` : ''}</small></span>${amt}</div>`;
           })
           .join('')
       : '<div class="stake-row"><span class="who"><small>No tienes picks seguidos por jugar. Toca el ♥ en un pick para agregarlo.</small></span></div>'
@@ -1580,14 +1588,14 @@ function kellyBodyHtml() {
     u.rows.length
       ? u.rows
           .slice(0, 60)
-          .map(({ p, stake, profit, bal, skip }) => {
+          .map(({ p, stake, profit, bal, skip, force }) => {
             const fav = p.fav === p.a.id ? p.a : p.b;
-            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${p.res === 'hit' ? '✓' : '✗'} ${esc(fav.n)}</b><small>${esc(dayLabel(dayKey(p.at)))} · ${p.c}% · cuota ${odds(p.o)}${skip ? ' · no se apostó' : ` · ${cop(stake)}`}</small></span><span class="amt ${profit > 0 ? 'pos-t' : profit < 0 ? 'neg-t' : ''}">${skip ? '—' : signed(profit)}<small style="color:var(--muted)">${cop(bal)}</small></span></div>`;
+            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${p.res === 'hit' ? '✓' : '✗'} ${esc(fav.n)}</b><small>${esc(dayLabel(dayKey(p.at)))} · ${p.c}% · cuota ${odds(p.o)}${skip ? ' · no se apostó' : ` · ${cop(stake)}${force ? ' · apostado contra el aviso' : ''}`}</small></span><span class="amt ${profit > 0 ? 'pos-t' : profit < 0 ? 'neg-t' : ''}">${skip ? '—' : signed(profit)}<small style="color:var(--muted)">${cop(bal)}</small></span></div>`;
           })
           .join('')
       : '<div class="stake-row"><span class="who"><small>Cuando terminen los partidos que sigues, aquí ves cuánto ganaste o perdiste en cada uno.</small></span></div>'
   }</div>
-  <p class="note" style="margin-top:14px">${icon('info', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:14px;height:14px;vertical-align:-2px"')} <b>Criterio de Kelly:</b> calcula qué porcentaje de tu banca apostar según la confianza del pick y la cuota. Si la cuota no paga lo suficiente para esa probabilidad, sugiere <b>no apostar</b>. Tope: 10% de la banca por apuesta. Es una simulación con los picks que sigues; apuesta con responsabilidad.</p>`;
+  <p class="note" style="margin-top:14px">${icon('info', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:14px;height:14px;vertical-align:-2px"')} <b>Criterio de Kelly:</b> calcula qué porcentaje de tu banca apostar según la confianza del pick y la cuota. Si la cuota no paga lo suficiente para esa probabilidad, sugiere <b>no apostar</b>; si igual quieres jugarlo, toca <b>Apostar igual</b> y se apuesta el mínimo (1% de tu banca). Tope: 10% de la banca por apuesta. Es una simulación con los picks que sigues; apuesta con responsabilidad.</p>`;
 }
 
 function viewBankroll() {
@@ -2366,6 +2374,17 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.followBtn) {
     await toggleFollow(Number(t.dataset.followBtn));
     return $sheet._redraw?.();
+  }
+  if (t.dataset.kforce) {
+    const cur = bankSettings() || { start: 0 };
+    const id = Number(t.dataset.kforce);
+    const list = new Set((cur.force || []).map(Number));
+    if (list.has(id)) list.delete(id);
+    else list.add(id);
+    await saveBankSettings({ ...cur, force: [...list] });
+    const box = document.getElementById('kelly-body');
+    if (box) box.innerHTML = kellyBodyHtml();
+    return;
   }
   if (t.dataset.open) return openMatch(t.dataset.open);
   if (t.dataset.day) {
