@@ -1458,9 +1458,12 @@ const RISK = {
 };
 const KELLY_CAP = 0.1;
 // "Apostar igual": si Kelly dice no apostar (la cuota no paga el riesgo),
-// la persona puede apostarle de todos modos con un monto mínimo fijo. Se
-// guarda la lista de picks forzados en su configuración (bank.force).
+// la persona puede apostarle de todos modos con el monto que ella escriba
+// (sugerido: 1% de la banca). Se guarda en su configuración como
+// bank.force = { idPick: monto }; antes era una lista de ids (= 1%).
 const FORCED_PCT = 0.01;
+const forcedMap = (s) => (Array.isArray(s?.force) ? Object.fromEntries(s.force.map((id) => [id, 0])) : { ...(s?.force || {}) });
+const forcedStake = (amt, bal) => Math.max(0, Math.min(bal, amt || Math.round((bal * FORCED_PCT) / 100) * 100));
 // Solo se puede apostar igual o quitar antes de que empiece el partido.
 const betOpen = (p) => p.st === 's' && new Date(p.at).getTime() > Date.now();
 
@@ -1502,17 +1505,17 @@ function userBank() {
   const rows = [];
   const pending = [];
   const byDay = new Map();
-  const forced = new Set((s.force || []).map(Number));
+  const fm = forcedMap(s);
   for (const p of items) {
     const kf = kellyFraction(p.c, p.o, m);
-    const force = !kf && p.o > 1 && forced.has(p.id);
+    const force = !kf && p.o > 1 && String(p.id) in fm;
     const f = force ? FORCED_PCT : kf;
     if (p.res === 'hit' || p.res === 'miss') {
-      if (!f) {
+      const stake = force ? forcedStake(fm[p.id], bal) : Math.round((bal * f) / 100) * 100;
+      if (!stake) {
         rows.push({ p, stake: 0, profit: 0, bal, skip: true });
         continue;
       }
-      const stake = Math.round((bal * f) / 100) * 100;
       const profit = p.res === 'hit' ? Math.round(stake * (p.o - 1)) : -stake;
       bal += profit;
       staked += stake;
@@ -1522,7 +1525,7 @@ function userBank() {
       dd = Math.max(dd, peak - bal);
       rows.push({ p, stake, profit, bal, f, force });
       byDay.set(dayKey(p.at), bal);
-    } else pending.push({ p, f, force });
+    } else pending.push({ p, f, force, amt: fm[p.id] });
   }
   return {
     s,
@@ -1534,7 +1537,7 @@ function userBank() {
     hits,
     dd,
     rows: rows.reverse(),
-    pend: pending.map((x) => ({ ...x, stake: Math.round((bal * x.f) / 100) * 100 })),
+    pend: pending.map((x) => ({ ...x, stake: x.force ? forcedStake(x.amt, bal) : Math.round((bal * x.f) / 100) * 100 })),
     series: [...byDay.entries()].map(([d, b]) => ({ d, bal: b }))
   };
 }
@@ -1574,12 +1577,23 @@ function kellyBodyHtml() {
       ? pendList
           .map(({ p, f, stake, force }) => {
             const fav = p.fav === p.a.id ? p.a : p.b;
+            const open = betOpen(p);
+            const head = `<span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}${force ? ' · apostado contra el aviso' : ''}</small></span>`;
+            // Editor del monto (sin data-open: tocar el campo no abre la ficha)
+            if (ui.kEdit === p.id && open) {
+              const def = force ? stake : forcedStake(0, u.bal);
+              return `<div class="stake-row kedit">${head}<div class="kbox">
+                <small class="warn-t">No recomendado: la cuota no paga el riesgo. Si igual quieres jugarlo, escribe cuánto apostar (máximo tu banca: ${cop(u.bal)}).</small>
+                <div class="krow"><input class="kamt" data-kamt="${p.id}" data-odds="${p.o}" inputmode="numeric" value="${def}" aria-label="Monto a apostar"><span class="kwin">gana ${cop(def * (p.o - 1))}</span></div>
+                <div class="krow"><button type="button" class="mini-btn kforce" data-kok="${p.id}">Apostar</button><button type="button" class="mini-btn" data-kcancel="1">Cancelar</button></div>
+              </div></div>`;
+            }
             const amt = force
-              ? `<span class="amt">${cop(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small>${betOpen(p) ? `<button type="button" class="mini-btn" data-kforce="${p.id}">Quitar</button>` : ''}</span>`
+              ? `<span class="amt">${cop(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small>${open ? `<span class="kbtns"><button type="button" class="mini-btn" data-kedit="${p.id}">Cambiar</button><button type="button" class="mini-btn" data-kquit="${p.id}">Quitar</button></span>` : ''}</span>`
               : f
               ? `<span class="amt">${cop(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${cop(stake * (p.o - 1))}</small></span>`
-              : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 && betOpen(p) ? `<button type="button" class="mini-btn kforce" data-kforce="${p.id}">Apostar igual</button>` : ''}</span>`;
-            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}${force ? ` · apuesta mínima (${FORCED_PCT * 100}% de la banca)` : ''}</small></span>${amt}</div>`;
+              : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 && open ? `<button type="button" class="mini-btn kforce" data-kedit="${p.id}">Apostar igual</button>` : ''}</span>`;
+            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer">${head}${amt}</div>`;
           })
           .join('')
       : '<div class="stake-row"><span class="who"><small>No tienes picks seguidos por jugar. Toca el ♥ en un pick para agregarlo.</small></span></div>'
@@ -1597,7 +1611,7 @@ function kellyBodyHtml() {
           .join('')
       : '<div class="stake-row"><span class="who"><small>Cuando terminen los partidos que sigues, aquí ves cuánto ganaste o perdiste en cada uno.</small></span></div>'
   }</div>
-  <p class="note" style="margin-top:14px">${icon('info', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:14px;height:14px;vertical-align:-2px"')} <b>Criterio de Kelly:</b> calcula qué porcentaje de tu banca apostar según la confianza del pick y la cuota. Si la cuota no paga lo suficiente para esa probabilidad, sugiere <b>no apostar</b>; si igual quieres jugarlo, toca <b>Apostar igual</b> y se apuesta el mínimo (1% de tu banca). Tope: 10% de la banca por apuesta. Es una simulación con los picks que sigues; apuesta con responsabilidad.</p>`;
+  <p class="note" style="margin-top:14px">${icon('info', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:14px;height:14px;vertical-align:-2px"')} <b>Criterio de Kelly:</b> calcula qué porcentaje de tu banca apostar según la confianza del pick y la cuota. Si la cuota no paga lo suficiente para esa probabilidad, sugiere <b>no apostar</b>; si igual quieres jugarlo, toca <b>Apostar igual</b> y escribe cuánto apostar (se sugiere el 1% de tu banca). Tope: 10% de la banca por apuesta. Es una simulación con los picks que sigues; apuesta con responsabilidad.</p>`;
 }
 
 function viewBankroll() {
@@ -2377,23 +2391,45 @@ document.addEventListener('click', async (ev) => {
     await toggleFollow(Number(t.dataset.followBtn));
     return $sheet._redraw?.();
   }
-  if (t.dataset.kforce) {
-    const cur = bankSettings() || { start: 0 };
-    const id = Number(t.dataset.kforce);
-    const pk = allById().get(id);
-    if (!pk || !betOpen(pk)) {
-      toast('El partido ya empezó: no se puede cambiar la apuesta');
+  // Apostar igual: abrir el editor del monto, confirmar, cancelar o quitar.
+  const kid = Number(t.dataset.kedit || t.dataset.kok || t.dataset.kquit || 0);
+  if (kid || t.dataset.kcancel) {
+    const redrawBank = () => {
       const box = document.getElementById('kelly-body');
       if (box) box.innerHTML = kellyBodyHtml();
+    };
+    if (t.dataset.kcancel) {
+      ui.kEdit = null;
+      return redrawBank();
+    }
+    const pk = allById().get(kid);
+    if (!pk || !betOpen(pk)) {
+      ui.kEdit = null;
+      toast('El partido ya empezó: no se puede cambiar la apuesta');
+      return redrawBank();
+    }
+    const cur = bankSettings() || { start: 0 };
+    const fm = forcedMap(cur);
+    if (t.dataset.kedit) {
+      ui.kEdit = kid;
+      redrawBank();
+      const inp = document.querySelector(`[data-kamt="${kid}"]`);
+      inp?.focus();
+      inp?.select();
       return;
     }
-    const list = new Set((cur.force || []).map(Number));
-    if (list.has(id)) list.delete(id);
-    else list.add(id);
-    await saveBankSettings({ ...cur, force: [...list] });
-    const box = document.getElementById('kelly-body');
-    if (box) box.innerHTML = kellyBodyHtml();
-    return;
+    if (t.dataset.kquit) delete fm[kid];
+    else {
+      const bal = userBank()?.bal || 0;
+      const amt = Number(String(document.querySelector(`[data-kamt="${kid}"]`)?.value || '').replace(/D/g, ''));
+      if (!amt) return toast('Escribe cuánto quieres apostar');
+      if (amt > bal) return toast(`No puedes apostar más que tu banca (${cop(bal)})`);
+      fm[kid] = amt;
+      ui.kEdit = null;
+      toast(`Apuesta guardada: ${cop(amt)}`);
+    }
+    await saveBankSettings({ ...cur, force: fm });
+    return redrawBank();
   }
   if (t.dataset.open) return openMatch(t.dataset.open);
   if (t.dataset.day) {
@@ -2547,6 +2583,11 @@ $sheet.addEventListener('click', (ev) => {
   if (ev.target === $sheet) closeSheet();
 });
 document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' && ev.target.matches?.('[data-kamt]')) {
+    ev.preventDefault();
+    document.querySelector(`[data-kok="${ev.target.dataset.kamt}"]`)?.click();
+    return;
+  }
   if (ev.key === 'Escape' && !$sheet.hidden) closeSheet();
 });
 
@@ -2695,6 +2736,12 @@ document.addEventListener('change', async (ev) => {
 
 // Mi Bankroll: guarda la banca inicial y recalcula sin perder el foco.
 document.addEventListener('input', (ev) => {
+  if (ev.target.matches?.('[data-kamt]')) {
+    const v = Number(ev.target.value.replace(/D/g, '')) || 0;
+    const win = ev.target.parentElement.querySelector('.kwin');
+    if (win) win.textContent = `gana ${cop(v * (Number(ev.target.dataset.odds) - 1))}`;
+    return;
+  }
   if (ev.target.id !== 'kelly-start') return;
   const start = Number(ev.target.value.replace(/\D/g, '').slice(0, 13)) || 0;
   const cur = bankSettings() || { risk: 'equilibrado' };
