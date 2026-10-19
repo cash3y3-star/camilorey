@@ -37,6 +37,10 @@ const TZ = 'America/Bogota';
 const PAREJO_BELOW = 55;
 const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
+const FEATURED_MIN_CONF = 60;
+// El resumen de destacados de Inicio cuenta desde aquí (el usuario lo
+// reinició el 19-oct al cambiar la regla del destacado).
+const FEATURED_FROM = '2026-10-19T05:30:00Z';
 const HISTORY_FROM = '2026-01-01'; // historial completo del año (H2H, forma, rachas)
 const HISTORY_BUDGET_MS = 4 * 60e3; // tiempo por corrida para cargar días viejos que falten
 // El pick pendiente se recalcula en cada corrida (cada ~5 min) hasta 1 min
@@ -761,7 +765,7 @@ let premiumContent = null;
 function pickView(p, detailed = false) {
   const m = state.matches[p.id];
   const base = detailed ? detailView(m) : matchView(m);
-  if (isLocked(p)) return { ...base, fav: null, c: null, o: null, res: p.res, ft: false, locked: true };
+  if (isLocked(p)) return { ...base, fav: null, c: null, o: null, res: p.res, ft: Boolean(p.ft), locked: true };
   return { ...base, fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft), chg: p.chg || 0 };
 }
 
@@ -790,16 +794,17 @@ function writeSite(meta) {
   const published = Object.values(state.picks).filter((p) => p.pub && state.matches[p.id]);
 
   // Pick destacado: entre los pendientes que TODAVÍA NO EMPIEZAN, el de más
-  // confianza con cuota > 1.60 (si no hay, el de más confianza). Queda
+  // confianza con 60% o más y cuota entre 1.60 y 2.50 (si no hay, no hay
+  // destacado: el usuario no quiere cuotas bajas). Medido el 19-oct: la
+  // regla anterior (solo picks de 55-59%, porque el destacado era público)
+  // acertaba 49%; con 60%+ y cuota > 1.60, 61%. El sitio ya es solo para
+  // miembros, así que el destacado puede ser un pick Premium. Queda
   // registrado en p.dst y se congela cuando arranca su partido: así
   // "destacado" = el que era destacado al empezar el partido, y sus
   // resultados se miden aparte (estadísticas de Inicio).
   const pending = published.filter((p) => p.res === 'pending');
   const notStarted = pending.filter((p) => state.matches[p.id].st === 's' && new Date(state.matches[p.id].at).getTime() > now);
-  // El destacado es público: se elige entre los picks que no son Premium.
-  const publicNext = notStarted.filter((p) => p.c < PREMIUM_MIN);
-  const withOdds = publicNext.filter((p) => p.o && p.o > FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS);
-  const pool = withOdds.length ? withOdds : publicNext;
+  const pool = notStarted.filter((p) => p.c >= FEATURED_MIN_CONF && p.o && p.o > FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS);
   const featured = pool.slice().sort((a, b) => b.c - a.c || (state.matches[a.id].at < state.matches[b.id].at ? -1 : 1))[0];
   for (const p of notStarted) p.dst = p === featured;
   for (const p of published) p.ft = p === featured;
@@ -1111,7 +1116,7 @@ function champions(now) {
 
 // Estadísticas SOLO de los picks destacados (p.dst), para Inicio.
 function featuredStats(resolved, d) {
-  const list = resolved.filter((p) => p.dst); // más nuevo primero
+  const list = resolved.filter((p) => p.dst && state.matches[p.id].at >= FEATURED_FROM); // más nuevo primero
   let streak = 0;
   for (const p of list) {
     const s = p.res === 'hit' ? 1 : -1;

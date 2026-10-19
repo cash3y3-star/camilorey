@@ -425,7 +425,7 @@ function viewInicio() {
   const pend = data.picks;
   const avgOdds = fs?.avgOdds ? odds(fs.avgOdds) : '—';
   const next = upcomingPicks();
-  const featured = next.find((p) => p.ft) || next.filter((p) => !p.locked && !p.premium).sort((a, b) => b.c - a.c)[0];
+  const featured = next.find((p) => p.ft); // solo el elegido por el sistema (60%+ y cuota > 1.60)
 
   return `
   <section class="hero">
@@ -453,13 +453,15 @@ function viewInicio() {
   ${
     featured
       ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div>${matchCard(featured, featured)}`
+      : data.loaded && next.length
+      ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div><p class="note">${icon('info')} Ahora no hay pick destacado: ningún pick de 60% o más tiene cuota mayor a 1,60. Aparece solo en cuanto haya uno.</p>`
       : ''
   }
 
   <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/envivo">Ver todo</a></div>
   <div id="live-home">${skeleton(1)}</div>
   ${hotHtml()}
-  ${data.loaded && !featured ? empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.') : ''}
+  ${data.loaded && !next.length ? empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.') : ''}
   ${footer()}`;
 }
 
@@ -623,7 +625,7 @@ function viewAdmin() {
   <form class="card pad" id="member-form">
     <label class="field"><span>Correo de la cuenta del usuario (sirve si entra con Google o con correo)</span>
       <input name="email" type="email" required class="inline-input" style="width:100%;border-color:var(--line)" placeholder="usuario@gmail.com"></label>
-    <div class="field"><span>Duración</span><div class="seg seg-full" id="member-days">${[7, 30, 90, 365].map((d) => `<button type="button" data-mdays="${d}" class="${d === 30 ? 'on' : ''}">${d === 365 ? '1 año' : d + ' días'}</button>`).join('')}</div></div>
+    <div class="field"><span>Duración</span><div class="seg seg-full" id="member-days">${[1, 7, 30, 90, 365].map((d) => `<button type="button" data-mdays="${d}" class="${d === 30 ? 'on' : ''}">${d === 365 ? '1 año' : d === 1 ? '1 día' : d + ' días'}</button>`).join('')}</div></div>
     <button class="btn primary" type="submit">Dar acceso</button>
     <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Sin acceso vigente nadie puede ver el sitio. Si ya tenía acceso, los días se suman a su fecha de vencimiento; al vencerse se bloquea solo. Al usuario le aparece automáticamente una bienvenida. <button type="button" class="textlink" id="btn-pw-preview">Ver cómo se ve</button></p>
   </form>
@@ -949,7 +951,7 @@ async function renderMembers() {
           .map((x) => {
             const active = x.until && x.until.getTime() > now;
             const left = active ? Math.ceil((x.until.getTime() - now) / 86400e3) : 0;
-            return `<div class="row"><span class="ic">${active ? '⭐' : '⌛'}</span><span class="tx"><b>${esc(x.email)}</b><small>${active ? `Activo · vence ${esc(x.until.toLocaleDateString(LOC()))} (${left} días)` : `Vencido${x.until ? ' el ' + esc(x.until.toLocaleDateString(LOC())) : ''}`}</small></span><button class="mini-btn" data-mquit="${esc(x.email)}">Quitar</button></div>`;
+            return `<div class="row"><span class="ic">${active ? '⭐' : '⌛'}</span><span class="tx"><b>${esc(x.email)}</b><small>${active ? `Activo · vence ${esc(left <= 2 ? x.until.toLocaleString(LOC(), { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' }) : x.until.toLocaleDateString(LOC()))} (${left} ${left === 1 ? 'día' : 'días'})` : `Vencido${x.until ? ' el ' + esc(x.until.toLocaleDateString(LOC())) : ''}`}</small></span><button class="mini-btn" data-mquit="${esc(x.email)}">Quitar</button></div>`;
           })
           .join('')}</div><p class="foot">${list.filter((x) => x.until && x.until.getTime() > now).length} activos · ${list.length} en total</p>`
       : '<p class="note" style="margin-top:10px">Todavía no hay miembros.</p>';
@@ -985,7 +987,7 @@ document.addEventListener('submit', async (ev) => {
   if (!email.includes('@')) return toast('Escribe un correo válido');
   try {
     const until = await FB.adminSetMember(email, memberDays);
-    toast(`⭐ Acceso activo para ${email} hasta ${until.toLocaleDateString(LOC())}`);
+    toast(`⭐ Acceso activo para ${email} hasta ${memberDays === 1 ? until.toLocaleString(LOC(), { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' }) : until.toLocaleDateString(LOC())}`);
     ev.target.reset();
     renderMembers();
   } catch (e) {
@@ -1954,7 +1956,7 @@ function formListHtml(p, f, n, last) {
       return `<div class="h2h-row" data-player="${x.op.id}" style="cursor:pointer">
         <div class="h2h-date">${fmtD(x.at)}<small>${esc(x.ph ? `${x.ph} · ${x.tn}` : x.tn)}</small></div>
         <div class="h2h-names"><div class="${x.w ? 'w' : ''}">${esc(p.n)}</div><div class="${x.w ? '' : 'w'}">${esc(x.op.n)}</div></div>
-        <div class="h2h-score"><div class="${x.w ? 'w' : ''}">${s1 ?? '-'}<span class="h2h-res ${x.w ? 'w' : 'l'}">${x.w ? 'G' : 'P'}</span></div><div class="${x.w ? '' : 'w'}">${s2 ?? '-'}<span class="h2h-res ${x.w ? 'l' : 'w'}">${x.w ? 'P' : 'G'}</span></div></div>
+        <div class="h2h-score"><div class="${x.w ? 'w' : ''}">${s1 ?? '-'}<span class="h2h-res ${x.w ? 'w' : 'l'}">${x.w ? 'G' : 'P'}</span></div><div class="${x.w ? '' : 'w'}">${s2 ?? '-'}<span class="h2h-res" style="visibility:hidden">G</span></div></div>
       </div>`;
     })
     .join('');
