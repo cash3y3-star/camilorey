@@ -1497,13 +1497,52 @@ const RISK = {
   agresivo: { label: 'Agresivo', sub: 'Kelly completo', m: 1 }
 };
 const KELLY_CAP = 0.1;
+// Moneda de la banca de cada usuario (bank.cur). step: redondeo de los
+// montos sugeridos (pesos colombianos de a 100, dólares de a 0,50, etc.).
+const CURRENCIES = {
+  COP: { n: 'Peso colombiano', step: 100 },
+  USD: { n: 'Dólar', step: 0.5 },
+  EUR: { n: 'Euro', step: 0.5, sym: '€' },
+  MXN: { n: 'Peso mexicano', step: 1 },
+  PEN: { n: 'Sol peruano', step: 0.5, sym: 'S/ ' },
+  CLP: { n: 'Peso chileno', step: 100 },
+  ARS: { n: 'Peso argentino', step: 10 },
+  VES: { n: 'Bolívar venezolano', step: 1, sym: 'Bs ' },
+  BOB: { n: 'Boliviano', step: 1, sym: 'Bs ' },
+  PYG: { n: 'Guaraní paraguayo', step: 1000, sym: '₲' },
+  UYU: { n: 'Peso uruguayo', step: 1 },
+  BRL: { n: 'Real brasileño', step: 0.5, sym: 'R$' },
+  GTQ: { n: 'Quetzal', step: 1, sym: 'Q' },
+  CRC: { n: 'Colón costarricense', step: 10, sym: '₡' },
+  DOP: { n: 'Peso dominicano', step: 1 }
+};
+const bankCur = () => (CURRENCIES[bankSettings()?.cur] ? bankSettings().cur : 'COP');
+const roundStake = (n) => {
+  const st = CURRENCIES[bankCur()].step;
+  return Math.round(Math.round(n / st) * st * 100) / 100;
+};
+function money(n) {
+  const cur = bankCur();
+  const dec = CURRENCIES[cur].step < 1 ? 2 : 0;
+  const txt = new Intl.NumberFormat(LOC(), { minimumFractionDigits: dec, maximumFractionDigits: dec }).format(dec ? n || 0 : Math.round(n || 0));
+  const sym = CURRENCIES[cur].sym || '$';
+  return sym + txt + (sym === '$' && cur !== 'COP' ? ' ' + cur : '');
+}
+const signedMoney = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + money(Math.abs(n));
+// Monto escrito por la persona: con decimales solo si la moneda los usa
+// ("25.000" en pesos = 25000; "7,50" en dólares = 7.5).
+function parseMoney(str) {
+  const t = String(str || '');
+  if (CURRENCIES[bankCur()].step >= 1) return Number(t.replace(/\D/g, '')) || 0;
+  return Number(t.replace(/[^\d.,]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0;
+}
 // "Apostar igual": si Kelly dice no apostar (la cuota no paga el riesgo),
 // la persona puede apostarle de todos modos con el monto que ella escriba
 // (sugerido: 1% de la banca). Se guarda en su configuración como
 // bank.force = { idPick: monto }; antes era una lista de ids (= 1%).
 const FORCED_PCT = 0.01;
 const forcedMap = (s) => (Array.isArray(s?.force) ? Object.fromEntries(s.force.map((id) => [id, 0])) : { ...(s?.force || {}) });
-const forcedStake = (amt, bal) => Math.max(0, Math.min(bal, amt || Math.round((bal * FORCED_PCT) / 100) * 100));
+const forcedStake = (amt, bal) => Math.max(0, Math.min(bal, amt || roundStake(bal * FORCED_PCT)));
 // Solo se puede apostar igual o quitar antes de que empiece el partido.
 const betOpen = (p) => p.st === 's' && new Date(p.at).getTime() > Date.now();
 
@@ -1551,7 +1590,7 @@ function userBank() {
     const force = !kf && p.o > 1 && String(p.id) in fm;
     const f = force ? FORCED_PCT : kf;
     if (p.res === 'hit' || p.res === 'miss') {
-      const stake = force ? forcedStake(fm[p.id], bal) : Math.round((bal * f) / 100) * 100;
+      const stake = force ? forcedStake(fm[p.id], bal) : roundStake(bal * f);
       if (!stake) {
         rows.push({ p, stake: 0, profit: 0, bal, skip: true });
         continue;
@@ -1577,7 +1616,7 @@ function userBank() {
     hits,
     dd,
     rows: rows.reverse(),
-    pend: pending.map((x) => ({ ...x, stake: x.force ? forcedStake(x.amt, bal) : Math.round((bal * x.f) / 100) * 100 })),
+    pend: pending.map((x) => ({ ...x, stake: x.force ? forcedStake(x.amt, bal) : roundStake(bal * x.f) })),
     series: [...byDay.entries()].map(([d, b]) => ({ d, bal: b }))
   };
 }
@@ -1585,7 +1624,8 @@ function userBank() {
 function kellySettingsHtml() {
   const s = bankSettings() || { start: '', risk: 'equilibrado' };
   return `<div class="card pad">
-    <label class="field"><span>Banca inicial (COP)</span><input id="kelly-start" inputmode="numeric" placeholder="Ej: 500000" value="${s.start || ''}"></label>
+    <label class="field"><span>Moneda con la que apuestas</span><select id="kelly-cur">${Object.entries(CURRENCIES).map(([k, c]) => `<option value="${k}" ${bankCur() === k ? 'selected' : ''}>${c.n} (${k})</option>`).join('')}</select></label>
+    <label class="field"><span>Banca inicial (${bankCur()})</span><input id="kelly-start" inputmode="numeric" placeholder="${bankCur() === 'COP' ? 'Ej: 500000' : 'Ej: 100'}" value="${s.start || ''}"></label>
     <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Nivel de riesgo</span>
     <div class="seg seg-full">${Object.entries(RISK)
       .map(([k, r]) => `<button data-risk="${k}" class="${(s.risk || 'equilibrado') === k ? 'on' : ''}">${r.label}<em>${r.sub}</em></button>`)
@@ -1600,14 +1640,14 @@ function kellyBodyHtml() {
   return `
   <div class="bank-hero" style="margin-top:12px">
     <div class="overline">Mi banca actual</div>
-    <div class="big">${cop(u.bal)}</div>
-    <div class="delta ${u.profit >= 0 ? 'pos-t' : 'neg-t'}">${signed(u.profit)} · ROI ${pct(u.roi)}</div>
-    <div style="font-size:12px;color:#a1a1aa;margin-top:6px">Inició con ${cop(u.s.start)} · ${RISK[u.s.risk || 'equilibrado'].label} (${RISK[u.s.risk || 'equilibrado'].sub})</div>
+    <div class="big">${money(u.bal)}</div>
+    <div class="delta ${u.profit >= 0 ? 'pos-t' : 'neg-t'}">${signedMoney(u.profit)} · ROI ${pct(u.roi)}</div>
+    <div style="font-size:12px;color:#a1a1aa;margin-top:6px">Inició con ${money(u.s.start)} · ${RISK[u.s.risk || 'equilibrado'].label} (${RISK[u.s.risk || 'equilibrado'].sub})</div>
   </div>
   <div class="tiles">
     <div class="tile"><div class="overline">Apuestas</div><div class="val">${u.bets}</div><div class="hint">${u.hits} ganadas</div></div>
     <div class="tile"><div class="overline">Efectividad</div><div class="val">${u.bets ? pct(Math.round((u.hits / u.bets) * 1000) / 10) : '—'}</div></div>
-    <div class="tile"><div class="overline">Máx. caída</div><div class="val neg" style="font-size:17px">${u.dd ? '−' + cop(u.dd) : '—'}</div></div>
+    <div class="tile"><div class="overline">Máx. caída</div><div class="val neg" style="font-size:17px">${u.dd ? '−' + money(u.dd) : '—'}</div></div>
   </div>
   ${u.series.length ? `<div class="card pad" style="margin-top:12px"><div class="overline">Evolución de mi banca</div>${bankChart(u.series, u.s.start)}</div>` : ''}
 
@@ -1623,15 +1663,15 @@ function kellyBodyHtml() {
             if (ui.kEdit === p.id && open) {
               const def = force ? stake : forcedStake(0, u.bal);
               return `<div class="stake-row kedit">${head}<div class="kbox">
-                <small class="warn-t">No recomendado: la cuota no paga el riesgo. Si igual quieres jugarlo, escribe cuánto apostar (máximo tu banca: ${cop(u.bal)}).</small>
-                <div class="krow"><input class="kamt" data-kamt="${p.id}" data-odds="${p.o}" inputmode="numeric" value="${def}" aria-label="Monto a apostar"><span class="kwin">gana ${cop(def * (p.o - 1))}</span></div>
+                <small class="warn-t">No recomendado: la cuota no paga el riesgo. Si igual quieres jugarlo, escribe cuánto apostar (máximo tu banca: ${money(u.bal)}).</small>
+                <div class="krow"><input class="kamt" data-kamt="${p.id}" data-odds="${p.o}" inputmode="numeric" value="${def}" aria-label="Monto a apostar"><span class="kwin">gana ${money(def * (p.o - 1))}</span></div>
                 <div class="krow"><button type="button" class="mini-btn kforce" data-kok="${p.id}">Apostar</button><button type="button" class="mini-btn" data-kcancel="1">Cancelar</button></div>
               </div></div>`;
             }
             const amt = force
-              ? `<span class="amt">${cop(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small>${open ? `<span class="kbtns"><button type="button" class="mini-btn" data-kedit="${p.id}">Cambiar</button><button type="button" class="mini-btn" data-kquit="${p.id}">Quitar</button></span>` : ''}</span>`
+              ? `<span class="amt">${money(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small>${open ? `<span class="kbtns"><button type="button" class="mini-btn" data-kedit="${p.id}">Cambiar</button><button type="button" class="mini-btn" data-kquit="${p.id}">Quitar</button></span>` : ''}</span>`
               : f
-              ? `<span class="amt">${cop(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${cop(stake * (p.o - 1))}</small></span>`
+              ? `<span class="amt">${money(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${money(stake * (p.o - 1))}</small></span>`
               : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 && open ? `<button type="button" class="mini-btn kforce" data-kedit="${p.id}">Apostar igual</button>` : ''}</span>`;
             return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer">${head}${amt}</div>`;
           })
@@ -1646,7 +1686,7 @@ function kellyBodyHtml() {
           .slice(0, 60)
           .map(({ p, stake, profit, bal, skip, force }) => {
             const fav = p.fav === p.a.id ? p.a : p.b;
-            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${p.res === 'hit' ? '✓' : '✗'} ${esc(fav.n)}</b><small>${esc(dayLabel(dayKey(p.at)))} · ${p.c}% · cuota ${odds(p.o)}${skip ? ' · no se apostó' : ` · ${cop(stake)}${force ? ' · apostado contra el aviso' : ''}`}</small></span><span class="amt ${profit > 0 ? 'pos-t' : profit < 0 ? 'neg-t' : ''}">${skip ? '—' : signed(profit)}<small style="color:var(--muted)">${cop(bal)}</small></span></div>`;
+            return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${p.res === 'hit' ? '✓' : '✗'} ${esc(fav.n)}</b><small>${esc(dayLabel(dayKey(p.at)))} · ${p.c}% · cuota ${odds(p.o)}${skip ? ' · no se apostó' : ` · ${money(stake)}${force ? ' · apostado contra el aviso' : ''}`}</small></span><span class="amt ${profit > 0 ? 'pos-t' : profit < 0 ? 'neg-t' : ''}">${skip ? '—' : signedMoney(profit)}<small style="color:var(--muted)">${money(bal)}</small></span></div>`;
           })
           .join('')
       : '<div class="stake-row"><span class="who"><small>Cuando terminen los partidos que sigues, aquí ves cuánto ganaste o perdiste en cada uno.</small></span></div>'
@@ -2462,12 +2502,12 @@ document.addEventListener('click', async (ev) => {
     if (t.dataset.kquit) delete fm[kid];
     else {
       const bal = userBank()?.bal || 0;
-      const amt = Number(String(document.querySelector(`[data-kamt="${kid}"]`)?.value || '').replace(/D/g, ''));
+      const amt = parseMoney(document.querySelector(`[data-kamt="${kid}"]`)?.value);
       if (!amt) return toast('Escribe cuánto quieres apostar');
-      if (amt > bal) return toast(`No puedes apostar más que tu banca (${cop(bal)})`);
+      if (amt > bal) return toast(`No puedes apostar más que tu banca (${money(bal)})`);
       fm[kid] = amt;
       ui.kEdit = null;
-      toast(`Apuesta guardada: ${cop(amt)}`);
+      toast(`Apuesta guardada: ${money(amt)}`);
     }
     await saveBankSettings({ ...cur, force: fm });
     return redrawBank();
@@ -2779,9 +2819,9 @@ document.addEventListener('change', async (ev) => {
 // Mi Bankroll: guarda la banca inicial y recalcula sin perder el foco.
 document.addEventListener('input', (ev) => {
   if (ev.target.matches?.('[data-kamt]')) {
-    const v = Number(ev.target.value.replace(/D/g, '')) || 0;
+    const v = parseMoney(ev.target.value);
     const win = ev.target.parentElement.querySelector('.kwin');
-    if (win) win.textContent = `gana ${cop(v * (Number(ev.target.dataset.odds) - 1))}`;
+    if (win) win.textContent = `gana ${money(v * (Number(ev.target.dataset.odds) - 1))}`;
     return;
   }
   if (ev.target.id !== 'kelly-start') return;
@@ -2789,9 +2829,22 @@ document.addEventListener('input', (ev) => {
   const cur = bankSettings() || { risk: 'equilibrado' };
   clearTimeout(ev.target._t);
   writeLocal('cr_kelly', { ...cur, start });
+  if (profile?.bank) profile = { ...profile, bank: { ...cur, start } }; // bankSettings() lee primero el perfil
   const box = document.getElementById('kelly-body');
   if (box) box.innerHTML = kellyBodyHtml();
-  ev.target._t = setTimeout(() => saveBankSettings({ ...cur, start }), 800);
+  // Al guardar se toma la configuración más reciente (pudo cambiar en estos 800 ms).
+  ev.target._t = setTimeout(() => saveBankSettings({ ...(bankSettings() || cur), start }), 800);
+});
+
+// Moneda de la banca: se guarda y se redibuja Mi Bankroll con ese formato.
+document.addEventListener('change', async (ev) => {
+  if (ev.target.id !== 'kelly-cur') return;
+  const cur = bankSettings() || { risk: 'equilibrado' };
+  await saveBankSettings({ ...cur, cur: ev.target.value });
+  const lbl = document.querySelector('#kelly-start')?.closest('.field')?.querySelector('span');
+  if (lbl) lbl.textContent = `Banca inicial (${ev.target.value})`;
+  const box = document.getElementById('kelly-body');
+  if (box) box.innerHTML = kellyBodyHtml();
 });
 
 document.addEventListener('submit', async (ev) => {
