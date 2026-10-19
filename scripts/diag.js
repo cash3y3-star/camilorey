@@ -249,6 +249,23 @@ for (const [t, g] of live) {
   out(`    próximo: ${players[next.a]?.n} vs ${players[next.b]?.n} → ${k.exact ? `${k.a.need.t} | ${k.b.need.t}` : 'todavía temprano'}`);
 }
 
+// Pick destacado: cómo le fue y qué habría pasado eligiendo por confianza.
+out("\n== Pick destacado ==");
+const res = Object.values(picks).filter((p) => p.pub && p.res !== "pending" && matches[p.id]);
+const rate = (list) => pct(list.filter((p) => p.res === "hit").length, list.length);
+const dst = res.filter((p) => p.dst);
+out(`  destacados: ${rate(dst)} · confianza media ${(dst.reduce((a, p) => a + p.c, 0) / (dst.length || 1)).toFixed(1)} · cuota media ${(dst.filter((p) => p.o).reduce((a, p) => a + p.o, 0) / (dst.filter((p) => p.o).length || 1)).toFixed(2)}`);
+for (const [lab, fn] of [["c ≥ 60", (p) => p.c >= 60], ["c ≥ 65", (p) => p.c >= 65], ["c ≥ 70", (p) => p.c >= 70], ["c ≥ 60 y cuota ≤ 1.60", (p) => p.c >= 60 && p.o && p.o <= 1.6], ["c ≥ 60 sin regla de la casa", (p) => p.c >= 60 && p.x?.rule !== "mkt"], ["c 55-59 y cuota 1.60-2.50 (regla actual)", (p) => p.c >= 55 && p.c < 60 && p.o > 1.6 && p.o <= 2.5]]) {
+  const l = res.filter(fn);
+  const r3 = l.filter((p) => DAYS.includes(day(matches[p.id].at)));
+  out(`  ${lab}: todo ${rate(l)} · últimos días ${rate(r3)}`);
+}
+// El de más confianza de cada hora (simula "destacado = el más fijo").
+const byHour = new Map();
+for (const p of res) { const k = matches[p.id].at.slice(0, 13); const b = byHour.get(k); if (!b || p.c > b.c) byHour.set(k, p); }
+const top = [...byHour.values()];
+out(`  el de más confianza de cada hora: ${rate(top)} · últimos días ${rate(top.filter((p) => DAYS.includes(day(matches[p.id].at))))}`);
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
