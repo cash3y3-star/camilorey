@@ -19,6 +19,10 @@ const FEATURES = ['h2h', 'h2h5', 'today', 'rating'];
 //   act7  = partidos de A en los 7 días previos menos los de B (÷10)
 //   act30 = lo mismo en 30 días (÷30)
 const RHYTHM = ['rest', 'act7', 'act30'];
+// Qué se juega cada uno en el grupo (lib/standings.js, vía ctx.stakeOf):
+//   stake = (importancia de ganar para A − para B) ÷ 2  (−1..1)
+//   dead  = 1 si B ya no se juega nada y A sí, −1 al revés, 0 si no
+const STAKES = ['stake', 'dead'];
 const DAY = 86400e3;
 const MIN_PRIOR_MATCHES = 15; // para entrenar: ambos jugadores con historial
 const MIN_RATING_ROWS = 2000; // el rating oficial entra cuando hay muestra
@@ -97,6 +101,7 @@ function featuresOf(m, ctx) {
   const idleA = idle(listA);
   const idleB = idle(listB);
   const rating = m.ra != null && m.rb != null ? (m.ra - m.rb) / 100 : 0;
+  const k = ctx.stakeOf ? ctx.stakeOf(m) : null;
   return {
     f: {
       h2h: (wA + 1) / (h2h.length + 2) - 0.5,
@@ -105,7 +110,9 @@ function featuresOf(m, ctx) {
       rating,
       rest: Math.log1p(idleB) - Math.log1p(idleA),
       act7: (recent(listA, 7) - recent(listB, 7)) / 10,
-      act30: (recent(listA, 30) - recent(listB, 30)) / 30
+      act30: (recent(listA, 30) - recent(listB, 30)) / 30,
+      stake: k ? (k.a.imp - k.b.imp) / 2 : 0,
+      dead: k ? (k.b.dead ? 1 : 0) - (k.a.dead ? 1 : 0) : 0
     },
     // datos crudos (para el Análisis IA y la regla de lógica)
     raw: { hA: wA, hT: h2h.length, h5A: w5, h5T: last5.length, nA: listA.length, nB: listB.length, hasRating: m.ra != null && m.rb != null, idleA, idleB }
@@ -195,4 +202,4 @@ function predict(model, f, oa, ob) {
   return { p, ph, pm };
 }
 
-module.exports = { FEATURES, RHYTHM, featuresOf, train, fitMarket, predict, marketProb };
+module.exports = { FEATURES, RHYTHM, STAKES, featuresOf, train, fitMarket, predict, marketProb };

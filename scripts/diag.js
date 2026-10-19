@@ -11,7 +11,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { FEATURES, RHYTHM, featuresOf, train, fitMarket, predict, marketProb } = require('./lib/model-v2');
+const { FEATURES, STAKES, featuresOf, train, fitMarket, predict, marketProb } = require('./lib/model-v2');
+const { stakes, groupsOf } = require('./lib/standings');
 
 const DATA = path.join(__dirname, '..', 'data');
 const OUT = path.join(__dirname, '..', 'diag-out');
@@ -163,41 +164,63 @@ out(`  modelo actual: ${pct(sim.base, sim.n)} · con la regla: ${pct(sim.rule, s
 out(`  modelo contra la casa: ${pct(sim.againstHit, sim.against)} (con la regla esos pasan a ${pct(sim.against - sim.againstHit, sim.against)})`);
 for (const [b, [h, n]] of Object.entries(sim.noRuleBand).sort()) out(`  franja ${b}: ${pct(h, n)}`);
 
-// Ritmo de juego: ¿mejora el modelo? Se entrena con y sin cada señal y se
-// compara en el 20% más reciente (partidos que el modelo no vio).
-out('\n== Ritmo de juego (días sin jugar, partidos en 7 y 30 días) ==');
-const variants = [['actual', FEATURES], ...RHYTHM.map((k) => [`+ ${k}`, [...FEATURES, k]]), ['+ todo el ritmo', [...FEATURES, ...RHYTHM]]];
-const trained = {};
-for (const [lab, keys] of variants) {
+// Tabla del grupo: ¿pesa lo que se juega cada uno? Se calcula para cada
+// partido de grupo con lo terminado antes de él, y se compara el acierto
+// real con lo que esperaba el modelo actual (sin cuota).
+out('\n== Tabla del grupo: lo que se juega cada jugador ==');
+const groups = groupsOf(Object.values(matches));
+const stakeCache = new Map();
+const tS = Date.now();
+ctx.stakeOf = (m) => {
+  if (stakeCache.has(m.id)) return stakeCache.get(m.id);
+  const g = groups.get(m.t);
+  const k = g && g.length >= 6 && g.some((x) => x.id === m.id) ? stakes(g, m, null, { maxExact: 3, samples: 200 }) : null;
+  stakeCache.set(m.id, k);
+  return k;
+};
+const sb = {};
+const bump = (key, won, exp) => { const b = (sb[key] ||= { h: 0, n: 0, e: 0 }); b.n++; b.e += exp; if (won) b.h++; };
+let withK = 0;
+for (const m of fin) {
+  const k = ctx.stakeOf(m);
+  if (!k) continue;
+  withK++;
+  const { f, raw } = featuresOf(m, ctx);
+  if (raw.nA < 15 || raw.nB < 15) continue;
+  const pA = predict(model, f, null, null).p;
+  const side = (s) => ({ id: s === 'a' ? m.a : m.b, k: k[s], p: s === 'a' ? pA : 1 - pA });
+  const A = side('a');
+  const B = side('b');
+  for (const [x, y] of [[A, B], [B, A]]) {
+    // x = el que SÍ se juega algo
+    if (!x.k.dead && y.k.dead) bump(`rival ${y.k.need?.k === 'safe' ? 'ya en la final' : 'ya sin nada (3er puesto o fuera)'}`, m.w === x.id, x.p);
+    if (!x.k.dead && !y.k.dead && x.k.imp - y.k.imp >= 0.5) bump('le importa mucho más (dif. ≥ 0,5)', m.w === x.id, x.p);
+    if (!x.k.dead && !y.k.dead && x.k.imp - y.k.imp >= 0.25 && x.k.imp - y.k.imp < 0.5) bump('le importa más (dif. 0,25-0,5)', m.w === x.id, x.p);
+    if (x.k.need?.k === 'must' && !y.k.dead) bump('necesita ganar (rival también se juega algo)', m.w === x.id, x.p);
+  }
+  if (A.k.dead && B.k.dead) bump('a ninguno le importa (gana A)', m.w === m.a, pA);
+}
+out(`  partidos de grupo con cálculo: ${withK} de ${fin.length} · ${((Date.now() - tS) / 1000).toFixed(0)} s`);
+for (const [key, b] of Object.entries(sb)) out(`  gana el que se juega algo — ${key}: ${pct(b.h, b.n)} · el modelo esperaba ${((b.e / b.n) * 100).toFixed(1)}%`);
+// Picks publicados (con su confianza real) cuando el rival no se jugaba nada.
+const pk = { favDead: [0, 0], rivDead: [0, 0] };
+for (const p of Object.values(picks)) {
+  const m = matches[p.id];
+  if (!m || p.res === 'pending' || !p.pub) continue;
+  const k = ctx.stakeOf(m);
+  if (!k) continue;
+  const fk = p.fav === m.a ? k.a : k.b;
+  const rk = p.fav === m.a ? k.b : k.a;
+  if (fk.dead && !rk.dead) { pk.favDead[1]++; if (p.res === 'hit') pk.favDead[0]++; }
+  if (rk.dead && !fk.dead) { pk.rivDead[1]++; if (p.res === 'hit') pk.rivDead[0]++; }
+}
+out(`  picks publicados con el elegido sin nada en juego (y el rival sí): ${pct(...pk.favDead)}`);
+out(`  picks publicados con el rival sin nada en juego (y el elegido sí): ${pct(...pk.rivDead)}`);
+const sVariants = [['actual', FEATURES], ['+ stake', [...FEATURES, 'stake']], ['+ dead', [...FEATURES, 'dead']], ['+ stake + dead', [...FEATURES, ...STAKES]]];
+for (const [lab, keys] of sVariants) {
   const mdl = train(fin, ctx, keys);
-  trained[lab] = mdl;
   const h = mdl.holdout;
   out(`  ${lab.padEnd(16)} acierto ${h.all.acc}% · ≥55%: ${h.c55?.acc}% (${h.c55?.share}%) · ≥60%: ${h.c60?.acc}% (${h.c60?.share}%) · logloss ${h.ll} · pesos ${JSON.stringify(mdl.weights)}`);
-}
-// Acierto según quién viene más activo (sin modelo): A = el que jugó más hace poco.
-const buckets = { 'uno parado ≥7 días y el otro jugó en ≤2 días': [0, 0], 'uno parado ≥3 días y el otro jugó hoy': [0, 0] };
-for (const m of fin.slice(-30000)) {
-  const { raw } = featuresOf(m, ctx);
-  if (raw.nA < 15 || raw.nB < 15) continue;
-  const act = raw.idleA < raw.idleB ? m.a : m.b;
-  const lo = Math.min(raw.idleA, raw.idleB);
-  const hi = Math.max(raw.idleA, raw.idleB);
-  if (hi >= 7 && lo <= 2) { buckets['uno parado ≥7 días y el otro jugó en ≤2 días'][1]++; if (m.w === act) buckets['uno parado ≥7 días y el otro jugó en ≤2 días'][0]++; }
-  if (hi >= 3 && lo <= 1) { buckets['uno parado ≥3 días y el otro jugó hoy'][1]++; if (m.w === act) buckets['uno parado ≥3 días y el otro jugó hoy'][0]++; }
-}
-for (const [k, [h, n]] of Object.entries(buckets)) out(`  gana el que tiene ritmo cuando ${k}: ${pct(h, n)}`);
-
-// Partidos de hoy entre jugadores pedidos por el usuario.
-out('\n== Svacha vs Klimenta ==');
-const nameOf = (id) => players[id]?.n || String(id);
-const has = (id, q) => nameOf(id).toLowerCase().includes(q);
-for (const m of Object.values(matches).filter((m) => [m.a, m.b].some((id) => has(id, 'svacha')) && [m.a, m.b].some((id) => has(id, 'klimenta'))).sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 4)) {
-  const { f, raw } = featuresOf(m, ctx);
-  const p = picks[m.id];
-  const pr = (mdl) => predict(mdl, f, m.oa ?? p?.x?.oA, m.ob ?? p?.x?.oB).p;
-  out(`  ${m.at} ${nameOf(m.a)} vs ${nameOf(m.b)} · ${m.st === 'f' ? `${m.sa}-${m.sb} gana ${nameOf(m.w)}` : 'sin terminar'}`);
-  out(`    días sin jugar: ${nameOf(m.a)} ${raw.idleA.toFixed(1)} · ${nameOf(m.b)} ${raw.idleB.toFixed(1)} · partidos 7d: ${(f.act7 * 10).toFixed(0)} de diferencia · H2H ${raw.hA}-${raw.hT - raw.hA}`);
-  out(`    pick publicado: ${p ? `${nameOf(p.fav)} ${p.c}% (${p.res})` : '—'} · modelo actual P(${nameOf(m.a)})=${pr(model).toFixed(3)} · con ritmo P=${pr(fitMarket(trained['+ todo el ritmo'], fin.filter((x) => x.oa && x.ob), ctx)).toFixed(3)}`);
 }
 
 // Picks que el sistema cambió de jugador al revisarlos antes de empezar.
@@ -206,7 +229,7 @@ const changed = Object.values(picks).filter((p) => p.chg);
 const ch = changed.filter((p) => p.res !== 'pending');
 out(`  cambiados: ${changed.length} (${changed.filter((p) => p.res === 'pending').length} pendientes) · de los jugados acertó ${pct(ch.filter((p) => p.res === 'hit').length, ch.length)}`);
 const revised = Object.values(picks).filter((p) => p.upd && matches[p.id] && matches[p.id].st !== 's');
-out(`  picks con revisión registrada: ${revised.length}`);
+out(`  partidos empezados con revisión registrada: ${revised.length}`);
 const lastRev = revised.filter((p) => matches[p.id]).map((p) => (new Date(matches[p.id].at) - new Date(p.upd)) / 60e3).filter((x) => x >= 0).sort((a, b) => a - b);
 if (lastRev.length) out(`  minutos entre la última revisión y el inicio: mediana ${lastRev[Math.floor(lastRev.length / 2)].toFixed(1)} · 90% en menos de ${lastRev[Math.floor(lastRev.length * 0.9)].toFixed(1)}`);
 
