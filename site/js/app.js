@@ -1461,6 +1461,8 @@ const KELLY_CAP = 0.1;
 // la persona puede apostarle de todos modos con un monto mínimo fijo. Se
 // guarda la lista de picks forzados en su configuración (bank.force).
 const FORCED_PCT = 0.01;
+// Solo se puede apostar igual o quitar antes de que empiece el partido.
+const betOpen = (p) => p.st === 's' && new Date(p.at).getTime() > Date.now();
 
 function kellyFraction(confidence, o, multiplier) {
   if (!o || o <= 1) return 0;
@@ -1573,10 +1575,10 @@ function kellyBodyHtml() {
           .map(({ p, f, stake, force }) => {
             const fav = p.fav === p.a.id ? p.a : p.b;
             const amt = force
-              ? `<span class="amt">${cop(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small><button type="button" class="mini-btn" data-kforce="${p.id}">Quitar</button></span>`
+              ? `<span class="amt">${cop(stake)}<small class="warn-t">No recomendado: la cuota no paga el riesgo</small>${betOpen(p) ? `<button type="button" class="mini-btn" data-kforce="${p.id}">Quitar</button>` : ''}</span>`
               : f
               ? `<span class="amt">${cop(stake)}<small>${(f * 100).toFixed(1).replace('.', ',')}% · gana ${cop(stake * (p.o - 1))}</small></span>`
-              : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 ? `<button type="button" class="mini-btn kforce" data-kforce="${p.id}">Apostar igual</button>` : ''}</span>`;
+              : `<span class="amt" style="color:var(--muted);font-size:12px">No apostar<small style="color:var(--muted)">${p.o ? 'la cuota no paga el riesgo' : 'sin cuota'}</small>${p.o > 1 && betOpen(p) ? `<button type="button" class="mini-btn kforce" data-kforce="${p.id}">Apostar igual</button>` : ''}</span>`;
             return `<div class="stake-row" data-open="${p.id}" style="cursor:pointer"><span class="who"><b>${esc(fav.n)} gana</b><small>${fmtTime(p.at)} · ${p.c}% · cuota ${odds(p.o)}${force ? ` · apuesta mínima (${FORCED_PCT * 100}% de la banca)` : ''}</small></span>${amt}</div>`;
           })
           .join('')
@@ -2378,6 +2380,13 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.kforce) {
     const cur = bankSettings() || { start: 0 };
     const id = Number(t.dataset.kforce);
+    const pk = allById().get(id);
+    if (!pk || !betOpen(pk)) {
+      toast('El partido ya empezó: no se puede cambiar la apuesta');
+      const box = document.getElementById('kelly-body');
+      if (box) box.innerHTML = kellyBodyHtml();
+      return;
+    }
     const list = new Set((cur.force || []).map(Number));
     if (list.has(id)) list.delete(id);
     else list.add(id);
