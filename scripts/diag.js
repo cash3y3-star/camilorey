@@ -239,7 +239,7 @@ if (lastRev.length) out(`  minutos entre la última revisión y el inicio: media
 // Ejemplo real: torneos de hoy con partidos pendientes (tabla + lo que se juega).
 out('\n== Tablas de grupo de hoy (muestra) ==');
 const { table } = require('./lib/standings');
-const live = [...groups.entries()].filter(([, g]) => g.some((x) => x.st !== 'f') && g.some((x) => x.st === 'f')).slice(0, 3);
+const live = [...groups.entries()].filter(([, g]) => g.some((x) => x.st !== 'f')).sort((x, y) => y[1].filter((m) => m.st === 'f').length - x[1].filter((m) => m.st === 'f').length).slice(0, 3);
 for (const [t, g] of live) {
   const gd = new Map(Object.entries(tournaments[t]?.gd || {}).map(([k, v]) => [Number(k), v]));
   out(`  ${tournaments[t]?.n || t} (diferencia de puntos guardada: ${gd.size ? 'sí' : 'no'})`);
