@@ -23,6 +23,7 @@ const BACKFILL_PAUSE_MS = 1200;
 const { fetchLigaProChecaOdds, findOdds } = require('./lib/rushbet');
 const { featuresOf, train: trainV2, fitMarket, predict } = require('./lib/model-v2');
 const { computeStake } = require('./lib/staking');
+const { table: groupTable, stakes, groupsOf } = require('./lib/standings');
 const BANK_START = 2000000; // banca inicial en COP, misma convención del sitio anterior
 
 const ROOT = path.join(__dirname, '..');
@@ -307,11 +308,19 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
     };
   }
   const winnerSide = finished ? sides.find((s) => s.place === 1) : null;
+  // Diferencia de puntos de juego en la tabla oficial del grupo: último
+  // desempate (los partidos no traen los puntos). Ver lib/standings.js.
+  const gd = {};
+  for (const g of pageData.widgets.group_sides || []) {
+    const pid = sides.find((s) => s.id === g.side_id)?.player?.id;
+    if (pid && g.goals_won_count != null) gd[pid] = g.goals_won_count - (g.goals_lost_count || 0);
+  }
   state.tournaments[id] = {
     n: pageData.tournament.name_en,
     at: pageData.tournament.start_date,
     st: finished ? 'f' : 's',
-    w: winnerSide?.player?.id || null
+    w: winnerSide?.player?.id || null,
+    gd
   };
 
   const sidesById = new Map(sides.map((s) => [s.id, s]));
@@ -342,6 +351,7 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       ob: state.matches[m.id]?.ob ?? null
     };
     const prevSt = state.matches[m.id]?.st;
+    if (!prevSt) tIndex = null; // partido nuevo: índice por torneo desactualizado
     state.matches[m.id] = row;
     if (played && prevSt !== 'f') finishedIdx = null; // índice de terminados desactualizado
     totals.matches++;
@@ -405,6 +415,8 @@ function prune() {
   }
   const usedT = new Set(Object.values(state.matches).map((m) => m.t));
   for (const id of Object.keys(state.tournaments)) if (!usedT.has(Number(id))) delete state.tournaments[id];
+  const old = new Date(Date.now() - 3 * 86400e3).toISOString();
+  for (const t of Object.values(state.tournaments)) if (t.gd && t.at < old) delete t.gd;
   const usedP = new Set(Object.values(state.matches).flatMap((m) => [m.a, m.b]));
   for (const id of Object.keys(state.players)) if (!usedP.has(Number(id))) delete state.players[id];
 }
@@ -488,6 +500,57 @@ function formBefore(playerId, beforeIso) {
     .join('');
 }
 
+// Tabla del grupo del torneo (va una vez por torneo en calendar.json) y lo
+// que se juega cada jugador en el partido (lib/standings.js). Solo grupos
+// completos: n jugadores → n(n−1)/2 partidos.
+const stakeCache = new Map();
+let tIndex = null; // torneo → ids de sus partidos (se rehace si entra un partido nuevo)
+function groupOf(t) {
+  if (!tIndex) {
+    tIndex = new Map();
+    for (const x of Object.values(state.matches)) (tIndex.get(x.t) || tIndex.set(x.t, []).get(x.t)).push(x.id);
+  }
+  const rows = (tIndex.get(t) || []).map((id) => state.matches[id]).filter(Boolean);
+  const g = groupsOf(rows).get(t);
+  if (!g) return null;
+  const n = new Set(g.flatMap((x) => [x.a, x.b])).size;
+  return n >= 4 && g.length === (n * (n - 1)) / 2 ? g : null;
+}
+
+// Señal "stake" del modelo: lo que se juega cada uno (lib/standings.js),
+// con el mismo cálculo rápido con el que se midió en el diagnóstico.
+// Medido el 18-oct en 37 mil partidos de grupo: si al rival ya no le
+// importa el partido, el que se juega algo ganó 59-64% (el modelo sin esta
+// señal esperaba 47-53%).
+const STAKE_OPTS = { maxExact: 3, samples: 200 };
+const stakeFeat = new Map(); // solo partidos terminados: no cambian
+modelCtx.stakeOf = (m) => {
+  if (stakeFeat.has(m.id)) return stakeFeat.get(m.id);
+  const g = groupOf(m.t);
+  const k = g && g.some((x) => x.id === m.id) ? stakes(g, m, null, STAKE_OPTS) : null;
+  if (m.st === 'f') stakeFeat.set(m.id, k);
+  return k;
+};
+const gdOf = (t) => new Map(Object.entries(state.tournaments[t]?.gd || {}).map(([k, v]) => [Number(k), v]));
+function groupView(t) {
+  const g = groupOf(t);
+  if (!g) return null;
+  return groupTable(g, gdOf(t)).map((r) => ({ ...r, n: state.players[r.p]?.n || '?' }));
+}
+// gk: { a, b } frase de cada jugador (k: tipo, t: texto) o { early: true }
+// si todavía faltan muchos partidos del grupo para saberlo con certeza.
+function stakeView(m) {
+  if (stakeCache.has(m.id)) return stakeCache.get(m.id);
+  const g = groupOf(m.t);
+  let v = null;
+  if (g && g.some((x) => x.id === m.id)) {
+    const k = stakes(g, m, gdOf(m.t));
+    v = k.exact ? { a: k.a.need, b: k.b.need } : { early: true };
+  }
+  stakeCache.set(m.id, v);
+  return v;
+}
+
 function detailView(m) {
   const all = h2hMatches(m.a, m.b, m.at);
   const h2h = all.slice(0, 10);
@@ -497,7 +560,8 @@ function detailView(m) {
     fa: formBefore(m.a, m.at),
     fb: formBefore(m.b, m.at),
     h2h: h2h.map((x) => (x.w === m.a ? 'A' : 'B')).join(''),
-    hN: all.length // cruces directos en todo el historial (desde HISTORY_FROM)
+    hN: all.length, // cruces directos en todo el historial (desde HISTORY_FROM)
+    gk: stakeView(m)
     // La lista completa del H2H (fecha, torneo, sets) va aparte, en
     // data/h2h/{a}-{b}.json: la ficha la pide al abrir la pestaña H2H. Antes
     // iba aquí y era la mitad del peso de calendar.json.
@@ -559,6 +623,20 @@ function buildWhyV2(p, m) {
   if (fF && fR && fF[0] + fF[1] + fR[0] + fR[1] > 0) {
     const w = (W.today || 0) * sgn * (p.f?.today ?? 0);
     if (w !== 0) add(w, `Forma hoy en este torneo: ${fav} va ${fF[0]}-${fF[1]} y ${riv} va ${fR[0]}-${fR[1]}.`);
+  }
+
+  // Tabla del grupo: lo que se juega cada uno (frases exactas de lib/standings.js).
+  const gk = stakeView(m);
+  if (gk && !gk.early && gk.a && gk.b) {
+    const w = (W.stake || 0) * sgn * (p.f?.stake ?? 0);
+    const nF = favA ? gk.a : gk.b;
+    const nR = favA ? gk.b : gk.a;
+    const both = `${fav}: ${nF.t} ${riv}: ${nR.t}`;
+    // Solo se dice "le importa más" si las situaciones son distintas.
+    const differ = nF.t !== nR.t;
+    if (differ && w >= 0.1) add(w, `Tabla del grupo: a ${fav} el partido le importa más. ${both}`);
+    else if (differ && w <= -0.1) add(w, `Tabla del grupo: a ${riv} el partido le importa más, y en esta liga el que se juega algo gana más de lo normal. ${both}`);
+    else if (differ || nF.k !== 'open') con.push({ w: 0, t: `Tabla del grupo: ${both}` }); // los dos "pelean por la final": no aporta
   }
 
   // Rating oficial (entra al modelo cuando hay suficiente historial con él).
@@ -701,6 +779,7 @@ function writeSite(meta) {
   const now = Date.now();
   byTournament = null;
   phaseCache.clear();
+  stakeCache.clear();
   h2hPairs.clear();
   const published = Object.values(state.picks).filter((p) => p.pub && state.matches[p.id]);
 
@@ -848,7 +927,12 @@ function writeSite(meta) {
 
   writeJson(path.join(OUT_DIR, 'picks.json'), pendingView);
   writeJson(path.join(OUT_DIR, 'results.json'), resolved.slice(0, 300).map((p) => pickView(p)));
-  writeJson(path.join(OUT_DIR, 'calendar.json'), { days, matches: calendar });
+  const groups = {};
+  for (const t of new Set([...calendar, ...pendingView].map((m) => m.t))) {
+    const g = groupView(t);
+    if (g) groups[t] = g;
+  }
+  writeJson(path.join(OUT_DIR, 'calendar.json'), { days, matches: calendar, groups });
   writeJson(path.join(OUT_DIR, 'stats.json'), {
     updatedAt: new Date().toISOString(),
     today: summarize(resolved.filter((p) => bogotaDay(state.matches[p.id].at) === today)),

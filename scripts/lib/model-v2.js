@@ -13,7 +13,10 @@
 // A) y el modelo es simétrico (sin intercepto): invertir A/B da 1 - p.
 // ============================================================
 
-const FEATURES = ['h2h', 'h2h5', 'today', 'rating'];
+// stake: lo que se juega cada uno en la tabla del grupo (activa desde el
+// 18-oct: si al rival ya no le importa el partido, el que se juega algo
+// ganó 59-64% contra 47-53% que esperaba el modelo sin esta señal).
+const FEATURES = ['h2h', 'h2h5', 'today', 'rating', 'stake'];
 // Ritmo de juego (candidatas, se miden con scripts/diag.js antes de usarlas):
 //   rest  = log(1 + días sin jugar) de B menos el de A (positivo = A más activo)
 //   act7  = partidos de A en los 7 días previos menos los de B (÷10)
@@ -22,7 +25,7 @@ const RHYTHM = ['rest', 'act7', 'act30'];
 // Qué se juega cada uno en el grupo (lib/standings.js, vía ctx.stakeOf):
 //   stake = (importancia de ganar para A − para B) ÷ 2  (−1..1)
 //   dead  = 1 si B ya no se juega nada y A sí, −1 al revés, 0 si no
-const STAKES = ['stake', 'dead'];
+const STAKES = ['stake', 'dead']; // dead se midió y no suma: queda apagada
 const DAY = 86400e3;
 const MIN_PRIOR_MATCHES = 15; // para entrenar: ambos jugadores con historial
 const MIN_RATING_ROWS = 2000; // el rating oficial entra cuando hay muestra
@@ -119,7 +122,7 @@ function featuresOf(m, ctx) {
   };
 }
 
-const vec = (f, keys) => keys.map((k) => f[k]);
+const vec = (f, keys) => keys.map((k) => f[k] ?? 0); // picks viejos sin alguna señal: 0
 
 // Entrena con todos los partidos terminados. Devuelve el modelo y su
 // acierto medido en el 20% más reciente (entrenando solo con el 80% viejo).
@@ -191,7 +194,7 @@ function marketProb(oa, ob) {
   return 1 / oa / (1 / oa + 1 / ob); // sin el margen de la casa
 }
 function historyProb(model, f) {
-  return sigmoid(model.keys.reduce((s, k) => s + f[k] * model.weights[k], 0));
+  return sigmoid(model.keys.reduce((s, k) => s + (f[k] ?? 0) * model.weights[k], 0));
 }
 
 // Probabilidad final de que gane A: historial + mercado (si hay cuota).

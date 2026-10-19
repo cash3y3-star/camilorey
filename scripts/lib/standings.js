@@ -161,7 +161,7 @@ function stakes(group, m, gd = null, opts = {}) {
   return { a: view(0), b: view(1), exact };
 }
 
-const WIN = ['', '', '', '3-2', '3-1', '3-0'];
+const WIN = ['', '', '', '', '3-1 o 3-0', '3-0'];
 function needText(rows, min, max, size) {
   if (min === max) {
     if (min === 0) return { k: 'safe', t: 'Ya está en la final pase lo que pase: no se juega nada en este partido.' };
@@ -174,12 +174,12 @@ function needText(rows, min, max, size) {
     i === 0 ? `Asegura ${goal} aunque pierda`
     : i <= 2 ? `Le basta ganar ${i} set${i > 1 ? 's' : ''} para asegurar ${goal}`
     : i === 3 ? `Si gana, asegura ${goal}`
-    : `Necesita ganar ${WIN[i]} o mejor para asegurar ${goal}`;
+    : `Necesita ganar ${WIN[i]} para asegurar ${goal}`;
   if (min === 0) {
     const s = secure(0);
     const c = chance(0);
     if (s >= 0) return { k: s >= 3 ? 'must' : 'final', t: `${phrase(s, 'la final')}${c < s ? '; con menos, depende de otros resultados' : ''}.` };
-    if (c >= 3) return { k: 'must', t: `Necesita ganar${c > 3 ? ` ${WIN[c]} o mejor` : ''} para seguir con opción a la final, y además depende de otros resultados.` };
+    if (c >= 3) return { k: 'must', t: `Necesita ganar${c > 3 ? ` ${WIN[c]}` : ''} para seguir con opción a la final, y además depende de otros resultados.` };
     return { k: 'open', t: 'Pelea por la final: el resultado le importa, pero depende también de otros partidos.' };
   }
   // Ya sin opción de final: pelea por no quedar 5.º (grupos de 5).

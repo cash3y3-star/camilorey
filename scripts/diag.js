@@ -32,6 +32,18 @@ for (const m of Object.values(matches)) {
 }
 for (const l of idx.values()) l.sort((x, y) => (x.at < y.at ? 1 : -1));
 const ctx = { finishedOf: (id) => idx.get(id) || [] };
+// Lo que se juega cada uno en el grupo (señal stake), igual que update.js.
+const groups = groupsOf(Object.values(matches));
+const stakeCache = new Map();
+const tS = Date.now();
+ctx.stakeOf = (m) => {
+  if (stakeCache.has(m.id)) return stakeCache.get(m.id);
+  const g = groups.get(m.t);
+  const k = g && g.length >= 6 && g.some((x) => x.id === m.id) ? stakes(g, m, null, { maxExact: 3, samples: 200 }) : null;
+  stakeCache.set(m.id, k);
+  return k;
+};
+
 
 const fin = Object.values(matches)
   .filter((m) => m.st === 'f' && m.w != null)
@@ -168,16 +180,6 @@ for (const [b, [h, n]] of Object.entries(sim.noRuleBand).sort()) out(`  franja $
 // partido de grupo con lo terminado antes de él, y se compara el acierto
 // real con lo que esperaba el modelo actual (sin cuota).
 out('\n== Tabla del grupo: lo que se juega cada jugador ==');
-const groups = groupsOf(Object.values(matches));
-const stakeCache = new Map();
-const tS = Date.now();
-ctx.stakeOf = (m) => {
-  if (stakeCache.has(m.id)) return stakeCache.get(m.id);
-  const g = groups.get(m.t);
-  const k = g && g.length >= 6 && g.some((x) => x.id === m.id) ? stakes(g, m, null, { maxExact: 3, samples: 200 }) : null;
-  stakeCache.set(m.id, k);
-  return k;
-};
 const sb = {};
 const bump = (key, won, exp) => { const b = (sb[key] ||= { h: 0, n: 0, e: 0 }); b.n++; b.e += exp; if (won) b.h++; };
 let withK = 0;
@@ -200,7 +202,7 @@ for (const m of fin) {
   }
   if (A.k.dead && B.k.dead) bump('a ninguno le importa (gana A)', m.w === m.a, pA);
 }
-out(`  partidos de grupo con cálculo: ${withK} de ${fin.length} · ${((Date.now() - tS) / 1000).toFixed(0)} s`);
+out(`  partidos de grupo con cálculo: ${withK} de ${fin.length}`);
 for (const [key, b] of Object.entries(sb)) out(`  gana el que se juega algo — ${key}: ${pct(b.h, b.n)} · el modelo esperaba ${((b.e / b.n) * 100).toFixed(1)}%`);
 // Picks publicados (con su confianza real) cuando el rival no se jugaba nada.
 const pk = { favDead: [0, 0], rivDead: [0, 0] };
@@ -216,7 +218,8 @@ for (const p of Object.values(picks)) {
 }
 out(`  picks publicados con el elegido sin nada en juego (y el rival sí): ${pct(...pk.favDead)}`);
 out(`  picks publicados con el rival sin nada en juego (y el elegido sí): ${pct(...pk.rivDead)}`);
-const sVariants = [['actual', FEATURES], ['+ stake', [...FEATURES, 'stake']], ['+ dead', [...FEATURES, 'dead']], ['+ stake + dead', [...FEATURES, ...STAKES]]];
+const base = FEATURES.filter((k) => k !== 'stake');
+const sVariants = [['sin stake', base], ['con stake (actual)', FEATURES], ['+ dead', [...FEATURES, 'dead']]];
 for (const [lab, keys] of sVariants) {
   const mdl = train(fin, ctx, keys);
   const h = mdl.holdout;
@@ -232,6 +235,19 @@ const revised = Object.values(picks).filter((p) => p.upd && matches[p.id] && mat
 out(`  partidos empezados con revisión registrada: ${revised.length}`);
 const lastRev = revised.filter((p) => matches[p.id]).map((p) => (new Date(matches[p.id].at) - new Date(p.upd)) / 60e3).filter((x) => x >= 0).sort((a, b) => a - b);
 if (lastRev.length) out(`  minutos entre la última revisión y el inicio: mediana ${lastRev[Math.floor(lastRev.length / 2)].toFixed(1)} · 90% en menos de ${lastRev[Math.floor(lastRev.length * 0.9)].toFixed(1)}`);
+
+// Ejemplo real: torneos de hoy con partidos pendientes (tabla + lo que se juega).
+out('\n== Tablas de grupo de hoy (muestra) ==');
+const { table } = require('./lib/standings');
+const live = [...groups.entries()].filter(([, g]) => g.some((x) => x.st !== 'f') && g.some((x) => x.st === 'f')).slice(0, 3);
+for (const [t, g] of live) {
+  const gd = new Map(Object.entries(tournaments[t]?.gd || {}).map(([k, v]) => [Number(k), v]));
+  out(`  ${tournaments[t]?.n || t} (diferencia de puntos guardada: ${gd.size ? 'sí' : 'no'})`);
+  for (const r of table(g, gd)) out(`    ${r.pos}. ${players[r.p]?.n} ${r.w}-${r.l} sets ${r.sw}-${r.sl} pts ${r.pts} ${r.q || ''}`);
+  const next = g.filter((x) => x.st !== 'f').sort((x, y) => (x.at < y.at ? -1 : 1))[0];
+  const k = stakes(g, next, gd);
+  out(`    próximo: ${players[next.a]?.n} vs ${players[next.b]?.n} → ${k.exact ? `${k.a.need.t} | ${k.b.need.t}` : 'todavía temprano'}`);
+}
 
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
