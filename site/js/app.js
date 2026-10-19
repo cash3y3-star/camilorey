@@ -415,6 +415,10 @@ function errorBox() {
 
 // ---------------- vistas ----------------
 
+// Fondo animado del saludo: alterna cada día (hora de Colombia) entre el
+// brillo que flota (A) y el destello (C), como pidió el usuario el 19-oct.
+const heroFx = () => (Math.floor(Date.parse(todayKey()) / 86400e3) % 2 ? 'fx-c' : 'fx-a');
+
 function viewInicio() {
   // Estadísticas de Inicio: SOLO los picks destacados (con su resultado real).
   const fs = data.stats?.featured;
@@ -428,7 +432,7 @@ function viewInicio() {
   const featured = next.find((p) => p.ft); // solo el elegido por el sistema (60%+ y cuota > 1.60)
 
   return `
-  <section class="hero">
+  <section class="hero ${heroFx()}">
     <h1>${name ? `Hola, ${esc(name)} 👋` : 'Picks de hoy 🏓'}</h1>
     <p>${esc(longDate())} · ${pend.length} picks activos · Liga Pro Checa</p>
   </section>

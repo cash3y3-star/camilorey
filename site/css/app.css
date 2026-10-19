@@ -104,14 +104,18 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
 }
 .hero { isolation: isolate; }
 .hero > * { position: relative; z-index: 1; }
-/* Brillo rojo que flota despacio por la tarjeta (opción A, elegida el 19-oct) */
-.hero::after { content: ''; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(225, 6, 0, 0.45), transparent 70%); z-index: 0; pointer-events: none; animation: hero-glow 9s ease-in-out infinite; }
+/* Fondo animado del saludo, alterna cada día (heroFx en app.js):
+   fx-a = brillo rojo que flota despacio; fx-c = destello que cruza cada 5 s */
+.hero::after { content: ''; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(225, 6, 0, 0.45), transparent 70%); z-index: 0; pointer-events: none; }
+.hero.fx-a::after { animation: hero-glow 9s ease-in-out infinite; }
+.hero.fx-c::before { content: ''; position: absolute; top: -50%; bottom: -50%; left: -60%; width: 45%; background: linear-gradient(100deg, transparent, rgba(255, 60, 40, 0.22), rgba(255, 255, 255, 0.1), transparent); transform: skewX(-18deg); z-index: 0; pointer-events: none; animation: hero-shine 5s ease-in-out infinite; }
+@keyframes hero-shine { 0%, 55% { left: -60%; } 100% { left: 130%; } }
 @keyframes hero-glow {
   0%, 100% { transform: translate(0, 0) scale(1); }
   33% { transform: translate(-150px, 60px) scale(1.25); }
   66% { transform: translate(-60px, 90px) scale(0.9); }
 }
-@media (prefers-reduced-motion: reduce) { .hero::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hero::after, .hero::before { animation: none; } .hero.fx-c::before { display: none; } }
 .hero h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
 .hero p { margin: 4px 0 0; color: #c9c9cf; font-size: 13px; }
 
