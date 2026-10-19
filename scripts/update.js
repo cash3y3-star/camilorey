@@ -308,19 +308,20 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
     };
   }
   const winnerSide = finished ? sides.find((s) => s.place === 1) : null;
-  // Diferencia de puntos de juego en la tabla oficial del grupo: último
-  // desempate (los partidos no traen los puntos). Ver lib/standings.js.
-  const gd = {};
+  // Bolas (puntos de juego) ganadas y perdidas en la tabla oficial del
+  // grupo: se muestran en la tabla y su diferencia es el último desempate
+  // (los partidos no traen las bolas). Ver lib/standings.js.
+  const gb = {};
   for (const g of pageData.widgets.group_sides || []) {
     const pid = sides.find((s) => s.id === g.side_id)?.player?.id;
-    if (pid && g.goals_won_count != null) gd[pid] = g.goals_won_count - (g.goals_lost_count || 0);
+    if (pid && g.goals_won_count != null) gb[pid] = [g.goals_won_count, g.goals_lost_count || 0];
   }
   state.tournaments[id] = {
     n: pageData.tournament.name_en,
     at: pageData.tournament.start_date,
     st: finished ? 'f' : 's',
     w: winnerSide?.player?.id || null,
-    gd
+    gb
   };
 
   const sidesById = new Map(sides.map((s) => [s.id, s]));
@@ -416,7 +417,11 @@ function prune() {
   const usedT = new Set(Object.values(state.matches).map((m) => m.t));
   for (const id of Object.keys(state.tournaments)) if (!usedT.has(Number(id))) delete state.tournaments[id];
   const old = new Date(Date.now() - 3 * 86400e3).toISOString();
-  for (const t of Object.values(state.tournaments)) if (t.gd && t.at < old) delete t.gd;
+  for (const t of Object.values(state.tournaments)) {
+    if (t.at >= old) continue;
+    delete t.gb;
+    delete t.gd; // formato anterior (solo la diferencia)
+  }
   const usedP = new Set(Object.values(state.matches).flatMap((m) => [m.a, m.b]));
   for (const id of Object.keys(state.players)) if (!usedP.has(Number(id))) delete state.players[id];
 }
@@ -531,11 +536,12 @@ modelCtx.stakeOf = (m) => {
   if (m.st === 'f') stakeFeat.set(m.id, k);
   return k;
 };
-const gdOf = (t) => new Map(Object.entries(state.tournaments[t]?.gd || {}).map(([k, v]) => [Number(k), v]));
+const gdOf = (t) => new Map(Object.entries(state.tournaments[t]?.gb || {}).map(([k, v]) => [Number(k), v[0] - v[1]]));
 function groupView(t) {
   const g = groupOf(t);
   if (!g) return null;
-  return groupTable(g, gdOf(t)).map((r) => ({ ...r, n: state.players[r.p]?.n || '?' }));
+  const gb = state.tournaments[t]?.gb || {};
+  return groupTable(g, gdOf(t)).map((r) => ({ ...r, n: state.players[r.p]?.n || '?', bw: gb[r.p]?.[0] ?? null, bl: gb[r.p]?.[1] ?? null }));
 }
 // gk: { a, b } frase de cada jugador (k: tipo, t: texto) o { early: true }
 // si todavía faltan muchos partidos del grupo para saberlo con certeza.

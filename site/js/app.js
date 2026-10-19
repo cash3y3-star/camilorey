@@ -2000,7 +2000,7 @@ function groupBlock(m) {
     .map((r) => {
       const q = GROUP_Q[r.q];
       const me = r.p === m.a.id || r.p === m.b.id;
-      return `<tr class="${me ? 'me' : ''}"><td class="num">${r.pos}</td><td class="who" data-player="${r.p}">${esc(r.n)}${q ? ` <span class="gq ${q[1]}">${q[0]}</span>` : ''}</td><td class="num">${r.w}-${r.l}</td><td class="num">${r.sw}-${r.sl}</td><td class="num"><b>${r.pts}</b></td></tr>`;
+      return `<tr class="${me ? 'me' : ''}"><td class="num">${r.pos}</td><td class="who" data-player="${r.p}">${esc(r.n)}${q ? ` <span class="gq ${q[1]}">${q[0]}</span>` : ''}</td><td class="num">${r.w}-${r.l}</td><td class="num">${r.sw}-${r.sl}</td><td class="num">${r.bw != null ? `${r.bw}-${r.bl}` : '—'}</td><td class="num"><b>${r.pts}</b></td></tr>`;
     })
     .join('');
   const k = m.gk;
@@ -2011,7 +2011,7 @@ function groupBlock(m) {
     : [[m.a, k.a], [m.b, k.b]].map(([p, x]) => (x ? `<div class="gneed ${x.k}"><b>${esc(p.n)}</b><span>${esc(x.t)}</span></div>` : '')).join('');
   return `<div class="block">
       <div class="block-h"><span class="overline">Tabla del grupo</span><span style="font-size:11px;color:var(--muted)">1.º-2.º final · 3.º-4.º 3er puesto${rows.length >= 5 ? ' · 5.º fuera' : ''}</span></div>
-      <div class="h2h-list scroll-x"><table class="ledger gtable"><thead><tr><th class="num">#</th><th>Jugador</th><th class="num">G-P</th><th class="num">Sets</th><th class="num">Pts</th></tr></thead><tbody>${tr}</tbody></table></div>
+      <div class="h2h-list scroll-x"><table class="ledger gtable"><thead><tr><th class="num">#</th><th>Jugador</th><th class="num">G-P</th><th class="num">Sets</th><th class="num">Bolas</th><th class="num">Puntos</th></tr></thead><tbody>${tr}</tbody></table></div>
       ${need ? `<div class="overline" style="margin:12px 0 6px">${m.st === 'f' ? 'Lo que se jugaba cada uno antes de este partido' : 'Lo que se juega cada uno'}</div>${need}` : ''}
     </div>`;
 }

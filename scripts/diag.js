@@ -241,7 +241,7 @@ out('\n== Tablas de grupo de hoy (muestra) ==');
 const { table } = require('./lib/standings');
 const live = [...groups.entries()].filter(([, g]) => g.some((x) => x.st !== 'f')).sort((x, y) => y[1].filter((m) => m.st === 'f').length - x[1].filter((m) => m.st === 'f').length).slice(0, 3);
 for (const [t, g] of live) {
-  const gd = new Map(Object.entries(tournaments[t]?.gd || {}).map(([k, v]) => [Number(k), v]));
+  const gd = new Map(Object.entries(tournaments[t]?.gb || {}).map(([k, v]) => [Number(k), v[0] - v[1]]));
   out(`  ${tournaments[t]?.n || t} (diferencia de puntos guardada: ${gd.size ? 'sí' : 'no'})`);
   for (const r of table(g, gd)) out(`    ${r.pos}. ${players[r.p]?.n} ${r.w}-${r.l} sets ${r.sw}-${r.sl} pts ${r.pts} ${r.q || ''}`);
   const next = g.filter((x) => x.st !== 'f').sort((x, y) => (x.at < y.at ? -1 : 1))[0];
