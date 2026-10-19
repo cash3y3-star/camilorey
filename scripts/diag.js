@@ -11,13 +11,14 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featuresOf, train, fitMarket, predict, marketProb } = require('./lib/model-v2');
+const { FEATURES, RHYTHM, featuresOf, train, fitMarket, predict, marketProb } = require('./lib/model-v2');
 
 const DATA = path.join(__dirname, '..', 'data');
 const OUT = path.join(__dirname, '..', 'diag-out');
 const read = (f) => JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'));
 const matches = read('matches.json');
 const picks = read('picks.json');
+const players = read('players.json');
 const tournaments = read('tournaments.json');
 
 const day = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date(iso));
@@ -161,6 +162,43 @@ out(`partidos con cuota: ${sim.n}`);
 out(`  modelo actual: ${pct(sim.base, sim.n)} · con la regla: ${pct(sim.rule, sim.n)}`);
 out(`  modelo contra la casa: ${pct(sim.againstHit, sim.against)} (con la regla esos pasan a ${pct(sim.against - sim.againstHit, sim.against)})`);
 for (const [b, [h, n]] of Object.entries(sim.noRuleBand).sort()) out(`  franja ${b}: ${pct(h, n)}`);
+
+// Ritmo de juego: ¿mejora el modelo? Se entrena con y sin cada señal y se
+// compara en el 20% más reciente (partidos que el modelo no vio).
+out('\n== Ritmo de juego (días sin jugar, partidos en 7 y 30 días) ==');
+const variants = [['actual', FEATURES], ...RHYTHM.map((k) => [`+ ${k}`, [...FEATURES, k]]), ['+ todo el ritmo', [...FEATURES, ...RHYTHM]]];
+const trained = {};
+for (const [lab, keys] of variants) {
+  const mdl = train(fin, ctx, keys);
+  trained[lab] = mdl;
+  const h = mdl.holdout;
+  out(`  ${lab.padEnd(16)} acierto ${h.all.acc}% · ≥55%: ${h.c55?.acc}% (${h.c55?.share}%) · ≥60%: ${h.c60?.acc}% (${h.c60?.share}%) · logloss ${h.ll} · pesos ${JSON.stringify(mdl.weights)}`);
+}
+// Acierto según quién viene más activo (sin modelo): A = el que jugó más hace poco.
+const buckets = { 'uno parado ≥7 días y el otro jugó en ≤2 días': [0, 0], 'uno parado ≥3 días y el otro jugó hoy': [0, 0] };
+for (const m of fin.slice(-30000)) {
+  const { raw } = featuresOf(m, ctx);
+  if (raw.nA < 15 || raw.nB < 15) continue;
+  const act = raw.idleA < raw.idleB ? m.a : m.b;
+  const lo = Math.min(raw.idleA, raw.idleB);
+  const hi = Math.max(raw.idleA, raw.idleB);
+  if (hi >= 7 && lo <= 2) { buckets['uno parado ≥7 días y el otro jugó en ≤2 días'][1]++; if (m.w === act) buckets['uno parado ≥7 días y el otro jugó en ≤2 días'][0]++; }
+  if (hi >= 3 && lo <= 1) { buckets['uno parado ≥3 días y el otro jugó hoy'][1]++; if (m.w === act) buckets['uno parado ≥3 días y el otro jugó hoy'][0]++; }
+}
+for (const [k, [h, n]] of Object.entries(buckets)) out(`  gana el que tiene ritmo cuando ${k}: ${pct(h, n)}`);
+
+// Partidos de hoy entre jugadores pedidos por el usuario.
+out('\n== Svacha vs Klimenta ==');
+const nameOf = (id) => players[id]?.n || String(id);
+const has = (id, q) => nameOf(id).toLowerCase().includes(q);
+for (const m of Object.values(matches).filter((m) => [m.a, m.b].some((id) => has(id, 'svacha')) && [m.a, m.b].some((id) => has(id, 'klimenta'))).sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 4)) {
+  const { f, raw } = featuresOf(m, ctx);
+  const p = picks[m.id];
+  const pr = (mdl) => predict(mdl, f, m.oa ?? p?.x?.oA, m.ob ?? p?.x?.oB).p;
+  out(`  ${m.at} ${nameOf(m.a)} vs ${nameOf(m.b)} · ${m.st === 'f' ? `${m.sa}-${m.sb} gana ${nameOf(m.w)}` : 'sin terminar'}`);
+  out(`    días sin jugar: ${nameOf(m.a)} ${raw.idleA.toFixed(1)} · ${nameOf(m.b)} ${raw.idleB.toFixed(1)} · partidos 7d: ${(f.act7 * 10).toFixed(0)} de diferencia · H2H ${raw.hA}-${raw.hT - raw.hA}`);
+  out(`    pick publicado: ${p ? `${nameOf(p.fav)} ${p.c}% (${p.res})` : '—'} · modelo actual P(${nameOf(m.a)})=${pr(model).toFixed(3)} · con ritmo P=${pr(fitMarket(trained['+ todo el ritmo'], fin.filter((x) => x.oa && x.ob), ctx)).toFixed(3)}`);
+}
 
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');

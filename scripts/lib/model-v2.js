@@ -14,6 +14,12 @@
 // ============================================================
 
 const FEATURES = ['h2h', 'h2h5', 'today', 'rating'];
+// Ritmo de juego (candidatas, se miden con scripts/diag.js antes de usarlas):
+//   rest  = log(1 + días sin jugar) de B menos el de A (positivo = A más activo)
+//   act7  = partidos de A en los 7 días previos menos los de B (÷10)
+//   act30 = lo mismo en 30 días (÷30)
+const RHYTHM = ['rest', 'act7', 'act30'];
+const DAY = 86400e3;
 const MIN_PRIOR_MATCHES = 15; // para entrenar: ambos jugadores con historial
 const MIN_RATING_ROWS = 2000; // el rating oficial entra cuando hay muestra
 const L2 = 1; // regularización (como C=1 en sklearn)
@@ -78,16 +84,31 @@ function featuresOf(m, ctx) {
   const net = (list, pid) => list.reduce((s, x) => s + (x.t === m.t ? (x.w === pid ? 1 : -1) : 0), 0);
   const listB = before(ctx.finishedOf(m.b));
   const today = net(listA, m.a) - net(listB, m.b);
+  const t0 = new Date(m.at).getTime();
+  const idle = (list) => (list.length ? Math.min(120, (t0 - new Date(list[0].at).getTime()) / DAY) : 120);
+  const recent = (list, days) => {
+    let n = 0;
+    for (const x of list) {
+      if (t0 - new Date(x.at).getTime() > days * DAY) break; // lista: más nuevo primero
+      n++;
+    }
+    return n;
+  };
+  const idleA = idle(listA);
+  const idleB = idle(listB);
   const rating = m.ra != null && m.rb != null ? (m.ra - m.rb) / 100 : 0;
   return {
     f: {
       h2h: (wA + 1) / (h2h.length + 2) - 0.5,
       h2h5: last5.length ? (w5 + 0.5) / (last5.length + 1) - 0.5 : 0,
       today,
-      rating
+      rating,
+      rest: Math.log1p(idleB) - Math.log1p(idleA),
+      act7: (recent(listA, 7) - recent(listB, 7)) / 10,
+      act30: (recent(listA, 30) - recent(listB, 30)) / 30
     },
     // datos crudos (para el Análisis IA y la regla de lógica)
-    raw: { hA: wA, hT: h2h.length, h5A: w5, h5T: last5.length, nA: listA.length, nB: listB.length, hasRating: m.ra != null && m.rb != null }
+    raw: { hA: wA, hT: h2h.length, h5A: w5, h5T: last5.length, nA: listA.length, nB: listB.length, hasRating: m.ra != null && m.rb != null, idleA, idleB }
   };
 }
 
@@ -95,7 +116,8 @@ const vec = (f, keys) => keys.map((k) => f[k]);
 
 // Entrena con todos los partidos terminados. Devuelve el modelo y su
 // acierto medido en el 20% más reciente (entrenando solo con el 80% viejo).
-function train(finishedSorted, ctx) {
+// features: lista de señales a usar (por defecto FEATURES).
+function train(finishedSorted, ctx, features = FEATURES) {
   const rows = [];
   for (const m of finishedSorted) {
     if (m.w == null) continue;
@@ -104,7 +126,7 @@ function train(finishedSorted, ctx) {
     rows.push({ f, y: m.w === m.a ? 1 : 0, hasRating: raw.hasRating });
   }
   const ratingRows = rows.filter((r) => r.hasRating).length;
-  const keys = FEATURES.filter((k) => k !== 'rating' || ratingRows >= MIN_RATING_ROWS);
+  const keys = features.filter((k) => k !== 'rating' || ratingRows >= MIN_RATING_ROWS);
   if (rows.length < 500) return null;
 
   const cut = Math.floor(rows.length * 0.8);
@@ -121,13 +143,18 @@ function train(finishedSorted, ctx) {
     }
     return n ? { acc: Math.round((ok / n) * 1000) / 10, share: Math.round((n / test.length) * 100), n } : null;
   };
+  // Pérdida logarítmica en el 20% reciente (más baja = probabilidades mejores).
+  const ll = test.reduce((sum, r) => {
+    const p = Math.min(0.999, Math.max(0.001, sigmoid(vec(r.f, keys).reduce((s, v, i) => s + v * wHold[i], 0))));
+    return sum - (r.y === 1 ? Math.log(p) : Math.log(1 - p));
+  }, 0) / (test.length || 1);
   const w = fitLogistic(rows.map((r) => vec(r.f, keys)), rows.map((r) => r.y));
   return {
     keys,
     weights: Object.fromEntries(keys.map((k, i) => [k, Math.round(w[i] * 10000) / 10000])),
     trained: rows.length,
     ratingRows,
-    holdout: { all: evalAt(0), c55: evalAt(0.55), c60: evalAt(0.6) },
+    holdout: { all: evalAt(0), c55: evalAt(0.55), c60: evalAt(0.6), ll: Math.round(ll * 10000) / 10000 },
     market: { h: 1, m: 0.7, fitted: 0 } // se ajusta en fitMarket cuando hay muestra
   };
 }
@@ -168,4 +195,4 @@ function predict(model, f, oa, ob) {
   return { p, ph, pm };
 }
 
-module.exports = { FEATURES, featuresOf, train, fitMarket, predict, marketProb };
+module.exports = { FEATURES, RHYTHM, featuresOf, train, fitMarket, predict, marketProb };
