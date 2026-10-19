@@ -292,6 +292,24 @@ for (const p of withS.slice(-12)) {
   out(`  ${m.at.slice(5, 16)} ${players[m.a]?.n} vs ${players[m.b]?.n} · grupo ${g.length} partidos, ${before} jugados antes · stake guardado ${p.f.stake.toFixed(3)} · recalculado ahora ${((now.a.imp - now.b.imp) / 2).toFixed(3)} · revisado ${p.upd.slice(11, 16)} · ${m.st}`);
 }
 
+// Cómo vamos hoy (hora de Colombia): picks publicados, por franja, destacado y tabla.
+out('\n== Hoy ==');
+{
+  const today = day(new Date().toISOString());
+  const list = Object.values(picks).filter((p) => p.pub && matches[p.id] && day(matches[p.id].at) === today);
+  const done = list.filter((p) => p.res !== 'pending');
+  const rate = (l) => pct(l.filter((p) => p.res === 'hit').length, l.length);
+  out(`  ${today}: ${rate(done)} · pendientes ${list.length - done.length}`);
+  for (const [lab, fn] of [['menos de 55%', (p) => p.c < 55], ['55-59%', (p) => p.c >= 55 && p.c < 60], ['60% o más', (p) => p.c >= 60]]) out(`    ${lab}: ${rate(done.filter(fn))}`);
+  const dstNew = Object.values(picks).filter((p) => p.dst && p.res !== 'pending' && matches[p.id] && matches[p.id].at >= '2026-10-19T05:30:00Z');
+  out(`  destacados desde el reinicio: ${rate(dstNew)} · ${dstNew.map((p) => `${players[p.fav]?.n} ${p.c}% @${p.o} ${p.res === 'hit' ? 'G' : 'P'}`).join(' | ')}`);
+  const withStake = done.filter((p) => p.f && Math.abs(p.f.stake || 0) >= 0.05);
+  out(`  picks de hoy donde pesó la tabla del grupo: ${rate(withStake)}`);
+  const byT = new Map();
+  for (const p of done) { const t = tournaments[matches[p.id].t]?.n || '?'; const b = byT.get(t) || []; b.push(p); byT.set(t, b); }
+  for (const [t, l] of byT) out(`    ${t}: ${rate(l)}`);
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
