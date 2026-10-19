@@ -1953,10 +1953,11 @@ function formListHtml(p, f, n, last) {
   const rows = list
     .map((x) => {
       const [s1, s2] = String(x.s || '-').split('-');
-      return `<div class="h2h-row" data-player="${x.op.id}" style="cursor:pointer">
+      return `<div class="h2h-row one-res" data-player="${x.op.id}" style="cursor:pointer">
         <div class="h2h-date">${fmtD(x.at)}<small>${esc(x.ph ? `${x.ph} · ${x.tn}` : x.tn)}</small></div>
         <div class="h2h-names"><div class="${x.w ? 'w' : ''}">${esc(p.n)}</div><div class="${x.w ? '' : 'w'}">${esc(x.op.n)}</div></div>
-        <div class="h2h-score"><div class="${x.w ? 'w' : ''}">${s1 ?? '-'}<span class="h2h-res ${x.w ? 'w' : 'l'}">${x.w ? 'G' : 'P'}</span></div><div class="${x.w ? '' : 'w'}">${s2 ?? '-'}<span class="h2h-res" style="visibility:hidden">G</span></div></div>
+        <div class="h2h-score"><div class="${x.w ? 'w' : ''}">${s1 ?? '-'}</div><div class="${x.w ? '' : 'w'}">${s2 ?? '-'}</div></div>
+        <span class="h2h-res big ${x.w ? 'w' : 'l'}">${x.w ? 'G' : 'P'}</span>
       </div>`;
     })
     .join('');

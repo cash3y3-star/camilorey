@@ -129,9 +129,10 @@ import { icon } from './icons.js?v=__V__';
 const EMOJI = {
   '🏆': ['trophy', 'gold'], '👑': ['crown', 'gold'], '⭐': ['star', 'gold'], '🔒': ['lock', ''], '🔥': ['flame', 'hot'],
   '🔔': ['bell', ''], '🔕': ['bellOff', ''], '✅': ['checkc', 'win'], '❌': ['xc', 'loss'], '⏳': ['clock', ''], '⌛': ['clock', ''],
-  '📊': ['chart', ''], '📅': ['calendar', ''], '👥': ['users', ''], '💬': ['chat', ''], '🏓': ['paddle', 'hot'], '🧠': ['bolt', ''], '💰': ['wallet', ''], '👋': [null, '']
+  '📊': ['chart', ''], '📅': ['calendar', ''], '👥': ['users', ''], '💬': ['chat', ''], '🏓': ['paddle', 'hot'], '🧠': ['bolt', ''], '💰': ['wallet', ''], '👋': [null, ''],
+  '🔄': ['refresh', ''], '♥': ['heart', 'hot']
 };
-const EMOJI_RE = /(🏆|👑|⭐|🔒|🔥|🔔|🔕|✅|❌|⏳|⌛|📊|📅|👥|💬|🏓|🧠|💰|👋)️?/u;
+const EMOJI_RE = /(🏆|👑|⭐|🔒|🔥|🔔|🔕|✅|❌|⏳|⌛|📊|📅|👥|💬|🏓|🧠|💰|👋|🔄|♥)️?/u;
 const EMOJI_RE_G = new RegExp(EMOJI_RE.source, 'gu');
 
 function iconizeText(n) {

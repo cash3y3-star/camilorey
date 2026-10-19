@@ -160,6 +160,9 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
 .h2h-res { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; font-size: 10px; font-weight: 800; color: #fff; margin-left: 8px; vertical-align: 1px; }
 .h2h-res.w { background: var(--win); }
 .h2h-res.l { background: var(--loss); }
+/* L5/L10: una sola marca G/P (del jugador que se mira), centrada en la fila */
+.h2h-row.one-res { grid-template-columns: 56px 1fr auto auto; }
+.h2h-res.big { width: 26px; height: 26px; border-radius: 7px; font-size: 13px; margin-left: 2px; align-self: center; }
 .seg-full button[data-calv='live']:not(.on) { color: var(--red-2); }
 .chip-btn.on { background: var(--red); border-color: var(--red); color: #fff; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
