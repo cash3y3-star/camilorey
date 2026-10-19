@@ -102,7 +102,16 @@ main { max-width: 760px; margin: 0 auto; padding: 4px 16px 24px; outline: none; 
   position: relative; overflow: hidden; border-radius: var(--radius); padding: 18px; color: #fff;
   background: var(--hero); border: 1px solid #2a0d0a;
 }
-.hero::after { content: ''; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(225, 6, 0, 0.45), transparent 70%); }
+.hero { isolation: isolate; }
+.hero > * { position: relative; z-index: 1; }
+/* Brillo rojo que flota despacio por la tarjeta (opción A, elegida el 19-oct) */
+.hero::after { content: ''; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(225, 6, 0, 0.45), transparent 70%); z-index: 0; pointer-events: none; animation: hero-glow 9s ease-in-out infinite; }
+@keyframes hero-glow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-150px, 60px) scale(1.25); }
+  66% { transform: translate(-60px, 90px) scale(0.9); }
+}
+@media (prefers-reduced-motion: reduce) { .hero::after { animation: none; } }
 .hero h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
 .hero p { margin: 4px 0 0; color: #c9c9cf; font-size: 13px; }
 
