@@ -266,6 +266,22 @@ for (const p of res) { const k = matches[p.id].at.slice(0, 13); const b = byHour
 const top = [...byHour.values()];
 out(`  el de más confianza de cada hora: ${rate(top)} · últimos días ${rate(top.filter((p) => DAYS.includes(day(matches[p.id].at))))}`);
 
+// Prueba de que la revisión de los picks usa la tabla del grupo (señal stake).
+out('\n== Tabla del grupo en los picks revisados ==');
+out(`  peso de la tabla en el modelo: ${model.weights.stake ?? 'no está'}`);
+const rev = Object.values(picks).filter((p) => p.upd && p.upd >= '2026-10-19T00:00:00Z' && p.f);
+const withS = rev.filter((p) => p.f.stake != null);
+const nz = withS.filter((p) => Math.abs(p.f.stake) >= 0.05);
+out(`  picks revisados desde el 19-oct: ${rev.length} · con la señal de la tabla calculada: ${withS.length} · donde la tabla pesa (|stake| ≥ 0,05): ${nz.length}`);
+for (const p of nz.slice(-6)) {
+  const m = matches[p.id];
+  if (!m) continue;
+  const fav = p.fav === m.a ? 'A' : 'B';
+  const pTable = predict(model, p.f, null, null).p;
+  const pNo = predict(model, { ...p.f, stake: 0 }, null, null).p;
+  out(`  ${players[m.a]?.n} vs ${players[m.b]?.n} · stake ${p.f.stake.toFixed(2)} · P(${players[m.a]?.n}) con tabla ${(pTable * 100).toFixed(1)}% · sin tabla ${(pNo * 100).toFixed(1)}% · pick ${fav === 'A' ? players[m.a]?.n : players[m.b]?.n} ${p.c}% (${p.res})`);
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
