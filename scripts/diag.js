@@ -310,6 +310,71 @@ out('\n== Hoy ==');
   for (const [t, l] of byT) out(`    ${t}: ${rate(l)}`);
 }
 
+// ¿La tabla del grupo empeoró los picks? Modelo igual pero SIN la señal
+// stake, con los datos congelados de cada pick y la regla de la casa.
+out('\n== Con tabla vs. sin tabla (picks publicados por día) ==');
+{
+  const noStake = train(fin, ctx, FEATURES.filter((k) => k !== 'stake'));
+  fitMarket(noStake, fin.filter((m) => m.oa && m.ob), ctx);
+  out(`  modelo sin tabla: pesos ${JSON.stringify(noStake.weights)} · mercado ${JSON.stringify(noStake.market)} · holdout ${JSON.stringify(noStake.holdout)}`);
+  const pickOf = (mod, p, m) => {
+    const oA = p.x?.oA ?? null;
+    const oB = p.x?.oB ?? null;
+    const r = predict(mod, p.f, oA, oB);
+    let favA = r.p >= 0.5;
+    if (r.pm != null && r.pm !== 0.5 && favA !== r.pm > 0.5) favA = r.pm > 0.5;
+    return { fav: favA ? m.a : m.b, c: Math.round(Math.max(r.p, 1 - r.p) * 100) };
+  };
+  for (const d of DAYS) {
+    const l = Object.values(picks).filter((p) => p.pub && p.f && p.res !== 'pending' && matches[p.id] && matches[p.id].w != null && day(matches[p.id].at) === d);
+    if (!l.length) continue;
+    let real = 0, withT = 0, without = 0, mkt = 0, nm = 0, diff = 0, diffReal = 0, diffNo = 0;
+    const band = { a: [0, 0], b: [0, 0] };
+    for (const p of l) {
+      const m = matches[p.id];
+      const a = pickOf(model, p, m);
+      const b = pickOf(noStake, p, m);
+      if (p.res === 'hit') real++;
+      if (a.fav === m.w) withT++;
+      if (b.fav === m.w) without++;
+      const pm = marketProb(p.x?.oA, p.x?.oB);
+      if (pm != null && pm !== 0.5) { nm++; if ((pm > 0.5 ? m.a : m.b) === m.w) mkt++; }
+      if (a.fav !== b.fav) { diff++; if (a.fav === m.w) diffReal++; if (b.fav === m.w) diffNo++; }
+      if (b.c >= 60) { band.b[1]++; if (b.fav === m.w) band.b[0]++; }
+      if (a.c >= 60) { band.a[1]++; if (a.fav === m.w) band.a[0]++; }
+    }
+    out(`  ${d}: real ${pct(real, l.length)} · con tabla ${pct(withT, l.length)} · sin tabla ${pct(without, l.length)} · favorito de la casa ${pct(mkt, nm)}`);
+    out(`     picks distintos por la tabla: ${diff} (con tabla acertó ${diffReal}, sin tabla ${diffNo}) · 60%+ con tabla ${pct(...band.a)} · 60%+ sin tabla ${pct(...band.b)}`);
+  }
+}
+
+// Hoy por nivel de torneo y por hora: ¿es el modelo o son partidos más difíciles?
+out('\n== Hoy vs. días anteriores por nivel de liga ==');
+{
+  const lvl = (n) => { const x = Number((n.match(/League (\d+)/) || [])[1]); return x < 400 ? '<400' : x < 700 ? '400-699' : '700+'; };
+  for (const d of DAYS) {
+    const l = Object.values(picks).filter((p) => p.pub && p.res !== 'pending' && matches[p.id] && day(matches[p.id].at) === d);
+    if (!l.length) continue;
+    const g = {};
+    for (const p of l) { const k = lvl(tournaments[matches[p.id].t]?.n || ''); (g[k] = g[k] || []).push(p); }
+    out(`  ${d}: ` + Object.entries(g).map(([k, v]) => `${k} ${pct(v.filter((p) => p.res === 'hit').length, v.length)}`).join(' · '));
+  }
+}
+
+// Picks de hoy contra la casa (la regla 'mkt' debería evitarlos): por qué.
+out('\n== Hoy: picks contra el favorito de la casa ==');
+{
+  const today = day(new Date().toISOString());
+  for (const p of Object.values(picks)) {
+    const m = matches[p.id];
+    if (!m || !p.pub || p.res === 'pending' || day(m.at) !== today) continue;
+    const pm = marketProb(p.x?.oA, p.x?.oB);
+    const pmEnd = marketProb(m.oa, m.ob);
+    if (pm == null || (pm > 0.5) === (p.fav === m.a)) continue;
+    out(`  ${m.at.slice(11, 16)} ${players[p.fav]?.n} ${p.c}% · regla ${p.x?.rule || '-'} · casa al pick ${(pm * 100).toFixed(0)}% A · casa final ${pmEnd == null ? '-' : (pmEnd * 100).toFixed(0) + '% A'} · revisado ${p.upd?.slice(11, 16) || '-'} · ${p.res}`);
+  }
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
