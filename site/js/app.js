@@ -1996,6 +1996,7 @@ const GROUP_Q = { F: ['Final', 'win'], T: ['3er puesto', ''], N: ['Sin final', '
 function groupBlock(m) {
   const rows = data.calendar.groups?.[m.t];
   if (!rows) return '';
+  m = data.calendar.matches.find((x) => x.id === m.id) || m; // datos recién recargados
   const tr = rows
     .map((r) => {
       const q = GROUP_Q[r.q];
@@ -2009,7 +2010,7 @@ function groupBlock(m) {
     : k.early
     ? `<p class="note">${icon('info')} ${m.st === 'f' ? 'Todavía faltaban muchos partidos del grupo: los dos peleaban por la final.' : 'Todavía faltan muchos partidos del grupo: los dos pelean por la final.'}</p>`
     : [[m.a, k.a], [m.b, k.b]].map(([p, x]) => (x ? `<div class="gneed ${x.k}"><b>${esc(p.n)}</b><span>${esc(x.t)}</span></div>` : '')).join('');
-  return `<div class="block">
+  return `<div class="block" id="sheet-group">
       <div class="block-h"><span class="overline">Tabla del grupo</span><span style="font-size:11px;color:var(--muted)">1.º-2.º final · 3.º-4.º 3er puesto${rows.length >= 5 ? ' · 5.º fuera' : ''}</span></div>
       <div class="h2h-list scroll-x"><table class="ledger gtable"><thead><tr><th class="num">#</th><th>Jugador</th><th class="num">G-P</th><th class="num">Sets</th><th class="num">Bolas</th><th class="num">Puntos</th></tr></thead><tbody>${tr}</tbody></table></div>
       ${need ? `<div class="overline" style="margin:12px 0 6px">${m.st === 'f' ? 'Lo que se jugaba cada uno antes de este partido' : 'Lo que se juega cada uno'}</div>${need}` : ''}
@@ -2108,6 +2109,11 @@ function openMatch(id) {
   $sheet.hidden = false;
   document.body.style.overflow = 'hidden';
   $sheet._redraw = draw;
+  $sheet._refreshGroup = () => {
+    const box = document.getElementById('sheet-group');
+    const html = groupBlock(m);
+    if (box && html && box.outerHTML !== html) box.outerHTML = html;
+  };
   sheetUnsub?.();
   // En vivo: solo se actualiza el marcador de la ficha (las fotos no se
   // recargan). Si el partido empieza o termina, ahí sí se redibuja.
@@ -2724,7 +2730,15 @@ updateBellDot();
 
 // Datos nuevos cada minuto (el sync corre cada ~5 min).
 setInterval(async () => {
-  if (document.visibilityState === 'hidden' || !$sheet.hidden) return;
+  if (document.visibilityState === 'hidden') return;
+  // Con la ficha de un partido abierta no se redibuja todo (se perdería lo
+  // que la persona está mirando): solo se actualiza la tabla del grupo, para
+  // que las posiciones se muevan solas a medida que terminan los partidos.
+  if (!$sheet.hidden) {
+    await loadData();
+    $sheet._refreshGroup?.();
+    return;
+  }
   // Revisa el acceso cada minuto: si el admin lo acaba de activar, se
   // desbloquea sin recargar (con la bienvenida); si venció, se bloquea.
   if (account) await refreshPremium();
