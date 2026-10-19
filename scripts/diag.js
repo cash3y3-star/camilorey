@@ -282,6 +282,16 @@ for (const p of nz.slice(-6)) {
   out(`  ${players[m.a]?.n} vs ${players[m.b]?.n} · stake ${p.f.stake.toFixed(2)} · P(${players[m.a]?.n}) con tabla ${(pTable * 100).toFixed(1)}% · sin tabla ${(pNo * 100).toFixed(1)}% · pick ${fav === 'A' ? players[m.a]?.n : players[m.b]?.n} ${p.c}% (${p.res})`);
 }
 
+// Detalle: cuántos partidos del grupo ya se habían jugado al revisar, y la señal guardada vs. la de ahora.
+for (const p of withS.slice(-12)) {
+  const m = matches[p.id];
+  if (!m) continue;
+  const g = groups.get(m.t) || [];
+  const before = g.filter((x) => x.st === "f" && x.at < m.at).length;
+  const now = stakes(g, m, null, { maxExact: 3, samples: 200 });
+  out(`  ${m.at.slice(5, 16)} ${players[m.a]?.n} vs ${players[m.b]?.n} · grupo ${g.length} partidos, ${before} jugados antes · stake guardado ${p.f.stake.toFixed(3)} · recalculado ahora ${((now.a.imp - now.b.imp) / 2).toFixed(3)} · revisado ${p.upd.slice(11, 16)} · ${m.st}`);
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
