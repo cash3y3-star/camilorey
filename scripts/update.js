@@ -944,6 +944,16 @@ function writeSite(meta) {
     if (g) groups[t] = g;
   }
   writeJson(path.join(OUT_DIR, 'calendar.json'), { days, matches: calendar, groups });
+  // Acierto REAL por franja de confianza (picks v2 ya jugados, suavizado
+  // hacia la confianza de la franja): Mi Bankroll calcula Kelly con esto.
+  // Medido el 19-oct: los de 60%+ aciertan ~68% (el modelo es prudente).
+  const calib = {};
+  for (const band of [50, 55, 60, 65, 70]) {
+    const list = resolved.filter((p) => p.src === 'v2' && Math.min(70, Math.floor(p.c / 5) * 5) === band);
+    const hit = list.filter((p) => p.res === 'hit').length;
+    const prior = (band + 2.5) / 100;
+    calib[band] = Math.round(((hit + prior * 30) / (list.length + 30)) * 1000) / 1000;
+  }
   writeJson(path.join(OUT_DIR, 'stats.json'), {
     updatedAt: new Date().toISOString(),
     today: summarize(resolved.filter((p) => bogotaDay(state.matches[p.id].at) === today)),
@@ -957,6 +967,7 @@ function writeSite(meta) {
     featured: featuredStats(resolved, d),
     champions: champs,
     hot,
+    calib,
     tipster: meta.tipster || null
   });
   registeredUsers = meta.users ?? null; // va a la parte privada del admin, no a stats.json
