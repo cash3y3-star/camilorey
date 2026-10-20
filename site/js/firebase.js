@@ -218,6 +218,11 @@ export async function adminListRatings() {
   return { ratings: r.docs.map(row).sort(newest), ideas: i.docs.map(row).sort(newest) };
 }
 
+export async function adminDeleteRating(uid) {
+  const f = await load();
+  await f.F.deleteDoc(f.F.doc(f.db, 'ratings', uid));
+}
+
 export async function adminDeleteIdea(id) {
   const f = await load();
   await f.F.deleteDoc(f.F.doc(f.db, 'feedback', id));

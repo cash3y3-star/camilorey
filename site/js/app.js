@@ -272,7 +272,7 @@ async function renderCalificaciones() {
     ${
       ratings.length
         ? `<div class="list">${ratings
-            .map((r) => `<div class="row"><span class="tx"><b>${esc(r.name || 'Sin nombre')}</b><small>${esc(r.email || '')} · ${esc(when(r.at))}${r.plan === 'prueba' ? ' · en prueba' : r.plan === 'premium' ? ' · Premium' : ''}</small></span><span class="rate-gold" title="${r.stars} de 5">${starsTxt(r.stars)}</span></div>`)
+            .map((r) => `<div class="row"><span class="tx"><b>${esc(r.name || 'Sin nombre')}</b><small>${esc(r.email || '')} · ${esc(when(r.at))}${r.plan === 'prueba' ? ' · en prueba' : r.plan === 'premium' ? ' · Premium' : ''}</small></span><span class="rate-gold" title="${r.stars} de 5">${starsTxt(r.stars)}</span><button class="mini-btn" data-rating-del="${esc(r.id)}">Borrar</button></div>`)
             .join('')}</div>`
         : '<p class="note">Todavía nadie ha calificado.</p>'
     }
@@ -2847,6 +2847,11 @@ document.addEventListener('click', async (ev) => {
   if (t.id === 'btn-rate-later') return closeSheet();
   if (t.id === 'btn-rate-open') return showRating(false);
   if (t.id === 'btn-tw-start') return closeSheet();
+  if (t.dataset.ratingDel) {
+    if (!confirm('¿Borrar esta calificación?')) return;
+    await FB.adminDeleteRating(t.dataset.ratingDel).catch(() => toast('No se pudo borrar'));
+    return renderCalificaciones();
+  }
   if (t.dataset.ideaDel) {
     if (!confirm('¿Borrar esta idea?')) return;
     await FB.adminDeleteIdea(t.dataset.ideaDel).catch(() => toast('No se pudo borrar'));
