@@ -18,6 +18,12 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/members/$(myEmail()))
         && get(/databases/$(database)/documents/members/$(myEmail())).data.until > request.time;
     }
+    // Prueba gratis: trials/{correo} = { at } y dura 24 horas desde "at".
+    function inTrial() {
+      return request.auth != null && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/trials/$(myEmail()))
+        && get(/databases/$(database)/documents/trials/$(myEmail())).data.at + duration.value(24, 'h') > request.time;
+    }
 
     // Contadores de visitas: cualquiera puede sumar la suya (de a 1), pero
     // solo el admin puede leerlos.
@@ -49,7 +55,7 @@ service cloud.firestore {
     // Picks del tipster: solo miembros (el sitio es privado); los publica el
     // admin y el bot los lee para calcular su efectividad.
     match /tipster/{doc} {
-      allow read: if isAdmin() || isPremium() || isBot();
+      allow read: if isAdmin() || isPremium() || inTrial() || isBot();
       allow write: if isAdmin();
     }
 
@@ -57,7 +63,7 @@ service cloud.firestore {
     // con acceso vigente y el admin; la cambia el bot (cada día y cuando a
     // alguien se le vence o se le quita el acceso).
     match /vault/{doc} {
-      allow read: if isAdmin() || isPremium() || isBot();
+      allow read: if isAdmin() || isPremium() || inTrial() || isBot();
       allow create, update: if isBot();
     }
 
@@ -66,6 +72,16 @@ service cloud.firestore {
     match /members/{email} {
       allow read: if isAdmin() || isBot() || (request.auth != null && myEmail() == email);
       allow write: if isAdmin();
+    }
+
+    // Prueba gratis de 24 h: cada cuenta crea la suya UNA vez (con la hora
+    // del servidor) y no la puede cambiar ni borrar; solo el admin la borra.
+    match /trials/{email} {
+      allow read: if isAdmin() || isBot() || (request.auth != null && request.auth.token.email != null && myEmail() == email);
+      allow create: if request.auth != null && request.auth.token.email != null && myEmail() == email
+                    && request.resource.data.keys().hasOnly(['at'])
+                    && request.resource.data.at == request.time;
+      allow delete: if isAdmin();
     }
 
     // Contenido Premium (picks de alta confianza y Análisis IA): solo

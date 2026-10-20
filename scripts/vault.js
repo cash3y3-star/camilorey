@@ -120,7 +120,11 @@ function nextVault(prev, members, today) {
 async function sealSite() {
   const notify = require('./notify');
   const token = await notify.botToken();
-  const members = [...(await notify.activeMembers(token))];
+  // Miembros y cuentas en prueba gratis: al vencerse una prueba, la llave
+  // cambia igual que cuando se vence una membresía.
+  const premium = await notify.activeMembers(token);
+  const trials = [...(await notify.activeTrials(token))].filter((e) => !premium.has(e));
+  const members = [...premium, ...trials];
   const prev = fs.existsSync(VAULT_STATE) ? JSON.parse(fs.readFileSync(VAULT_STATE, 'utf8')) : null;
   const { vault, reason } = nextVault(prev, members, bogotaDay());
   if (reason) console.log(`Llave del sitio nueva (${reason})`);
@@ -148,7 +152,7 @@ async function sealSite() {
     n++;
     bytes += out.length;
   }
-  console.log(`Datos del sitio: ${n} archivos cifrados (${Math.round(bytes / 1024)} KB), ${members.length} miembros activos + admin`);
+  console.log(`Datos del sitio: ${n} archivos cifrados (${Math.round(bytes / 1024)} KB), ${premium.size} miembros activos, ${trials.length} en prueba + admin`);
 }
 
 module.exports = { seal, open, isSealed, nextVault, hashEmail, sealSite };

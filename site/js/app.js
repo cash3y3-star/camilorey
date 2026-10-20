@@ -30,12 +30,16 @@ let account = null;
 let fbStarted = false; // Firebase se arranca después de la primera pantalla (startFirebase)
 let profile = null; // { name, photo } editable, guardado en Firestore
 let membership = null; // { until, active } de la colección members
+let trial = null; // { until, active } prueba gratis de 24 h (colección trials)
 let premiumData = null; // contenido Premium (picks completos + Análisis IA)
 
 const isPremiumUser = () => isAdmin() || Boolean(membership?.active);
-// El sitio es solo para miembros: sin acceso vigente se ve la pantalla de
-// bloqueo (viewLock) y los datos no se pueden abrir (están cifrados).
-const hasAccess = () => Boolean(account) && isPremiumUser();
+// En prueba: entra al sitio pero no es Premium (picks de 60%+, Análisis IA,
+// Bankroll y notificaciones siguen con candado).
+const isTrialUser = () => !isPremiumUser() && Boolean(trial?.active);
+// El sitio es solo para miembros (o en prueba): sin acceso vigente se ve la
+// pantalla de bloqueo (viewLock) y los datos no se pueden abrir (cifrados).
+const hasAccess = () => Boolean(account) && (isPremiumUser() || isTrialUser());
 const OPEN_ROUTES = new Set(['login', 'registro', 'ayuda', 'privacidad', 'terminos']);
 
 // Rellena los picks bloqueados y agrega el Análisis IA con el contenido
@@ -72,15 +76,38 @@ function tipsterPickFor(m) {
 async function refreshPremium() {
   if (isAdmin()) adminNoPick = (await FB.loadAdminLedger().catch(() => ({}))).nopick || adminNoPick;
   membership = account ? await FB.loadMembership().catch(() => membership) : null;
+  // Prueba de 24 h: se crea sola si la cuenta nunca fue miembro.
+  trial = account && !isPremiumUser() ? await FB.loadTrial(!membership).catch(() => trial) : null;
   if (!hasAccess()) return clearData();
   if (FB.enabled) await loadTipster(true);
-  premiumData = await FB.loadPremiumContent().catch(() => premiumData);
+  if (isPremiumUser()) premiumData = await FB.loadPremiumContent().catch(() => premiumData);
   applyPremium();
   maybePremiumWelcome();
+  maybeTrialWelcome();
+  renderTrialBar();
+}
+
+// Franja arriba para los que están en prueba: cuánto les queda y botón a
+// Premium (se actualiza con cada revisión de acceso, cada minuto).
+function renderTrialBar() {
+  let bar = document.getElementById('trial-bar');
+  if (!isTrialUser()) return bar?.remove();
+  if (!bar) {
+    bar = document.createElement('a');
+    bar.id = 'trial-bar';
+    bar.className = 'trial-bar';
+    bar.href = '#/premium';
+    document.querySelector('.topbar').after(bar);
+  }
+  const ms = trial.until.getTime() - Date.now();
+  const h = Math.floor(ms / 3600e3);
+  const left = h >= 1 ? `${h} h ${Math.floor((ms % 3600e3) / 60e3)} min` : `${Math.max(1, Math.ceil(ms / 60e3))} min`;
+  bar.innerHTML = `<span>🎁 <b>Prueba gratis</b> · te quedan ${left}</span><b class="tb-go">Hazte Premium</b>`;
 }
 
 // Sin acceso (cerró sesión o se le venció): no dejar nada en pantalla.
 function clearData() {
+  renderTrialBar();
   Object.assign(data, { stats: null, picks: [], results: [], calendar: { days: [], matches: [] }, bankroll: null, loaded: false, error: null });
   premiumData = null;
   tipsterCache = null;
@@ -95,6 +122,36 @@ function maybePremiumWelcome() {
   if (readLocal('cr_prem_welcome', '') === key) return;
   writeLocal('cr_prem_welcome', key);
   showPremiumWelcome(membership.until);
+}
+
+// Bienvenida a la prueba gratis: una sola vez, al empezarla.
+function maybeTrialWelcome() {
+  if (!isTrialUser() || !$sheet.hidden) return;
+  const key = trial.until.toISOString();
+  if (readLocal('cr_trial_welcome', '') === key) return;
+  writeLocal('cr_trial_welcome', key);
+  const hora = `${trial.until.toLocaleTimeString(LOC(), { hour: 'numeric', minute: '2-digit' })} del ${trial.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long' })}`;
+  const yes = ['Picks del sistema (menos de 60%)', 'Calendario, en vivo y resultados', 'Picks del tipster y seguidos', 'Soporte en vivo'];
+  const no = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Mi Bankroll con Kelly', 'Alertas de picks en tu celular'];
+  $sheetBody.innerHTML = `
+    <div class="pw-head">
+      <div class="pw-crown">🎁</div>
+      <div class="pw-over">PRUEBA GRATIS</div>
+      <h2>Tienes 24 horas gratis</h2>
+      <p>Tu prueba dura hasta las ${esc(hora)}.</p>
+    </div>
+    <div class="pw-card">
+      <span class="pw-badge">INCLUIDO</span>
+      <ul class="pw-list">${yes.map((p) => `<li>${esc(p)}<span>✓</span></li>`).join('')}</ul>
+    </div>
+    <div class="pw-card">
+      <span class="pw-badge">SOLO PREMIUM</span>
+      <ul class="pw-list">${no.map((p) => `<li>${esc(p)}<span>🔒</span></li>`).join('')}</ul>
+    </div>
+    <button class="btn pw-btn" id="btn-pw-start">Comenzar a Explorar</button>`;
+  $sheet.hidden = false;
+  $sheet.classList.add('pw');
+  document.body.style.overflow = 'hidden';
 }
 
 // También la usa el panel admin como vista previa.
@@ -522,6 +579,8 @@ function viewPremium() {
     ${
       active
         ? `<p><b>Tu membresía está activa</b>${isAdmin() ? ' (administrador)' : until ? ` hasta el <b>${esc(until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' }))}</b>` : ''}.</p>`
+        : isTrialUser()
+        ? `<p>Estás en tu <b>prueba gratis</b> hasta las <b>${esc(trial.until.toLocaleTimeString(LOC(), { hour: 'numeric', minute: '2-digit' }))}</b> del ${esc(trial.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long' }))}. Con Premium desbloqueas todo:</p>`
         : '<p>Desbloquea todo el poder del sistema.</p>'
     }
   </div>
@@ -2335,17 +2394,22 @@ function viewLock() {
     </section>`;
   }
   const expired = membership && !membership.active;
+  const trialOver = !membership && trial && !trial.active;
   const fecha = expired ? membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-  const msg = `Hola, buen día. Me gustaría ${expired ? 'renovar' : 'activar'} mi acceso al Sistema de CamiloRey. El correo de mi cuenta es ${account.email || ''}. Quedo pendiente. ¡Muchas gracias!`;
+  const msg = trialOver
+    ? `Hola, buen día. Terminé mi prueba gratis del Sistema de CamiloRey y me gustaría obtener Premium. El correo de mi cuenta es ${account.email || ''}. ¡Muchas gracias!`
+    : `Hola, buen día. Me gustaría ${expired ? 'renovar' : 'activar'} mi acceso al Sistema de CamiloRey. El correo de mi cuenta es ${account.email || ''}. Quedo pendiente. ¡Muchas gracias!`;
   return `<section class="lock">${head}
     <div class="lock-over">Sistema de CamiloRey</div>
     <h1>Hola, ${esc(userName().split(' ')[0])}</h1>
     <div class="card pad lock-card">${
-      expired
+      trialOver
+        ? 'Tu <b>prueba gratis de 24 horas terminó</b>. Esperamos que te haya gustado: hazte Premium y desbloquea todos los picks, incluidos los de 60% o más, el Análisis IA, Mi Bankroll y las alertas en tu celular.'
+        : expired
         ? `Tu acceso finalizó el <b>${esc(fecha)}</b>. Gracias por ser parte del Sistema de CamiloRey: puedes renovarlo cuando quieras y seguir disfrutando de todos los picks.`
         : 'Tu cuenta ya está creada, pero todavía no tiene un acceso activo. Escríbenos por Telegram y con gusto lo activamos.'
     }<br><small>Cuenta: <b>${esc(account.email || '')}</b></small></div>
-    <a class="btn primary tg" href="${esc(telegramLink(msg))}" target="_blank" rel="noopener">${icon('telegram')} ${expired ? 'Renovar mi acceso' : 'Solicitar acceso'} por Telegram</a>
+    <a class="btn primary tg" href="${esc(telegramLink(msg))}" target="_blank" rel="noopener">${icon('telegram')} ${trialOver ? 'Hazte Premium' : expired ? 'Renovar mi acceso' : 'Solicitar acceso'} por Telegram</a>
     <p class="note">Apenas activemos tu acceso, el sitio se abrirá automáticamente en esta pantalla, sin necesidad de recargar.</p>
     <button class="btn ghost" id="btn-logout">Cerrar sesión</button>
   </section>`;

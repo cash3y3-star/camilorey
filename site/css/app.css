@@ -717,3 +717,8 @@ body.locked .tabbar, body.locked #btn-notif { display: none; }
 .ann-modal .ann-ic { width: 46px; height: 46px; margin-bottom: 10px; }
 .ann-modal h2 { margin: 4px 0 14px; font-size: 21px; line-height: 1.25; }
 .ann-modal .btn { text-align: center; }
+
+/* Franja de la prueba gratis (debajo de la barra de arriba). */
+.trial-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 8px 16px; background: linear-gradient(90deg, #3a0606, #7a0b0b); color: #fff; font-size: 13px; text-decoration: none; }
+.trial-bar .tb-go { flex: none; padding: 4px 10px; border-radius: 999px; background: #ff1717; font-size: 12px; }
+.pw-crown:not(:has(svg)) { font-size: 40px; }

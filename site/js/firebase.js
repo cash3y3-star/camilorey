@@ -170,6 +170,25 @@ export async function loadMembership() {
   return until ? { until, active: until.getTime() > Date.now() } : null;
 }
 
+// Prueba gratis de 24 h: trials/{correo} = { at } (hora del servidor). Se
+// crea sola la primera vez que entra una cuenta que nunca fue miembro, y
+// solo una vez por correo (las reglas no dejan cambiarla ni borrarla).
+export const TRIAL_MS = 24 * 3600e3;
+export async function loadTrial(create = false) {
+  if (!currentUser?.email) return null;
+  const f = await load();
+  const ref = f.F.doc(f.db, 'trials', emailKey(currentUser.email));
+  let snap = await f.F.getDoc(ref);
+  if (!snap.exists() && create) {
+    await f.F.setDoc(ref, { at: f.F.serverTimestamp() });
+    snap = await f.F.getDoc(ref);
+  }
+  const at = snap.exists() ? snap.data().at?.toDate?.() : null;
+  if (!at) return null;
+  const until = new Date(at.getTime() + TRIAL_MS);
+  return { until, active: until.getTime() > Date.now() };
+}
+
 // Llave de los datos cifrados del sitio (vault/key): solo la pueden leer
 // cuentas con acceso vigente y el admin (reglas). Sin permiso, falla.
 export async function loadVault() {

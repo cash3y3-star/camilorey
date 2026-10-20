@@ -75,6 +75,26 @@ async function activeMembers(token) {
   return out;
 }
 
+// Correos con la prueba gratis de 24 h vigente (colección "trials", id =
+// correo, { at }). Entran al sitio pero no son Premium (no reciben push).
+const TRIAL_MS = 24 * 3600e3;
+async function activeTrials(token) {
+  const out = new Set();
+  const now = Date.now();
+  let pageToken = '';
+  do {
+    const r = await fetch(`${DOCS}/trials?pageSize=300${pageToken ? `&pageToken=${pageToken}` : ''}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return out; // sin reglas publicadas todavía: nadie en prueba
+    const j = await r.json();
+    for (const d of j.documents || []) {
+      const at = d.fields?.at?.timestampValue;
+      if (at && new Date(at).getTime() + TRIAL_MS > now) out.add(decodeURIComponent(d.name.split('/').pop()).toLowerCase());
+    }
+    pageToken = j.nextPageToken || '';
+  } while (pageToken);
+  return out;
+}
+
 async function savePush(token, user, push) {
   await fetch(`https://firestore.googleapis.com/v1/${user.path}?updateMask.fieldPaths=push`, {
     method: 'PATCH',
@@ -241,4 +261,4 @@ async function countUsers() {
   }
 }
 
-module.exports = { runNotifications, botToken, toFs, countUsers, activeMembers, DOCS };
+module.exports = { runNotifications, botToken, toFs, countUsers, activeMembers, activeTrials, DOCS };
