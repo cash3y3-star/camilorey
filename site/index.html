@@ -36,6 +36,10 @@
     @media (min-aspect-ratio: 5/6) { #splash .sp-stage { width: auto; height: 100vh; } }
     #splash .sp-img { position: absolute; inset: 0; background: url(img/splash.webp) center/100% 100%; }
     #splash .sp-zoom { position: absolute; inset: 0; animation: sp-zoom 9s ease-in-out infinite alternate; transform-origin: 50% 35%; }
+    #splash .corner { display: none; position: absolute; left: -8vw; bottom: 7vh; width: 42vw; aspect-ratio: 330 / 320; overflow: hidden; -webkit-mask-image: radial-gradient(ellipse 50% 50%, #000 60%, transparent 100%); mask-image: radial-gradient(ellipse 50% 50%, #000 60%, transparent 100%); animation: sp-bob 3.2s infinite; }
+    #splash .corner .cz { position: absolute; aspect-ratio: 1024 / 1230; }
+    @media (max-aspect-ratio: 3/4) { #splash .corner { display: block; } }
+    @keyframes sp-bob { 0%, 46%, 100% { transform: none; } 6%, 18%, 30% { transform: translateY(-1.5%) rotate(-2deg); } 12%, 24%, 36% { transform: translateY(1%) rotate(1.5deg); } }
     #splash .mouth, #splash .jaw { position: absolute; inset: 0; pointer-events: none; }
     #splash .mouth { background: #ff9a2a; opacity: 0; animation: sp-mouth 3.2s infinite; }
     #splash .jaw { background: url(img/splash.webp) center/100% 100%; animation: sp-laugh 3.2s infinite; }
@@ -113,6 +117,12 @@
       <i class="ember" style="left:10%;--d:6s;--w:2.8s;--x:40px"></i>
       <i class="ember" style="left:90%;--d:5s;--w:3.6s;--x:-30px"></i>
       <div class="bar"><i id="splash-bar"></i></div>
+    </div></div>
+    <div class="corner" aria-hidden="true"><div class="cz" style="width:310.30%;left:0.00%;top:-168.75%">
+      <div class="sp-img"></div>
+      <i class="glow pump" style="left:16.5%;top:59%"></i>
+      <i class="mouth" style="clip-path:polygon(7.62% 58.37%,9.77% 59.76%,12.70% 60.81%,17.09% 61.14%,21.48% 60.57%,24.41% 59.19%,26.56% 58.05%,26.76% 60.57%,24.41% 62.11%,17.09% 63.74%,9.77% 62.60%,7.62% 60.57%)"></i>
+      <i class="jaw" style="clip-path:polygon(7.62% 58.37%,9.77% 59.76%,12.70% 60.81%,17.09% 61.14%,21.48% 60.57%,24.41% 59.19%,26.56% 58.05%,26.76% 60.57%,24.41% 62.11%,17.09% 63.74%,9.77% 62.60%,7.62% 60.57%);--o:.55%"></i>
     </div></div>
   </div>
   <script>
