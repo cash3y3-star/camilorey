@@ -111,6 +111,79 @@ function renderTrialBar() {
   bar.innerHTML = `<span>🎁 <b>Prueba gratis</b> · te quedan ${left}</span><b class="tb-go">Hazte Premium</b>`;
 }
 
+// ---------------- instalar como app ----------------
+// Android/Chrome: un toque abre la ventana "Instalar" del navegador
+// (window.crInstallEvt, guardado en index.html). iPhone: no se puede con un
+// botón, se muestran los pasos. Instalada (se abre desde el ícono): no se ofrece.
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// Estilo de Halloween (calabaza, murciélagos) hasta el 2 de noviembre.
+const HALLOWEEN = Date.now() < Date.parse('2026-11-02T05:00:00Z');
+const BAT_SVG = '<svg viewBox="0 0 64 28"><path d="M32 8c-2 0-3 2-3 2l-1-4-1 4C22 4 12 2 0 6c6 2 8 6 8 10 4-3 9-2 12 1 2-3 6-3 8 0 1-1 2-1 4-1s3 0 4 1c2-3 6-3 8 0 3-3 8-4 12-1 0-4 2-8 8-10-12-4-22-2-27 4l-1-4-1 4s-1-2-3-2z"/></svg>';
+const canOfferInstall = () => (IS_IOS || IS_ANDROID || window.crInstallEvt) && !isInstalled();
+
+// Franja arriba con "Instalar" y ×; la × la esconde 3 días.
+function renderInstallBar() {
+  let bar = document.getElementById('install-bar');
+  const show = canOfferInstall() && (IS_IOS || IS_ANDROID) && Number(readLocal('cr_inst_snooze', 0)) < Date.now();
+  if (!show) return bar?.remove();
+  if (bar) return;
+  bar = document.createElement('div');
+  bar.id = 'install-bar';
+  bar.className = 'install-bar' + (HALLOWEEN ? ' hw' : '');
+  bar.innerHTML = `${HALLOWEEN ? `<i class="ib-bat">${BAT_SVG}</i>` : ''}<span class="ib-ic"><img src="icons/icon-192.png" alt="" width="34" height="34" />${HALLOWEEN ? '<i>🎃</i>' : ''}</span><span class="ib-tx"><b>Instala CamiloRey${HALLOWEEN ? ' 🦇' : ''}</b><small>Tenla como app en tu celular</small></span><button class="ib-go" data-install="1">Instalar</button><button class="ib-x" id="btn-install-x" aria-label="Cerrar">✕</button>`;
+  (document.getElementById('trial-bar') || document.querySelector('.topbar')).after(bar);
+}
+window.crOnInstallable = renderInstallBar;
+window.addEventListener('appinstalled', () => {
+  window.crInstallEvt = null;
+  renderInstallBar();
+  toast('¡Listo! CamiloRey quedó en tu pantalla de inicio 📲');
+});
+
+async function startInstall() {
+  const evt = window.crInstallEvt;
+  if (evt) {
+    evt.prompt();
+    const { outcome } = await evt.userChoice.catch(() => ({}));
+    if (outcome === 'accepted') window.crInstallEvt = null;
+    return;
+  }
+  showInstallHelp();
+}
+
+// Pasos a mano: iPhone siempre; Android cuando Chrome no ofrece la ventana
+// (por ejemplo abierto dentro de Telegram).
+function showInstallHelp() {
+  const inApp = /Telegram|FBAN|FBAV|Instagram|; wv\)/i.test(navigator.userAgent);
+  const share = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>`;
+  const steps = IS_IOS
+    ? [
+        inApp ? `Si lo abriste desde Telegram, primero toca <b>⋯</b> y <b>Abrir en Safari</b>.` : `Ábrelo en <b>Safari</b> (el navegador del iPhone).`,
+        `Toca el botón <b>Compartir</b> <span class="ins-k">${share}</span> abajo en la pantalla.`,
+        `Baja y toca <b>Agregar a inicio</b> <span class="ins-k">＋</span>.`,
+        `Toca <b>Agregar</b> arriba a la derecha. ¡Listo! Ábrelo desde el ícono <b>CR</b>.`
+      ]
+    : [
+        inApp ? `Si lo abriste desde Telegram, toca <b>⋮</b> arriba a la derecha y <b>Abrir en Chrome</b>.` : `Ábrelo en <b>Chrome</b>.`,
+        `Toca el menú <b>⋮</b> arriba a la derecha.`,
+        `Toca <b>Instalar app</b> (o <b>Agregar a la pantalla principal</b>).`,
+        `Toca <b>Instalar</b>. ¡Listo! Ábrelo desde el ícono <b>CR</b>.`
+      ];
+  $sheetBody.innerHTML = `
+    <div class="ins${HALLOWEEN ? ' hw' : ''}">
+      ${HALLOWEEN ? `<i class="ins-bat b1">${BAT_SVG}</i><i class="ins-bat b2">${BAT_SVG}</i>` : ''}
+      <span class="ins-icw"><img class="ins-ic" src="icons/icon-192.png" alt="" width="64" height="64" />${HALLOWEEN ? '<i>🎃</i>' : ''}</span>
+      <h2>Instala CamiloRey en tu ${IS_IOS ? 'iPhone' : 'celular'}</h2>
+      <p>Queda en tu pantalla de inicio como una app: se abre a pantalla completa y más rápido.</p>
+      <ol class="ins-steps">${steps.map((s, i) => `<li><span class="ins-n">${i + 1}</span><span>${s}</span></li>`).join('')}</ol>
+      <button class="btn primary" id="btn-install-ok">Entendido${HALLOWEEN ? ' 🎃' : ''}</button>
+    </div>`;
+  $sheet.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
 // Sin acceso (cerró sesión o se le venció): no dejar nada en pantalla.
 function clearData() {
   renderTrialBar();
@@ -2002,6 +2075,7 @@ function viewPerfil() {
   <div class="list">
     ${isAdmin() ? `<a class="row" href="#/admin"><span class="ic" style="color:var(--red-2)">${icon('shield')}</span><span class="tx"><b>Panel admin</b><small>Pick del tipster, visitas y usuarios</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
     <a class="row" href="#/premium"><span class="ic" style="font-size:18px">⭐</span><span class="tx"><b>Premium</b><small>${isPremiumUser() ? (isAdmin() ? 'Activo (administrador)' : `Activo hasta ${esc(membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' }))}`) : 'Picks de alta confianza, análisis IA, bankroll y avisos'}</small></span><span class="chev">${icon('chev')}</span></a>
+    ${canOfferInstall() ? `<button class="row" data-install="1"><span class="ic" style="font-size:18px">📲</span><span class="tx"><b>Instalar app</b><small>Agrega CamiloRey a tu pantalla de inicio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
     <a class="row" href="#/notificaciones"><span class="ic">${icon('bell')}</span><span class="tx"><b>Notificaciones</b><small>Avisos de tus picks en el celular</small></span><span class="chev">${icon('chev')}</span></a>
     ${u && hasAccess() && !isAdmin() ? `<button class="row" id="btn-rate-open"><span class="ic" style="font-size:18px">💬</span><span class="tx"><b>Calificar y enviar ideas</b><small>Tu opinión, ideas o errores del sitio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
     <button class="row check ${fxEnabled() ? 'on' : ''}" data-fx="1"><span class="ic">${icon('bolt')}</span><span class="tx"><b>Sonido y vibración</b><small>Un toque suave al cambiar de pestaña</small></span><span class="tick"></span></button>
@@ -2846,6 +2920,12 @@ document.addEventListener('click', async (ev) => {
   if (t.id === 'btn-rate-send') return sendRating(t);
   if (t.id === 'btn-rate-later') return closeSheet();
   if (t.id === 'btn-rate-open') return showRating(false);
+  if (t.dataset.install) return startInstall();
+  if (t.id === 'btn-install-ok') return closeSheet();
+  if (t.id === 'btn-install-x') {
+    writeLocal('cr_inst_snooze', Date.now() + 3 * 24 * 3600e3);
+    return renderInstallBar();
+  }
   if (t.id === 'btn-tw-start') return closeSheet();
   if (t.dataset.ratingDel) {
     if (!confirm('¿Borrar esta calificación?')) return;
@@ -3208,6 +3288,7 @@ function startFirebase() {
     // "Cargando…": si no, al cerrarla seguiría esa pantalla.
     if ($sheet.hidden || $view.querySelector('.lock')) route();
     window.crSplashDone?.(); // pantalla de carga (index.html)
+    renderInstallBar();
   });
 }
 // Firebase se carga siempre al abrir: sin sesión con acceso no se ve nada.

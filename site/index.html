@@ -15,6 +15,13 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <script>
+    // Android/Chrome avisa que se puede instalar muy temprano: se guarda el
+    // aviso para el botón "Instalar app" de app.js.
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.crInstallEvt = e;
+      window.crOnInstallable && window.crOnInstallable();
+    });
     // Tema antes de pintar (evita parpadeo): oscuro por defecto.
     (function () {
       var t = 'dark';
