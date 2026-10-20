@@ -364,7 +364,7 @@ async function renderCalificaciones() {
 // También la usa el panel admin como vista previa.
 function showPremiumWelcome(until) {
   const fecha = until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' });
-  const perks = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Bankroll con criterio de Kelly', 'Alertas de picks en tu celular'];
+  const perks = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Bankroll con criterio de Kelly', 'Tabla del grupo en cada partido', 'Alertas de picks en tu celular'];
   $sheetBody.innerHTML = `
     <div class="pw-head">
       <div class="pw-crown">${crownSvg()}</div>
@@ -795,6 +795,7 @@ function viewPremium() {
     ${perk('🔥', 'Picks de alta confianza', 'Los picks de 60% o más, antes del partido')}
     ${perk('🧠', 'Análisis IA de cada pick', 'Por qué gana: rating, mercado, cruce directo, rachas y forma del día')}
     ${perk('💰', 'Mi Bankroll con Kelly', 'Cuánto apostar en cada pick que sigues, saldo y ROI')}
+    ${perk(icon('trophy'), 'Tabla del grupo', 'Posiciones del grupo y lo que se juega cada jugador')}
     ${perk('🔔', 'Notificaciones en el celular', 'Nuevo pick destacado y resultado de tus picks seguidos')}
   </div>
   ${
@@ -2393,6 +2394,11 @@ const GROUP_Q = { F: ['Final', 'win'], T: ['3er puesto', ''], N: ['Sin final', '
 function groupBlock(m) {
   const rows = data.calendar.groups?.[m.t];
   if (!rows) return '';
+  if (!isPremiumUser())
+    return `<div class="block" id="sheet-group">
+      <div class="block-h"><span class="overline">Tabla del grupo</span></div>
+      ${premiumLock('La tabla del grupo es Premium', 'Mira la posición de cada jugador en el grupo, sus sets, bolas y puntos, y lo que se juega cada uno en este partido.')}
+    </div>`;
   m = data.calendar.matches.find((x) => x.id === m.id) || m; // datos recién recargados
   const tr = rows
     .map((r) => {
