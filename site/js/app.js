@@ -354,7 +354,7 @@ function matchCard(m, pick = m.pick || (m.c || m.locked ? m : null) || tipsterPi
       pick
         ? `<div class="pickbar">
         <span class="who">Pick: <b>${esc(fav?.n)}</b> gana</span>
-        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `${pick.premium ? '<span class="badge red" title="Pick Premium">⭐</span>' : ''}<span class="conf${pick.c < 55 ? ' low' : ''}" ${pick.c < 55 ? 'title="Partido parejo: baja confianza"' : ''}>${pick.c}%</span>`}
+        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `${pick.premium ? '<span class="badge red" title="Pick Premium">⭐</span>' : ''}<span class="conf${pick.c < PAREJO ? ' low' : ''}" ${pick.c < PAREJO ? 'title="Partido parejo: baja confianza"' : ''}>${pick.c}%</span>`}
         <span class="odds">${odds(pick.o)}</span>
         ${res}
         ${pick.res === 'pending' ? `<button class="follow ${isFollowed(m.id) ? 'on' : ''}" data-follow="${m.id}" aria-label="Seguir pick">${icon('heart')}</button>` : ''}
@@ -720,7 +720,7 @@ async function renderAdminDaily(reload = true) {
   const band = (lo, hi) => sum(list.filter((x) => x.c >= lo && x.c < hi));
   const bands = [
     ['60% o más', band(60, 101)],
-    ['55–59%', band(55, 60)],
+    ['55–59% (parejos)', band(55, 60)],
     ['50–54% (parejos)', band(50, 55)]
   ];
   const unitsTxt = (u) => `${u > 0 ? '+' : ''}${String(u).replace('.', ',')}`;
@@ -772,7 +772,7 @@ async function renderAdminDaily(reload = true) {
         ? `<div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Hora</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
       ${list
         .map(
-          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${fmtTime(x.at)}</td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < 55 ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num ${x.res === 'hit' ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ Ganado' : '✗ Perdido'}</td></tr>`
+          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${fmtTime(x.at)}</td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num ${x.res === 'hit' ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ Ganado' : '✗ Perdido'}</td></tr>`
         )
         .join('')}</tbody></table></div>`
         : `<p class="note" style="margin-top:12px">Todavía no hay picks jugados este día.</p>`
@@ -1541,6 +1541,9 @@ function parseMoney(str) {
 // (sugerido: 1% de la banca). Se guarda en su configuración como
 // bank.force = { idPick: monto }; antes era una lista de ids (= 1%).
 const FORCED_PCT = 0.01;
+// Por debajo de esta confianza el pick se marca como parejo (baja confianza).
+// Medido el 19-oct: los de 55-59% acertaban ~49%, como los de 50-54%.
+const PAREJO = 60;
 // Desde aquí, si la cuota paga poco se sugiere la apuesta mínima en vez de
 // "No apostar" (los picks anteriores no cambian la banca ya calculada).
 const LOW_FROM = '2026-10-19T06:00:00Z';
@@ -1778,7 +1781,7 @@ async function renderAdminLedger() {
       ? `${filters}<div class="card scroll-x"><table class="ledger"><thead><tr><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Apuesta</th><th class="num">Resultado</th><th class="num">Banca</th></tr></thead><tbody>
         ${shown
           .map(
-            (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a)} vs ${esc(x.b)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(x.fav)} <span class="conf${x.c < 55 ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${x.stake != null ? cop(x.stake) : '—'}</td>${resCell(x)}<td class="num">${x.bal != null ? cop(x.bal) : '—'}</td></tr>`
+            (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td class="who">${esc(x.a)} vs ${esc(x.b)}<small>${esc(dayLabel(dayKey(x.at)))} ${fmtTime(x.at)}${x.ph ? ' · ' + esc(x.ph) : ''}</small></td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num">${x.stake != null ? cop(x.stake) : '—'}</td>${resCell(x)}<td class="num">${x.bal != null ? cop(x.bal) : '—'}</td></tr>`
           )
           .join('')}
         </tbody></table></div><p class="foot" style="margin-top:8px">${shown.length} de ${rows.length} picks · ${counts.bet} apostados · actualizado ${updatedAt ? fmtTime(updatedAt) : '—'}</p>`
@@ -1894,7 +1897,7 @@ function viewIdioma() {
 const FAQ = [
   ['Predicciones', [
     ['¿Cómo se generan las predicciones?', 'Cada ~5 minutos un proceso automático lee los torneos de la Liga Pro Checa, calcula para cada partido el rating de los jugadores, su racha, el historial entre ellos (H2H y patrones de alternancia), la forma del día y la cuota real de Rushbet, y con eso estima quién es el favorito. Cuando hay suficientes resultados, un modelo de machine learning reentrena solo y toma la decisión.'],
-    ['¿Qué significa el % de confianza?', 'Es la probabilidad que el sistema le da al favorito de ganar, en una escala honesta de 50% (partido parejo) a 80% (el máximo: en el tenis de mesa nada es seguro y no vamos a prometer más). Solo publicamos picks desde 55%. Referencia: 55-61% confianza media, 62-67% buena, 68-80% alta. Aun con 75%, 1 de cada 4 picks se pierde: por eso mostramos todos los resultados.'],
+    ['¿Qué significa el % de confianza?', 'Es la probabilidad que el sistema le da al favorito de ganar, en una escala honesta de 50% (partido parejo) a 80% (el máximo: en el tenis de mesa nada es seguro y no vamos a prometer más). Por debajo de 60% el partido se marca como parejo (baja confianza): enfócate en los de 60% o más. Referencia: 60-64% confianza media, 65-69% buena, 70-80% alta. Aun con 75%, 1 de cada 4 picks se pierde: por eso mostramos todos los resultados.'],
     ['¿El marcador en vivo es en tiempo real?', 'Sí. Se lee directo del feed en vivo de Rushbet cada 2 segundos, con el marcador punto a punto y set por set.'],
     ['¿Los resultados son reales?', 'Sí. Cada pick se marca como acierto o fallo automáticamente cuando el partido termina, con el resultado oficial. No se borra ni se edita ningún pick.']
   ]],
@@ -2208,7 +2211,7 @@ function openMatch(id) {
       <div class="block-h"><span class="overline">Probabilidad de victoria</span><span style="font-size:11px;color:var(--muted)">según el modelo</span></div>
       <div class="prob"><b>${cA}%</b><div class="meter"><span style="width:${cA}%"></span><span class="other" style="width:${100 - cA}%"></span></div><b>${100 - cA}%</b></div>
       <div class="prob-x"><span>${esc(m.a.n)}</span><span>${esc(m.b.n)}</span></div>
-      ${pick.c < 55 ? `<p class="note" style="margin:10px 0 0">${icon('info')} Partido parejo: el modelo ve poca ventaja (menos de 55%). Es un pick de baja confianza.</p>` : ''}
+      ${pick.c < PAREJO ? `<p class="note" style="margin:10px 0 0">${icon('info')} Partido parejo: el modelo ve poca ventaja (menos de ${PAREJO}%). Es un pick de baja confianza.</p>` : ''}
     </div>
     <div class="block">
       <div class="analysis">

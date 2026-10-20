@@ -21,7 +21,7 @@ const path = require('path');
 const { fetchNuxtData } = require('./lib/tt');
 const BACKFILL_PAUSE_MS = 1200;
 const { fetchLigaProChecaOdds, findOdds } = require('./lib/rushbet');
-const { featuresOf, train: trainV2, fitMarket, predict } = require('./lib/model-v2');
+const { featuresOf, train: trainV2, fitMarket, predict, marketProb } = require('./lib/model-v2');
 const { computeStake } = require('./lib/staking');
 const { table: groupTable, stakes, groupsOf } = require('./lib/standings');
 const BANK_START = 2000000; // banca inicial en COP, misma convención del sitio anterior
@@ -390,7 +390,13 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
 
 // El cruce con Rushbet es "una oportunidad" al generar el pick: si la
 // cuota aparece después, se completa acá (solo picks pendientes).
-function backfillOdds(rushbet) {
+//
+// Si el partido todavía no empieza y la casa tiene de favorito al otro
+// jugador (la cuota llegó tarde o cambió después de la última revisión), el
+// pick se recalcula: generatePick sigue a la casa. Medido el 19-oct: los
+// picks que quedaron contra el favorito final de la casa acertaron 39%
+// (22/56 en 4 días); con la cuota final se habrían acertado 12 picks más.
+function backfillOdds(rushbet, model) {
   let n = 0;
   for (const p of Object.values(state.picks)) {
     if (p.res !== 'pending') continue;
@@ -405,6 +411,20 @@ function backfillOdds(rushbet) {
       p.x.oB = odds.oddsB;
       m.oa = odds.oddsA; // en el partido: el modelo aprende el peso del mercado
       m.ob = odds.oddsB;
+      const pm = marketProb(odds.oddsA, odds.oddsB);
+      if (model && p.pub && pm != null && pm !== 0.5 && (p.fav === m.a) !== pm > 0.5 && new Date(m.at).getTime() > Date.now()) {
+        try {
+          const pick = generatePick(m, odds, model, p);
+          if (p.dst != null) pick.dst = p.dst;
+          pick.upd = new Date().toISOString();
+          pick.chg = (p.chg || 0) + (p.fav !== pick.fav ? 1 : 0);
+          pick.late = true; // recalculado por la cuota de los últimos minutos
+          state.picks[p.id] = pick;
+          continue;
+        } catch (e) {
+          console.error(`Pick de ${p.id} (cuota tardía) falló: ${e.message}`);
+        }
+      }
     }
     if (!p.o) {
       p.o = p.fav === m.a ? odds.oddsA : odds.oddsB;
@@ -1399,7 +1419,7 @@ async function run() {
     await sleep(150);
   }
 
-  totals.oddsBackfilled = backfillOdds(rushbet);
+  totals.oddsBackfilled = backfillOdds(rushbet, model);
   // El historial viejo se carga DESPUÉS de publicar (paso aparte del
   // workflow: --history), para no demorar resultados ni picks nuevos.
   prune();
