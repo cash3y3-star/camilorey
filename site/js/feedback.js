@@ -59,15 +59,15 @@ function vibrate(pattern) {
   } catch {}
 }
 
-// Tocar un botón o enlace: el "tic" de siempre, un poco más fuerte (0.07
-// casi no se oía; 0.22 con otro tono le pareció muy alto al usuario). Si
+// Tocar un botón o enlace: el "tic" de siempre, suave (0.06; 0.1 y
+// 0.22 le parecieron altos al usuario). Si
 // dos llamadas llegan juntas en el mismo toque, suena una sola vez.
 let lastTap = 0;
 export function tapFx() {
   if (!fxEnabled() || performance.now() - lastTap < 90) return;
   lastTap = performance.now();
   vibrate(12);
-  blip(880, 0, 0.05, 0.1);
+  blip(880, 0, 0.05, 0.06);
 }
 
 // Chat: enviar un mensaje ("swoosh" corto hacia arriba).
