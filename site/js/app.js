@@ -90,6 +90,7 @@ async function refreshPremium() {
   maybePremiumWelcome();
   maybeTrialWelcome();
   renderTrialBar();
+  maybeAskRating();
 }
 
 // Franja arriba para los que están en prueba: cuánto les queda y botón a
@@ -153,10 +154,136 @@ function maybeTrialWelcome() {
       <span class="pw-badge">SOLO PREMIUM</span>
       <ul class="pw-list">${no.map((p) => `<li>${esc(p)}<span>🔒</span></li>`).join('')}</ul>
     </div>
-    <button class="btn pw-btn" id="btn-pw-start">Comenzar a Explorar</button>`;
+    <button class="btn pw-btn" id="btn-tw-start">Comenzar a Explorar</button>`;
   $sheet.hidden = false;
   $sheet.classList.add('pw');
   document.body.style.overflow = 'hidden';
+}
+
+// ---------- Calificación del sitio (1-5 estrellas) e ideas ----------
+// A las 5 horas de empezar (prueba o cuenta) se pide una vez; "Ahora no"
+// vuelve a preguntar al día siguiente. Desde Perfil se puede en cualquier
+// momento. Lo ve el admin en #/calificaciones.
+const RATE_AFTER_MS = 5 * 3600e3;
+const STAR_LABELS = ['', 'Muy malo', 'Malo', 'Regular', 'Bueno', 'Excelente'];
+let myRating; // undefined = todavía no se leyó
+let rateStars = 0;
+
+async function maybeAskRating() {
+  if (!account || isAdmin() || !hasAccess() || !$sheet.hidden) return;
+  const start = isTrialUser() ? trial.until.getTime() - FB.TRIAL_MS : Date.parse(account.metadata?.creationTime || '') || Date.now();
+  if (Date.now() - start < RATE_AFTER_MS) return;
+  if (readLocal('cr_rated', '') === account.uid || Number(readLocal('cr_rate_snooze', 0)) > Date.now()) return;
+  if (myRating === undefined) myRating = await FB.loadMyRating().catch(() => undefined);
+  if (myRating) return writeLocal('cr_rated', account.uid);
+  if (myRating === null && $sheet.hidden) {
+    writeLocal('cr_rate_snooze', Date.now() + 24 * 3600e3); // si la cierra sin enviar
+    showRating(true);
+  }
+}
+
+function showRating(auto = false) {
+  rateStars = myRating?.stars || 0;
+  $sheetBody.innerHTML = `
+    <div class="rate">
+      <div class="rate-ic">⭐</div>
+      <h2>¿Qué te parece el sitio?</h2>
+      <p>Califica tu experiencia con el Sistema de CamiloRey. Nos ayuda mucho a mejorar.</p>
+      <div class="rate-stars" role="radiogroup" aria-label="Calificación">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" class="${n <= rateStars ? 'on' : ''}" aria-label="${n} ${n === 1 ? 'estrella' : 'estrellas'}">★</button>`).join('')}</div>
+      <div class="rate-label" id="rate-label">${rateStars ? STAR_LABELS[rateStars] : 'Toca las estrellas'}</div>
+      <label class="field rate-field"><span>Ideas o errores para mejorar (opcional)</span>
+        <textarea id="rate-text" maxlength="1000" rows="4" placeholder="Cuéntanos qué te gustaría ver, qué mejorarías o si algo no funciona…"></textarea></label>
+      <button class="btn primary" id="btn-rate-send">Enviar</button>
+      ${auto ? '<button class="btn ghost" id="btn-rate-later" style="margin-top:8px">Ahora no</button>' : ''}
+    </div>`;
+  $sheet.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+async function sendRating(btn) {
+  const text = (document.getElementById('rate-text')?.value || '').trim();
+  if (!rateStars && !text) return toast('Elige de 1 a 5 estrellas o escribe tu idea');
+  btn.disabled = true;
+  try {
+    const plan = isPremiumUser() ? 'premium' : isTrialUser() ? 'prueba' : 'otro';
+    if (rateStars) {
+      await FB.saveRating(rateStars, userName(), plan);
+      myRating = { stars: rateStars };
+      writeLocal('cr_rated', account.uid);
+    }
+    if (text) await FB.sendIdea(text, userName());
+    closeSheet();
+    toast('¡Gracias por tu opinión! 🙌');
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo enviar. Intenta de nuevo.');
+  }
+}
+
+// Panel admin: resumen + página con cada calificación (con el nombre) e ideas.
+const starsTxt = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+const ratingAvg = (ratings) => (ratings.length ? ratings.reduce((a, r) => a + r.stars, 0) / ratings.length : 0);
+const ratingsHead = (ratings, extra = '') => `<div class="card pad rate-sum">
+      <div><b class="rate-avg">${ratings.length ? ratingAvg(ratings).toFixed(1) : '—'}</b><span class="rate-gold">${starsTxt(Math.round(ratingAvg(ratings)))}</span></div>
+      ${extra}
+    </div>`;
+
+async function renderAdminRatings() {
+  const box = document.getElementById('admin-ratings');
+  if (!box) return;
+  try {
+    const { ratings, ideas } = await FB.adminListRatings();
+    box.innerHTML = ratingsHead(
+      ratings,
+      `<small>${ratings.length} ${ratings.length === 1 ? 'calificación' : 'calificaciones'} · ${ideas.length} ${ideas.length === 1 ? 'idea o error' : 'ideas o errores'}</small>
+      <a class="btn primary" href="#/calificaciones" style="margin-top:12px">Ver calificaciones</a>`
+    );
+  } catch (e) {
+    box.innerHTML = `<p class="note">No se pudo leer (${esc(e.code || e.message)}). Hay que actualizar las reglas de Firestore.</p>`;
+  }
+}
+
+function viewCalificaciones() {
+  if (!isAdmin()) return viewAdmin();
+  setTimeout(renderCalificaciones, 0);
+  return `<div class="subhead"><a class="back" href="#/admin">${icon('left')} Atrás</a><h1>Calificaciones</h1></div><div id="ratings-page">${skeleton(3)}</div>`;
+}
+
+async function renderCalificaciones() {
+  const box = document.getElementById('ratings-page');
+  if (!box) return;
+  let ratings, ideas;
+  try {
+    ({ ratings, ideas } = await FB.adminListRatings());
+  } catch (e) {
+    box.innerHTML = `<p class="note">No se pudo leer (${esc(e.code || e.message)}). Hay que actualizar las reglas de Firestore.</p>`;
+    return;
+  }
+  const when = (d) => (d ? d.toLocaleString(LOC(), { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
+  const dist = [5, 4, 3, 2, 1]
+    .map((n) => {
+      const c = ratings.filter((r) => r.stars === n).length;
+      return `<div class="rate-bar"><span>${n} ★</span><i><b style="width:${ratings.length ? (c / ratings.length) * 100 : 0}%"></b></i><span>${c}</span></div>`;
+    })
+    .join('');
+  box.innerHTML = `
+    ${ratingsHead(ratings, `<small>${ratings.length} ${ratings.length === 1 ? 'calificación' : 'calificaciones'}</small><div style="margin-top:12px">${dist}</div>`)}
+    <div class="section-h"><h2>⭐ Quién calificó</h2></div>
+    ${
+      ratings.length
+        ? `<div class="list">${ratings
+            .map((r) => `<div class="row"><span class="tx"><b>${esc(r.name || 'Sin nombre')}</b><small>${esc(r.email || '')} · ${esc(when(r.at))}${r.plan === 'prueba' ? ' · en prueba' : r.plan === 'premium' ? ' · Premium' : ''}</small></span><span class="rate-gold" title="${r.stars} de 5">${starsTxt(r.stars)}</span></div>`)
+            .join('')}</div>`
+        : '<p class="note">Todavía nadie ha calificado.</p>'
+    }
+    <div class="section-h"><h2>💡 Ideas y errores</h2></div>
+    ${
+      ideas.length
+        ? `<div class="list">${ideas
+            .map((x) => `<div class="row rate-idea"><span class="tx"><b>${esc(x.name || 'Sin nombre')}</b><small>${esc(x.email || '')} · ${esc(when(x.at))}</small><p>${esc(x.text)}</p></span><button class="mini-btn" data-idea-del="${esc(x.id)}">Borrar</button></div>`)
+            .join('')}</div>`
+        : '<p class="note">Todavía no hay ideas ni reportes de errores.</p>'
+    }`;
 }
 
 // También la usa el panel admin como vista previa.
@@ -738,6 +865,8 @@ function viewAdmin() {
     <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Sin acceso vigente nadie puede ver el sitio. Si ya tenía acceso, los días se suman a su fecha de vencimiento; al vencerse se bloquea solo. Al usuario le aparece automáticamente una bienvenida. <button type="button" class="textlink" id="btn-pw-preview">Ver cómo se ve</button></p>
   </form>
   <div id="admin-members">${skeleton(1)}</div>
+  <div class="section-h"><h2>⭐ Calificaciones e ideas</h2></div>
+  <div id="admin-ratings">${skeleton(1)}</div>
   <div class="section-h"><h2>📊 Visitas</h2></div>
   <div id="admin-visits">${skeleton(1)}</div>
   <div class="section-h"><h2>👥 Usuarios</h2></div>
@@ -1022,6 +1151,7 @@ async function renderAdminPanel() {
       : '<p class="note" style="margin-top:10px">Aún no has publicado picks del tipster.</p>';
   // Miembros (acceso al sitio)
   renderMembers();
+  renderAdminRatings();
   // Visitas por día
   const vbox = document.getElementById('admin-visits');
   try {
@@ -1873,6 +2003,7 @@ function viewPerfil() {
     ${isAdmin() ? `<a class="row" href="#/admin"><span class="ic" style="color:var(--red-2)">${icon('shield')}</span><span class="tx"><b>Panel admin</b><small>Pick del tipster, visitas y usuarios</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
     <a class="row" href="#/premium"><span class="ic" style="font-size:18px">⭐</span><span class="tx"><b>Premium</b><small>${isPremiumUser() ? (isAdmin() ? 'Activo (administrador)' : `Activo hasta ${esc(membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' }))}`) : 'Picks de alta confianza, análisis IA, bankroll y avisos'}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/notificaciones"><span class="ic">${icon('bell')}</span><span class="tx"><b>Notificaciones</b><small>Avisos de tus picks en el celular</small></span><span class="chev">${icon('chev')}</span></a>
+    ${u && hasAccess() && !isAdmin() ? `<button class="row" id="btn-rate-open"><span class="ic" style="font-size:18px">💬</span><span class="tx"><b>Calificar y enviar ideas</b><small>Tu opinión, ideas o errores del sitio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
     <button class="row check ${fxEnabled() ? 'on' : ''}" data-fx="1"><span class="ic">${icon('bolt')}</span><span class="tx"><b>Sonido y vibración</b><small>Un toque suave al cambiar de pestaña</small></span><span class="tick"></span></button>
     <a class="row" href="#/tema"><span class="ic">${icon('moon')}</span><span class="tx"><b>Tema</b><small>${esc({ dark: 'Oscuro', light: 'Claro', system: 'Sistema' }[readLocal('cr_theme_raw', 'dark')] || 'Oscuro')}</small></span><span class="chev">${icon('chev')}</span></a>
     <a class="row" href="#/cuotas"><span class="ic">${icon('chart')}</span><span class="tx"><b>Formato de cuotas</b><small>${esc(ODDS_FORMATS[readLocal('cr_odds', 'decimal')]?.[0] || 'Decimal')} · ${esc(odds(1.57))}</small></span><span class="chev">${icon('chev')}</span></a>
@@ -2437,6 +2568,7 @@ const ROUTES = {
   soporte: viewSoporte,
   notificaciones: viewNotificaciones,
   premium: viewPremium,
+  calificaciones: viewCalificaciones,
   tema: viewTema,
   cuotas: viewCuotas,
   idioma: viewIdioma,
@@ -2704,6 +2836,22 @@ document.addEventListener('click', async (ev) => {
   }
   if (t.id === 'btn-pw-preview') return showPremiumWelcome(new Date(Date.now() + memberDays * 86400e3));
   if (t.id === 'btn-ann-ok' || t.id === 'btn-ann-bank') closeSheet();
+  if (t.dataset.star) {
+    rateStars = Number(t.dataset.star);
+    document.querySelectorAll('[data-star]').forEach((b) => b.classList.toggle('on', Number(b.dataset.star) <= rateStars));
+    document.getElementById('rate-label').textContent = STAR_LABELS[rateStars];
+    tapFx();
+    return;
+  }
+  if (t.id === 'btn-rate-send') return sendRating(t);
+  if (t.id === 'btn-rate-later') return closeSheet();
+  if (t.id === 'btn-rate-open') return showRating(false);
+  if (t.id === 'btn-tw-start') return closeSheet();
+  if (t.dataset.ideaDel) {
+    if (!confirm('¿Borrar esta idea?')) return;
+    await FB.adminDeleteIdea(t.dataset.ideaDel).catch(() => toast('No se pudo borrar'));
+    return renderCalificaciones();
+  }
   if (t.id === 'btn-pw-start') {
     closeSheet();
     ui.pickFilter = 'high';

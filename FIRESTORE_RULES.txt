@@ -84,6 +84,33 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Calificación del sitio (1 a 5 estrellas): una por cuenta, la puede
+    // cambiar; solo el admin las ve todas.
+    match /ratings/{uid} {
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                    && request.resource.data.keys().hasOnly(['stars', 'name', 'email', 'plan', 'at'])
+                    && request.resource.data.stars is int
+                    && request.resource.data.stars >= 1 && request.resource.data.stars <= 5
+                    && request.resource.data.name is string && request.resource.data.name.size() <= 80
+                    && request.resource.data.plan in ['premium', 'prueba', 'otro']
+                    && request.resource.data.at == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // Ideas o errores del sitio que mandan los usuarios: cualquiera con
+    // cuenta puede enviar; solo el admin las lee y las borra.
+    match /feedback/{id} {
+      allow read, delete: if isAdmin();
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'text', 'at'])
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.name is string && request.resource.data.name.size() <= 80
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 1000
+                    && request.resource.data.at == request.time;
+    }
+
     // Contenido Premium (picks de alta confianza y Análisis IA): solo
     // cuentas con Premium activo (o admin); lo escribe el bot.
     match /premium/{doc} {

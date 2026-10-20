@@ -189,6 +189,40 @@ export async function loadTrial(create = false) {
   return { until, active: until.getTime() > Date.now() };
 }
 
+// ---------- Calificación del sitio e ideas ----------
+// ratings/{uid} = { stars 1-5, name, email, plan, at } (una por cuenta, la
+// puede cambiar). feedback/{auto} = { uid, name, email, text, at } (ideas o
+// errores; varias por cuenta). Solo el admin las lee.
+export async function loadMyRating() {
+  if (!currentUser) return null;
+  const f = await load();
+  const snap = await f.F.getDoc(f.F.doc(f.db, 'ratings', currentUser.uid));
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function saveRating(stars, name, plan) {
+  const f = await load();
+  await f.F.setDoc(f.F.doc(f.db, 'ratings', currentUser.uid), { stars, name: String(name).slice(0, 80), email: emailKey(currentUser.email), plan, at: f.F.serverTimestamp() });
+}
+
+export async function sendIdea(text, name) {
+  const f = await load();
+  await f.F.addDoc(f.F.collection(f.db, 'feedback'), { uid: currentUser.uid, name: String(name).slice(0, 80), email: emailKey(currentUser.email), text: String(text).slice(0, 1000), at: f.F.serverTimestamp() });
+}
+
+export async function adminListRatings() {
+  const f = await load();
+  const [r, i] = await Promise.all([f.F.getDocs(f.F.collection(f.db, 'ratings')), f.F.getDocs(f.F.collection(f.db, 'feedback'))]);
+  const row = (d) => ({ id: d.id, ...d.data(), at: d.data().at?.toDate?.() || null });
+  const newest = (a, b) => (b.at || 0) - (a.at || 0);
+  return { ratings: r.docs.map(row).sort(newest), ideas: i.docs.map(row).sort(newest) };
+}
+
+export async function adminDeleteIdea(id) {
+  const f = await load();
+  await f.F.deleteDoc(f.F.doc(f.db, 'feedback', id));
+}
+
 // Llave de los datos cifrados del sitio (vault/key): solo la pueden leer
 // cuentas con acceso vigente y el admin (reglas). Sin permiso, falla.
 export async function loadVault() {

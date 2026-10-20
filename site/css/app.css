@@ -722,3 +722,26 @@ body.locked .tabbar, body.locked #btn-notif { display: none; }
 .trial-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 8px 16px; background: linear-gradient(90deg, #3a0606, #7a0b0b); color: #fff; font-size: 13px; text-decoration: none; }
 .trial-bar .tb-go { flex: none; padding: 4px 10px; border-radius: 999px; background: #ff1717; font-size: 12px; }
 .pw-crown:not(:has(svg)) { font-size: 40px; }
+
+/* Calificación del sitio (1-5 estrellas) e ideas. */
+.rate { text-align: center; padding: 6px 2px 4px; }
+.rate-ic { font-size: 40px; }
+.rate h2 { margin: 6px 0; font-size: 22px; }
+.rate p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+.rate-stars { display: flex; justify-content: center; gap: 6px; }
+.rate-stars button { font-size: 42px; line-height: 1; padding: 2px; background: none; border: 0; color: var(--line); cursor: pointer; transition: transform .15s, color .15s; }
+.rate-stars button.on { color: #ffc531; text-shadow: 0 0 12px rgba(255, 197, 49, .45); }
+.rate-stars button:active { transform: scale(1.2); }
+.rate-label { min-height: 20px; margin: 6px 0 14px; font-weight: 700; font-size: 14px; }
+.rate-field { display: block; text-align: left; margin-bottom: 12px; }
+.rate-field span { display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted); }
+.rate-field textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-size: 14px; }
+.rate-sum { text-align: center; }
+.rate-avg { font-size: 34px; margin-right: 8px; }
+.rate-gold { color: #ffc531; letter-spacing: 1px; white-space: nowrap; }
+.rate-sum small { display: block; color: var(--muted); }
+.rate-bar { display: grid; grid-template-columns: 34px 1fr 28px; align-items: center; gap: 8px; font-size: 12px; margin: 4px 0; }
+.rate-bar i { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.rate-bar i b { display: block; height: 100%; background: #ffc531; }
+.rate-idea { align-items: flex-start; }
+.rate-idea p { margin: 6px 0 0; font-size: 14px; color: var(--text); white-space: pre-wrap; word-break: break-word; }
