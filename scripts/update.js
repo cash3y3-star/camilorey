@@ -1426,7 +1426,7 @@ async function run() {
   writeSite({ model: modelInfo, tipster: await tipsterStats(), users: await require('./notify').countUsers() });
   try {
     const featured = Object.values(state.picks).find((p) => p.ft);
-    await require('./notify').runNotifications(state, { name: (id) => state.players[id]?.n || '?', featuredId: featured?.id || null });
+    await require('./notify').runNotifications(state, { name: (id) => state.players[id]?.n || '?', featuredId: featured?.id || null, isLocked: (p) => Boolean(p) && isLocked(p) });
   } catch (e) {
     console.error(`Push: ${e.message}`);
   }

@@ -39,7 +39,7 @@ let premiumData = null; // contenido Premium (picks completos + Análisis IA)
 
 const isPremiumUser = () => isAdmin() || Boolean(membership?.active);
 // En prueba: entra al sitio pero no es Premium (picks de 60%+, Análisis IA,
-// Bankroll y notificaciones siguen con candado).
+// Bankroll y tabla del grupo siguen con candado; las notificaciones son gratis).
 const isTrialUser = () => !isPremiumUser() && Boolean(trial?.active);
 // El sitio es solo para miembros (o en prueba): sin acceso vigente se ve la
 // pantalla de bloqueo (viewLock) y los datos no se pueden abrir (cifrados).
@@ -212,8 +212,8 @@ function maybeTrialWelcome() {
   if (readLocal('cr_trial_welcome', '') === key) return;
   writeLocal('cr_trial_welcome', key);
   const hora = `${trial.until.toLocaleTimeString(LOC(), { hour: 'numeric', minute: '2-digit' })} del ${trial.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long' })}`;
-  const yes = ['Picks del sistema (menos de 60%)', 'Calendario, en vivo y resultados', 'Picks del tipster y seguidos', 'Soporte en vivo'];
-  const no = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Mi Bankroll con Kelly', 'Alertas de picks en tu celular'];
+  const yes = ['Picks del sistema (menos de 60%)', 'Calendario, en vivo y resultados', 'Picks del tipster y seguidos', 'Notificaciones en el celular', 'Soporte en vivo'];
+  const no = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Mi Bankroll con Kelly', 'Tabla del grupo'];
   $sheetBody.innerHTML = `
     <div class="pw-head">
       <div class="pw-crown">🎁</div>
@@ -364,7 +364,7 @@ async function renderCalificaciones() {
 // También la usa el panel admin como vista previa.
 function showPremiumWelcome(until) {
   const fecha = until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' });
-  const perks = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Bankroll con criterio de Kelly', 'Tabla del grupo en cada partido', 'Alertas de picks en tu celular'];
+  const perks = ['Picks de alta confianza (60% o más)', 'Análisis con IA por partido', 'Bankroll con criterio de Kelly', 'Tabla del grupo en cada partido'];
   $sheetBody.innerHTML = `
     <div class="pw-head">
       <div class="pw-crown">${crownSvg()}</div>
@@ -796,7 +796,6 @@ function viewPremium() {
     ${perk('🧠', 'Análisis IA de cada pick', 'Por qué gana: rating, mercado, cruce directo, rachas y forma del día')}
     ${perk('💰', 'Mi Bankroll con Kelly', 'Cuánto apostar en cada pick que sigues, saldo y ROI')}
     ${perk(icon('trophy'), 'Tabla del grupo', 'Posiciones del grupo y lo que se juega cada jugador')}
-    ${perk('🔔', 'Notificaciones en el celular', 'Nuevo pick destacado y resultado de tus picks seguidos')}
   </div>
   ${
     active
@@ -832,8 +831,8 @@ async function renderNotificaciones() {
     box.innerHTML = `${empty('bell', 'Inicia sesión', 'Las notificaciones avisan de los picks que sigues, así que necesitas una cuenta.')}<a class="btn primary" href="#/login">Iniciar sesión</a>`;
     return;
   }
-  if (!isPremiumUser()) {
-    box.innerHTML = premiumLock('Las notificaciones son Premium', 'Recibe en tu celular cada nuevo pick destacado y el resultado de los picks que sigues, aunque tengas la página cerrada.');
+  if (!hasAccess()) {
+    box.innerHTML = premiumLock('Las notificaciones son para miembros', 'Recibe en tu celular cada nuevo pick destacado y el resultado de los picks que sigues, aunque tengas la página cerrada.');
     return;
   }
   if (!pushSupported()) {
@@ -2077,7 +2076,7 @@ function viewPerfil() {
   <div class="overline" style="margin:22px 4px 8px">Ajustes</div>
   <div class="list">
     ${isAdmin() ? `<a class="row" href="#/admin"><span class="ic" style="color:var(--red-2)">${icon('shield')}</span><span class="tx"><b>Panel admin</b><small>Pick del tipster, visitas y usuarios</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
-    <a class="row" href="#/premium"><span class="ic" style="font-size:18px">⭐</span><span class="tx"><b>Premium</b><small>${isPremiumUser() ? (isAdmin() ? 'Activo (administrador)' : `Activo hasta ${esc(membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' }))}`) : 'Picks de alta confianza, análisis IA, bankroll y avisos'}</small></span><span class="chev">${icon('chev')}</span></a>
+    <a class="row" href="#/premium"><span class="ic" style="font-size:18px">⭐</span><span class="tx"><b>Premium</b><small>${isPremiumUser() ? (isAdmin() ? 'Activo (administrador)' : `Activo hasta ${esc(membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' }))}`) : 'Picks de alta confianza, análisis IA, bankroll y tabla del grupo'}</small></span><span class="chev">${icon('chev')}</span></a>
     ${canOfferInstall() ? `<button class="row" data-install="1"><span class="ic">${icon('install')}</span><span class="tx"><b>Instalar app</b><small>Agrega CamiloRey a tu pantalla de inicio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
     <a class="row" href="#/notificaciones"><span class="ic">${icon('bell')}</span><span class="tx"><b>Notificaciones</b><small>Avisos de tus picks en el celular</small></span><span class="chev">${icon('chev')}</span></a>
     ${u && hasAccess() && !isAdmin() ? `<button class="row" id="btn-rate-open"><span class="ic" style="font-size:18px">💬</span><span class="tx"><b>Calificar y enviar ideas</b><small>Tu opinión, ideas o errores del sitio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
@@ -2622,7 +2621,7 @@ function viewLock() {
     <h1>Hola, ${esc(userName().split(' ')[0])}</h1>
     <div class="card pad lock-card">${
       trialOver
-        ? 'Tu <b>prueba gratis de 24 horas terminó</b>. Esperamos que te haya gustado: hazte Premium y desbloquea todos los picks, incluidos los de 60% o más, el Análisis IA, Mi Bankroll y las alertas en tu celular.'
+        ? 'Tu <b>prueba gratis de 24 horas terminó</b>. Esperamos que te haya gustado: hazte Premium y desbloquea todos los picks, incluidos los de 60% o más, el Análisis IA, Mi Bankroll y la tabla del grupo.'
         : expired
         ? `Tu acceso finalizó el <b>${esc(fecha)}</b>. Gracias por ser parte del Sistema de CamiloRey: puedes renovarlo cuando quieras y seguir disfrutando de todos los picks.`
         : 'Tu cuenta ya está creada, pero todavía no tiene un acceso activo. Escríbenos por Telegram y con gusto lo activamos.'
@@ -2735,11 +2734,14 @@ async function renderCounter() {
 
 // ---------------- eventos ----------------
 
-// Vibración y "tic" al tocar pestañas (barra de abajo y pestañas internas).
+// Vibración y "tic" al tocar cualquier botón, enlace o partido (para todos).
+// Seguir un pick y el chat tienen su propio sonido; el interruptor de
+// sonido suena al encenderlo.
 document.addEventListener(
   'click',
   (ev) => {
-    if (ev.target.closest('.tabbar a, .seg button, .chip-btn, .daynav button')) tapFx();
+    const t = ev.target.closest('a, button, [role="button"], [data-open], [data-player], label.row, input[type="checkbox"]');
+    if (t && !t.closest('[data-follow], [data-fx], .chat-panel, .chat-fab')) tapFx();
   },
   true
 );

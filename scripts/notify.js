@@ -76,7 +76,8 @@ async function activeMembers(token) {
 }
 
 // Correos con la prueba gratis de 24 h vigente (colección "trials", id =
-// correo, { at }). Entran al sitio pero no son Premium (no reciben push).
+// correo, { at }). Entran al sitio pero no son Premium: reciben push, pero
+// sin revelar los picks de 60% o más.
 const TRIAL_MS = 24 * 3600e3;
 async function activeTrials(token) {
   const out = new Set();
@@ -128,10 +129,13 @@ async function runNotifications(state, helpers) {
   }
 
   const token = await botToken();
-  // Las notificaciones son beneficio Premium: solo correos con membresía activa
-  // (colección "members", id = correo) o la cuenta admin.
+  // Notificaciones gratis para quien tiene acceso: membresía activa
+  // (colección "members", id = correo), prueba vigente o la cuenta admin.
   const premium = await activeMembers(token);
-  const users = (await listUsers(token)).filter((u) => u.push.length && (premium.has(u.email) || u.email === 'camilosimanca77@gmail.com'));
+  const trials = await activeTrials(token);
+  const users = (await listUsers(token)).filter((u) => u.push.length && (premium.has(u.email) || trials.has(u.email) || u.email === 'camilosimanca77@gmail.com'));
+  for (const u of users) u.trial = !premium.has(u.email) && u.email !== 'camilosimanca77@gmail.com';
+  const locked = (id) => Boolean(helpers.isLocked?.(state.picks[id]));
   if (!users.length) return console.log('Push: nadie suscrito todavía');
 
   // Eventos de partidos seguidos.
@@ -167,14 +171,14 @@ async function runNotifications(state, helpers) {
     N[key] = N[key] || {};
     if ((N[key].c || 0) >= p.chg) continue;
     N[key].c = p.chg;
-    events.push({ mid: p.id, ft: isFt, kind: 'change', title: `🔄 ${isFt ? 'Cambió el pick destacado' : 'Pick actualizado'}: ahora ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · revisado antes de empezar`, url: isFt ? SITE : `${SITE}#/seguidos`, tag: `m${p.id}` });
+    events.push({ mid: p.id, ft: isFt, lk: locked(p.id), kind: 'change', title: `🔄 ${isFt ? 'Cambió el pick destacado' : 'Pick actualizado'}: ahora ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · revisado antes de empezar`, url: isFt ? SITE : `${SITE}#/seguidos`, tag: `m${p.id}` });
   }
   // Pick destacado nuevo.
   if (helpers.featuredId && N._featured !== helpers.featuredId) {
     const p = state.picks[helpers.featuredId];
     const m = state.matches[helpers.featuredId];
     if (p && m) {
-      events.push({ kind: 'featured', title: `⭐ Nuevo pick destacado: ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza${p.o ? ` · cuota ${p.o.toFixed(2)}` : ''}`, url: SITE, tag: 'featured' });
+      events.push({ kind: 'featured', lk: locked(p.id), title: `⭐ Nuevo pick destacado: ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza${p.o ? ` · cuota ${p.o.toFixed(2)}` : ''}`, url: SITE, tag: 'featured', teaser: { kind: 'featured', title: '⭐ Nuevo pick destacado Premium', body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · hazte Premium para ver a quién elige`, url: `${SITE}#/premium`, tag: 'featured' } });
     }
     N._featured = helpers.featuredId;
   }
@@ -206,7 +210,12 @@ async function runNotifications(state, helpers) {
   let sent = 0;
   for (const u of users) {
     const prefs = { start: true, end: true, change: true, featured: true, ...u.notify };
-    const mine = events.filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && (e.ft || u.follows.map(Number).includes(e.mid))));
+    // En prueba: el destacado de 60%+ llega sin el jugador y los cambios de
+    // esos picks no se mandan (son contenido Premium).
+    const mine = events
+      .filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && (e.ft || u.follows.map(Number).includes(e.mid))))
+      .filter((e) => !(u.trial && e.lk && e.kind === 'change'))
+      .map((e) => (u.trial && e.lk && e.teaser ? e.teaser : e));
     if (u.email === 'camilosimanca77@gmail.com') mine.push(...chatEvents);
     if (annFor(u)) {
       mine.push(annEvent);
@@ -218,7 +227,8 @@ async function runNotifications(state, helpers) {
       let ok = true;
       for (const e of mine) {
         try {
-          await webpush.sendNotification(sub, JSON.stringify(e), { TTL: 3600 });
+          const { lk, teaser, ...payload } = e; // lk/teaser: solo para decidir aquí
+          await webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 3600 });
           sent++;
         } catch (err) {
           if (err.statusCode === 404 || err.statusCode === 410) ok = false; // suscripción vencida

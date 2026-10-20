@@ -1,5 +1,5 @@
 // ============================================================
-// Respuesta táctil: vibración corta y un "tic" suave al tocar pestañas.
+// Respuesta táctil: vibración corta y un "tic" al tocar botones y enlaces.
 // El sonido se genera con Web Audio (sin archivos). Se puede apagar en
 // Perfil → Sonido y vibración (localStorage cr_fx). En iPhone la web no
 // puede vibrar: solo suena.
@@ -31,7 +31,11 @@ function audio() {
   return ctx;
 }
 
-// Un tono corto con caída rápida (suena como un "tic" suave).
+// El navegador arranca el audio "dormido" hasta el primer toque: se
+// despierta en el primer pointerdown para que el primer tic ya suene.
+addEventListener('pointerdown', () => fxEnabled() && audio(), { capture: true, passive: true });
+
+// Un tono corto con caída rápida (suena como un "tic").
 function blip(freq, start, dur = 0.05, vol = 0.07) {
   const a = audio();
   if (!a) return;
@@ -55,11 +59,16 @@ function vibrate(pattern) {
   } catch {}
 }
 
-// Tocar una pestaña.
+// Tocar un botón o enlace: un clic seco y audible en el parlante del celular
+// (antes 0.07 de volumen, casi no se oía). Si dos llamadas llegan juntas en
+// el mismo toque, suena una sola vez.
+let lastTap = 0;
 export function tapFx() {
-  if (!fxEnabled()) return;
-  vibrate(10);
-  blip(880, 0);
+  if (!fxEnabled() || performance.now() - lastTap < 90) return;
+  lastTap = performance.now();
+  vibrate(12);
+  blip(1200, 0, 0.035, 0.22);
+  blip(700, 0.004, 0.05, 0.16);
 }
 
 // Chat: enviar un mensaje ("swoosh" corto hacia arriba).
