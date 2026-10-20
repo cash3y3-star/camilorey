@@ -2985,6 +2985,7 @@ function startFirebase() {
     // También con la bienvenida Premium abierta si detrás está el bloqueo o
     // "Cargando…": si no, al cerrarla seguiría esa pantalla.
     if ($sheet.hidden || $view.querySelector('.lock')) route();
+    window.crSplashDone?.(); // pantalla de carga (index.html)
   });
 }
 // Firebase se carga siempre al abrir: sin sesión con acceso no se ve nada.
