@@ -2454,6 +2454,12 @@ function openMatch(id) {
     ${pick && !pick.locked && pick.chg ? `<p class="note" style="margin:12px 0 0">${icon('info')} El sistema cambió este pick al revisarlo antes de empezar (con la forma del día y la cuota más recientes).</p>` : ''}
     ${pick?.locked ? `<div style="margin-top:12px">${premiumLock('Pick Premium de alta confianza', 'El sistema tiene un pick de 60% o más para este partido. Hazte Premium para ver a quién elige, su confianza, la cuota y el análisis.')}</div>` : ''}
     ${pick && !pick.locked && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
+    ${pick && !pick.locked ? `<div class="block">
+      <div class="block-h"><span class="overline">Probabilidad de victoria</span><span style="font-size:11px;color:var(--muted)">según el modelo</span></div>
+      <div class="prob"><b>${cA}%</b><div class="meter"><span style="width:${cA}%"></span><span class="other" style="width:${100 - cA}%"></span></div><b>${100 - cA}%</b></div>
+      <div class="prob-x"><span>${esc(m.a.n)}</span><span>${esc(m.b.n)}</span></div>
+      ${pick.c < PAREJO ? `<p class="note" style="margin:10px 0 0">${icon('info')} Partido parejo: el modelo ve poca ventaja (menos de ${PAREJO}%). Es un pick de baja confianza.</p>` : ''}
+    </div>` : ''}
     ${
       lv
         ? `<div class="block"><div class="block-h"><span class="overline">Marcador en vivo</span><span class="badge live">cada 2 s</span></div><div id="sheet-live">${liveCard(lv, m, { inSheet: true })}</div></div>`
@@ -2484,12 +2490,6 @@ function openMatch(id) {
         ? ''
         : pick
         ? `<div class="block">
-      <div class="block-h"><span class="overline">Probabilidad de victoria</span><span style="font-size:11px;color:var(--muted)">según el modelo</span></div>
-      <div class="prob"><b>${cA}%</b><div class="meter"><span style="width:${cA}%"></span><span class="other" style="width:${100 - cA}%"></span></div><b>${100 - cA}%</b></div>
-      <div class="prob-x"><span>${esc(m.a.n)}</span><span>${esc(m.b.n)}</span></div>
-      ${pick.c < PAREJO ? `<p class="note" style="margin:10px 0 0">${icon('info')} Partido parejo: el modelo ve poca ventaja (menos de ${PAREJO}%). Es un pick de baja confianza.</p>` : ''}
-    </div>
-    <div class="block">
       <div class="analysis">
         <div class="an-head">${icon('bolt')}<div><b>Análisis IA</b><small>Por qué el sistema elige a ${esc(fav.n)}</small></div><span class="conf" style="font-size:20px">${pick.c}%</span></div>
         ${
