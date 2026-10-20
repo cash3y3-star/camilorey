@@ -31,6 +31,10 @@ let fbStarted = false; // Firebase se arranca después de la primera pantalla (s
 let profile = null; // { name, photo } editable, guardado en Firestore
 let membership = null; // { until, active } de la colección members
 let trial = null; // { until, active } prueba gratis de 24 h (colección trials)
+// Ex-miembros vencidos antes de esta fecha también reciben la prueba (los que
+// se venzan después pasan directo al bloqueo, sin 24 h gratis).
+const TRIAL_EXMEMBERS_BEFORE = Date.parse('2026-10-21T05:00:00Z');
+const canStartTrial = () => !membership || membership.until.getTime() < TRIAL_EXMEMBERS_BEFORE;
 let premiumData = null; // contenido Premium (picks completos + Análisis IA)
 
 const isPremiumUser = () => isAdmin() || Boolean(membership?.active);
@@ -76,8 +80,9 @@ function tipsterPickFor(m) {
 async function refreshPremium() {
   if (isAdmin()) adminNoPick = (await FB.loadAdminLedger().catch(() => ({}))).nopick || adminNoPick;
   membership = account ? await FB.loadMembership().catch(() => membership) : null;
-  // Prueba de 24 h: se crea sola si la cuenta nunca fue miembro.
-  trial = account && !isPremiumUser() ? await FB.loadTrial(!membership).catch(() => trial) : null;
+  // Prueba de 24 h: se crea sola si la cuenta nunca fue miembro (o se le
+  // venció antes del lanzamiento de la prueba).
+  trial = account && !isPremiumUser() ? await FB.loadTrial(canStartTrial()).catch(() => trial) : null;
   if (!hasAccess()) return clearData();
   if (FB.enabled) await loadTipster(true);
   if (isPremiumUser()) premiumData = await FB.loadPremiumContent().catch(() => premiumData);
@@ -2394,7 +2399,7 @@ function viewLock() {
     </section>`;
   }
   const expired = membership && !membership.active;
-  const trialOver = !membership && trial && !trial.active;
+  const trialOver = Boolean(trial && !trial.active && (!membership || membership.until < trial.until));
   const fecha = expired ? membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   const msg = trialOver
     ? `Hola, buen día. Terminé mi prueba gratis del Sistema de CamiloRey y me gustaría obtener Premium. El correo de mi cuenta es ${account.email || ''}. ¡Muchas gracias!`
