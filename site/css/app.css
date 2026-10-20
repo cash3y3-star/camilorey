@@ -769,8 +769,13 @@ body.locked .tabbar, body.locked #btn-notif { display: none; }
 .install-bar.hw .ib-tx b { color: #ffd9a8; }
 .install-bar.hw .ib-tx small { color: #d6a989; }
 .install-bar.hw .ib-go { background: linear-gradient(135deg, #ff8a1a, #ff1717); box-shadow: 0 0 0 0 rgba(255, 110, 20, .6); animation: hw-pulse 2.2s infinite; }
-.install-bar.hw .ib-ic i, .ins.hw .ins-icw i { position: absolute; right: -7px; bottom: -6px; font-size: 16px; font-style: normal; filter: drop-shadow(0 0 4px rgba(255, 120, 0, .9)); animation: hw-wobble 2.6s ease-in-out infinite; }
-.ins.hw .ins-icw i { font-size: 28px; right: -14px; bottom: -10px; }
+.hw-pk { position: absolute; right: -11px; bottom: -10px; width: 26px; aspect-ratio: 330 / 320; overflow: hidden; -webkit-mask-image: radial-gradient(ellipse 50% 50%, #000 62%, transparent 100%); mask-image: radial-gradient(ellipse 50% 50%, #000 62%, transparent 100%); filter: drop-shadow(0 0 4px rgba(255, 120, 0, .8)); animation: hw-wobble 2.6s ease-in-out infinite; }
+.hw-pk i { position: absolute; left: 0; top: -168.75%; width: 310.3%; aspect-ratio: 1024 / 1230; background: url(../img/splash.webp) center / 100% 100%; }
+.ins.hw .hw-pk { width: 44px; right: -20px; bottom: -14px; }
+.ib-tbat { display: inline-block; width: 18px; margin-left: 6px; vertical-align: middle; fill: #0b0302; filter: drop-shadow(0 0 2px rgba(255, 110, 20, .95)); }
+.ib-tbat svg { width: 100%; display: block; }
+.install-bar .ib-x { display: grid; place-items: center; }
+.install-bar .ib-x .icon { width: 16px; height: 16px; }
 .ib-bat, .ins-bat { position: absolute; pointer-events: none; fill: #0b0302; filter: drop-shadow(0 0 2px rgba(255, 110, 20, .95)) drop-shadow(0 0 6px rgba(255, 60, 0, .6)); }
 .ib-bat svg, .ins-bat svg { width: 100%; animation: hw-flap .22s ease-in-out infinite alternate; transform-origin: 50% 40%; }
 .ib-bat { width: 22px; top: 4px; animation: hw-fly 9s linear infinite; opacity: .85; }

@@ -121,6 +121,8 @@ const isInstalled = () => matchMedia('(display-mode: standalone)').matches || na
 // Estilo de Halloween (calabaza, murciélagos) hasta el 2 de noviembre.
 const HALLOWEEN = Date.now() < Date.parse('2026-11-02T05:00:00Z');
 const BAT_SVG = '<svg viewBox="0 0 64 28"><path d="M32 8c-2 0-3 2-3 2l-1-4-1 4C22 4 12 2 0 6c6 2 8 6 8 10 4-3 9-2 12 1 2-3 6-3 8 0 1-1 2-1 4-1s3 0 4 1c2-3 6-3 8 0 3-3 8-4 12-1 0-4 2-8 8-10-12-4-22-2-27 4l-1-4-1 4s-1-2-3-2z"/></svg>';
+// Calabaza recortada de la imagen de la pantalla de carga (la misma de .corner).
+const PUMPKIN = '<i class="hw-pk"><i></i></i>';
 const canOfferInstall = () => (IS_IOS || IS_ANDROID || window.crInstallEvt) && !isInstalled();
 
 // Franja arriba con "Instalar" y ×; la × la esconde 3 días.
@@ -132,14 +134,14 @@ function renderInstallBar() {
   bar = document.createElement('div');
   bar.id = 'install-bar';
   bar.className = 'install-bar' + (HALLOWEEN ? ' hw' : '');
-  bar.innerHTML = `${HALLOWEEN ? `<i class="ib-bat">${BAT_SVG}</i>` : ''}<span class="ib-ic"><img src="icons/icon-192.png" alt="" width="34" height="34" />${HALLOWEEN ? '<i>🎃</i>' : ''}</span><span class="ib-tx"><b>Instala CamiloRey${HALLOWEEN ? ' 🦇' : ''}</b><small>Tenla como app en tu celular</small></span><button class="ib-go" data-install="1">Instalar</button><button class="ib-x" id="btn-install-x" aria-label="Cerrar">✕</button>`;
+  bar.innerHTML = `${HALLOWEEN ? `<i class="ib-bat">${BAT_SVG}</i>` : ''}<span class="ib-ic"><img src="icons/icon-192.png" alt="" width="34" height="34" />${HALLOWEEN ? PUMPKIN : ''}</span><span class="ib-tx"><b>Instala CamiloRey${HALLOWEEN ? `<i class="ib-tbat">${BAT_SVG}</i>` : ''}</b><small>Tenla como app en tu celular</small></span><button class="ib-go" data-install="1">Instalar</button><button class="ib-x" id="btn-install-x" aria-label="Cerrar">${icon('x')}</button>`;
   (document.getElementById('trial-bar') || document.querySelector('.topbar')).after(bar);
 }
 window.crOnInstallable = renderInstallBar;
 window.addEventListener('appinstalled', () => {
   window.crInstallEvt = null;
   renderInstallBar();
-  toast('¡Listo! CamiloRey quedó en tu pantalla de inicio 📲');
+  toast('¡Listo! CamiloRey quedó en tu pantalla de inicio');
 });
 
 async function startInstall() {
@@ -174,11 +176,11 @@ function showInstallHelp() {
   $sheetBody.innerHTML = `
     <div class="ins${HALLOWEEN ? ' hw' : ''}">
       ${HALLOWEEN ? `<i class="ins-bat b1">${BAT_SVG}</i><i class="ins-bat b2">${BAT_SVG}</i>` : ''}
-      <span class="ins-icw"><img class="ins-ic" src="icons/icon-192.png" alt="" width="64" height="64" />${HALLOWEEN ? '<i>🎃</i>' : ''}</span>
+      <span class="ins-icw"><img class="ins-ic" src="icons/icon-192.png" alt="" width="64" height="64" />${HALLOWEEN ? PUMPKIN : ''}</span>
       <h2>Instala CamiloRey en tu ${IS_IOS ? 'iPhone' : 'celular'}</h2>
       <p>Queda en tu pantalla de inicio como una app: se abre a pantalla completa y más rápido.</p>
       <ol class="ins-steps">${steps.map((s, i) => `<li><span class="ins-n">${i + 1}</span><span>${s}</span></li>`).join('')}</ol>
-      <button class="btn primary" id="btn-install-ok">Entendido${HALLOWEEN ? ' 🎃' : ''}</button>
+      <button class="btn primary" id="btn-install-ok">Entendido</button>
     </div>`;
   $sheet.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -2075,7 +2077,7 @@ function viewPerfil() {
   <div class="list">
     ${isAdmin() ? `<a class="row" href="#/admin"><span class="ic" style="color:var(--red-2)">${icon('shield')}</span><span class="tx"><b>Panel admin</b><small>Pick del tipster, visitas y usuarios</small></span><span class="chev">${icon('chev')}</span></a>` : ''}
     <a class="row" href="#/premium"><span class="ic" style="font-size:18px">⭐</span><span class="tx"><b>Premium</b><small>${isPremiumUser() ? (isAdmin() ? 'Activo (administrador)' : `Activo hasta ${esc(membership.until.toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' }))}`) : 'Picks de alta confianza, análisis IA, bankroll y avisos'}</small></span><span class="chev">${icon('chev')}</span></a>
-    ${canOfferInstall() ? `<button class="row" data-install="1"><span class="ic" style="font-size:18px">📲</span><span class="tx"><b>Instalar app</b><small>Agrega CamiloRey a tu pantalla de inicio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
+    ${canOfferInstall() ? `<button class="row" data-install="1"><span class="ic">${icon('install')}</span><span class="tx"><b>Instalar app</b><small>Agrega CamiloRey a tu pantalla de inicio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
     <a class="row" href="#/notificaciones"><span class="ic">${icon('bell')}</span><span class="tx"><b>Notificaciones</b><small>Avisos de tus picks en el celular</small></span><span class="chev">${icon('chev')}</span></a>
     ${u && hasAccess() && !isAdmin() ? `<button class="row" id="btn-rate-open"><span class="ic" style="font-size:18px">💬</span><span class="tx"><b>Calificar y enviar ideas</b><small>Tu opinión, ideas o errores del sitio</small></span><span class="chev">${icon('chev')}</span></button>` : ''}
     <button class="row check ${fxEnabled() ? 'on' : ''}" data-fx="1"><span class="ic">${icon('bolt')}</span><span class="tx"><b>Sonido y vibración</b><small>Un toque suave al cambiar de pestaña</small></span><span class="tick"></span></button>
