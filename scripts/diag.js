@@ -438,6 +438,21 @@ out('\n== Picks pendientes con calibración ==');
     if (!m || !/pavelka/i.test(`${players[m.a]?.n} ${players[m.b]?.n}`) || m.at < '2026-10-22') continue;
     out(`  BUSCAR ${p.id} ${m.at} ${players[m.a]?.n} vs ${players[m.b]?.n} · pick ${players[p.fav]?.n} ${p.c}% o=${p.o} fo=${p.fo} dst=${p.dst} res=${p.res} upd=${p.upd} chg=${p.chg || 0} x.o=${p.x?.oA}/${p.x?.oB} d=${p.x?.dA}/${p.x?.dB}`);
   }
+  // Caso Huk vs Zeman (22-oct): grupo, orden de los partidos y lo que se jugaba cada uno.
+  for (const p of Object.values(picks)) {
+    const m = matches[p.id];
+    if (!m || m.at < '2026-10-22' || !/huk/i.test(players[m.a]?.n + ' ' + players[m.b]?.n) || !/zeman/i.test(players[m.a]?.n + ' ' + players[m.b]?.n)) continue;
+    out(`  CASO ${p.id} ${m.at} ${players[m.a]?.n} vs ${players[m.b]?.n} · pick ${players[p.fav]?.n} ${p.c}% (cr ${p.cr}) o=${p.o} res=${p.res} gana=${players[m.w]?.n} upd=${p.upd} chg=${p.chg || 0} f=${JSON.stringify(p.f)} rule=${p.x?.rule} pH=${p.x?.pH} pA=${p.x?.pA}`);
+    const g = (groups.get(m.t) || []).slice().sort((x, y) => (x.at < y.at ? -1 : 1));
+    for (const x of g) out(`    ${x.at.slice(11, 19)} ${players[x.a]?.n} ${x.sa ?? ''}-${x.sb ?? ''} ${players[x.b]?.n} st=${x.st} du=${x.du ?? '-'}`);
+    const before = g.filter((x) => x.st === 'f' && x.at < m.at);
+    const k = stakes(g.map((x) => (x.at < m.at ? x : { ...x, st: 's', w: null, sa: null, sb: null })), m, null, { maxExact: 3, samples: 200 });
+    out(`    stakes con lo jugado antes: A ${JSON.stringify(k?.a)} | B ${JSON.stringify(k?.b)} · exact=${k?.exact}`);
+    const { f } = featuresOf(m, ctx);
+    const pr = predict(model, f, p.x?.oA, p.x?.oB);
+    const pr0 = predict(model, { ...f, stake: 0 }, p.x?.oA, p.x?.oB);
+    out(`    recalculado ahora: stake=${f.stake} P(A)=${(pr.p * 100).toFixed(1)} (sin tabla ${(pr0.p * 100).toFixed(1)}) ph=${(pr.ph * 100).toFixed(1)} pm=${pr.pm}`);
+  }
   const ft = pend.filter((p) => p.dst && matches[p.id]).sort((x, y) => (matches[x.id].at < matches[y.id].at ? -1 : 1));
   out(`  destacados ahora: ${ft.length} · ${ft.map((p) => `${matches[p.id].at.slice(11, 16)}Z ${players[p.fav]?.n} ${p.c}% @${p.o}`).join(' | ')}`);
   out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
