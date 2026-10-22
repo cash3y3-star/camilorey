@@ -949,6 +949,7 @@ function writeSite(meta) {
       const m = state.matches[p.id];
       const b = betRow.get(p.id);
       const row = { id: p.id, at: m.at, ph: phaseOf(m), a: name(m.a), b: name(m.b), fav: name(p.fav), c: p.c, o: p.o ?? null, res: p.res };
+      if (p.dst) row.ft = 1; // pick destacado (historial en el panel admin)
       if (b) return { ...row, stake: b.stake, profit: b.profit, bal: b.bal };
       const st = p.res === 'pending' ? (m.st === 'f' ? 'wait' : m.st === 'l' ? 'live' : 'pre') : !p.pub ? 'np' : 'nodds';
       return { ...row, stake: p.res === 'pending' && p.o ? computeStake(p.c) : null, profit: null, bal: null, st };

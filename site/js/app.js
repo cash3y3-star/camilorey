@@ -918,6 +918,8 @@ function viewAdmin() {
   <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Panel admin</h1></div>
   <div class="section-h"><h2>📅 Resumen del día</h2><span class="badge red">Solo admin</span></div>
   <div id="admin-daily">${skeleton(2)}</div>
+  <div class="section-h"><h2>Picks destacados · historial</h2><span class="badge red">Solo admin</span></div>
+  <div id="admin-featured">${skeleton(1)}</div>
   <div class="section-h" id="admin-chats"><h2>💬 Soporte en vivo</h2><span class="badge" id="admin-chats-count"></span></div>
   <div id="admin-chats-box">${skeleton(1)}</div>
   <div class="section-h"><h2>👑 Publicar pick del tipster</h2></div>
@@ -1053,10 +1055,47 @@ async function renderAdminDaily(reload = true) {
         }`
         : `<p class="note" style="margin-top:12px">Todavía no hay picks jugados este día.</p>`
     }`;
+  renderAdminFeatured();
   // La gráfica arranca mostrando el día elegido (por defecto, el más reciente).
   const sc = box.querySelector('.dchart')?.parentElement;
   const on = box.querySelector('.dcol.on');
   if (sc) sc.scrollLeft = on ? on.getBoundingClientRect().left - sc.getBoundingClientRect().left + sc.scrollLeft - sc.clientWidth / 2 + on.clientWidth / 2 : sc.scrollWidth;
+}
+
+// Historial de picks destacados (solo admin): todos los que fueron
+// destacado, del más nuevo al más viejo, con su resultado. Sale del mismo
+// historial privado que el Resumen del día (admin/ledger, ~12 días).
+const FEATURED_SHORT = 10;
+function renderAdminFeatured() {
+  const box = document.getElementById('admin-featured');
+  if (!box || !dailyRows) return;
+  const list = dailyRows.filter((x) => x.ft).sort((a, b) => (a.at < b.at ? 1 : -1));
+  if (!list.length) {
+    box.innerHTML = '<p class="note">Todavía no hay picks destacados en el historial.</p>';
+    return;
+  }
+  const done = list.filter((x) => x.res === 'hit' || x.res === 'miss');
+  const hit = done.filter((x) => x.res === 'hit').length;
+  const withO = done.filter((x) => x.o);
+  const units = Math.round(withO.reduce((s, x) => s + (x.res === 'hit' ? x.o - 1 : -1), 0) * 100) / 100;
+  const rate = done.length ? Math.round((hit / done.length) * 1000) / 10 : null;
+  const shown = ui.featAll ? list : list.slice(0, FEATURED_SHORT);
+  const resTd = (x) => (x.res === 'hit' ? '<td class="num pos-t">✓ Ganado</td>' : x.res === 'miss' ? '<td class="num neg-t">✗ Perdido</td>' : '<td class="num">Pendiente</td>');
+  box.innerHTML = `
+    <div class="card pad">
+      <div class="tiles">
+        <div class="tile"><div class="overline">Efectividad</div><div class="val ${rate >= 55 ? 'pos' : rate != null && rate < 50 ? 'neg' : ''}">${pct(rate)}</div><div class="hint">${done.length} jugados</div></div>
+        <div class="tile"><div class="overline">Ganados</div><div class="val pos">${hit}</div><div class="hint">de ${done.length}</div></div>
+        <div class="tile"><div class="overline">Unidades</div><div class="val ${units > 0 ? 'pos' : units < 0 ? 'neg' : ''}">${withO.length ? `${units > 0 ? '+' : ''}${String(units).replace('.', ',')}` : '—'}</div><div class="hint">1u a cada uno</div></div>
+      </div>
+    </div>
+    <div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Fecha</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
+      ${shown
+        .map(
+          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${esc(dayName(dayKey(x.at)))}<small style="display:block;color:var(--muted)">${fmtTime(x.at)}</small></td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td>${resTd(x)}</tr>`
+        )
+        .join('')}</tbody></table></div>
+    ${list.length > FEATURED_SHORT ? `<button type="button" class="btn ghost" data-featall="1" style="margin-top:8px;width:100%">${ui.featAll ? 'Ocultar' : `Mostrar más (${list.length - FEATURED_SHORT})`}</button>` : ''}`;
 }
 
 // Pantalla propia del admin para el chat (la abre el botón flotante).
@@ -2970,6 +3009,10 @@ document.addEventListener('click', async (ev) => {
     ui.adminDay = t.dataset.aday;
     ui.adminDayAll = false;
     return renderAdminDaily(false);
+  }
+  if (t.dataset.featall) {
+    ui.featAll = !ui.featAll;
+    return renderAdminFeatured();
   }
   if (t.dataset.adayall) {
     ui.adminDayAll = !ui.adminDayAll;
