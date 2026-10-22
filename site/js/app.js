@@ -686,7 +686,8 @@ const heroFx = () => (Math.floor(Date.parse(todayKey()) / 86400e3) % 2 ? 'fx-c' 
 
 // ---------- Aviso para los miembros (site/announce.json) ----------
 // Lo escribe el admin (con Claude). audience "admin" = prueba, solo lo ve el
-// admin; "all" = todos los miembros. scripts/notify.js manda la misma
+// admin; "premium" = solo miembros Premium (no los de prueba); "all" =
+// todos los que tienen acceso. scripts/notify.js manda la misma
 // notificación una vez por persona. Se oculta al leerlo o al tocar Ocultar.
 let announce = null;
 async function loadAnnounce() {
@@ -705,7 +706,7 @@ function maybeAnnounce() {
   writeLocal('cr_ann_seen', announce.id);
   $sheetBody.innerHTML = `<div class="ann-modal">
     <div class="ann-ic">${icon('bell')}</div>
-    <span class="overline">Aviso importante${announce.audience === 'all' ? '' : ' · prueba (solo admin)'}</span>
+    <span class="overline">Aviso importante${announce.audience === 'admin' ? ' · prueba (solo admin)' : ''}</span>
     <h2>${esc(announce.title)}</h2>
     <div class="ann-page">${(announce.sections || []).map((x) => `<h3>${esc(x.h)}</h3><p>${esc(x.t)}</p>`).join('')}</div>
     <button type="button" class="btn primary" id="btn-ann-ok" style="margin-top:16px">Entendido</button>
@@ -714,7 +715,7 @@ function maybeAnnounce() {
   $sheet.hidden = false;
   document.body.style.overflow = 'hidden';
 }
-const annVisible = () => Boolean(announce?.id) && (announce.audience === 'all' || isAdmin());
+const annVisible = () => Boolean(announce?.id) && (announce.audience === 'all' || (announce.audience === 'premium' && isPremiumUser()) || isAdmin());
 function viewAviso() {
   if (!annVisible()) return `<div class="subhead"><a class="back" href="#/">${icon('left')} Inicio</a><h1>Aviso</h1></div>${empty('bell', 'Sin avisos', 'No hay avisos nuevos por ahora.')}`;
   writeLocal('cr_ann_seen', announce.id);

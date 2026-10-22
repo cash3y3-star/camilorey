@@ -428,6 +428,14 @@ out('\n== Simulación: confianza calibrada ==');
   }
 }
 
+// ¿Ya corre la calibración? Picks pendientes con confianza sin calibrar (cr).
+out('\n== Picks pendientes con calibración ==');
+{
+  const pend = Object.values(picks).filter((p) => p.res === 'pending' && p.pub);
+  const w = pend.filter((p) => p.cr != null);
+  out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');

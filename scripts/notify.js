@@ -196,14 +196,15 @@ async function runNotifications(state, helpers) {
     console.error(`Push chat: ${e.message}`);
   }
   // Aviso para los miembros (site/announce.json): una notificación por
-  // persona y por aviso. audience "admin" = prueba, solo al admin.
+  // persona y por aviso. audience "admin" = prueba, solo al admin;
+  // "premium" = solo miembros Premium (no los de prueba).
   let ann = null;
   try {
     ann = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'site', 'announce.json'), 'utf8'));
   } catch {}
   N._ann = N._ann || {};
   const annSent = new Set(ann?.id ? N._ann[ann.id] || [] : []);
-  const annFor = (u) => Boolean(ann?.id && ann.push) && (ann.audience === 'all' || u.email === 'camilosimanca77@gmail.com') && !annSent.has(u.email);
+  const annFor = (u) => Boolean(ann?.id && ann.push) && (ann.audience === 'all' || (ann.audience === 'premium' && !u.trial) || u.email === 'camilosimanca77@gmail.com') && !annSent.has(u.email);
   const annEvent = ann?.push ? { kind: 'announce', title: ann.push.title, body: ann.push.body, url: `${SITE}#/aviso`, tag: `ann-${ann.id}` } : null;
   if (!events.length && !chatEvents.length && !users.some(annFor)) return console.log('Push: sin eventos nuevos');
 

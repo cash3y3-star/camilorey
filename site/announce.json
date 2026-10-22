@@ -1,28 +1,32 @@
 {
-  "id": "bankroll-2026-10-19",
-  "audience": "all",
-  "title": "Cómo usar el Sistema CamiloRey y Mi Bankroll",
-  "preview": "No tienes que jugar todos los picks. Te explicamos cómo funciona el sistema y cómo usar tu bankroll.",
+  "id": "confianza-2026-10-22",
+  "audience": "admin",
+  "title": "Actualización del sistema: confianza más honesta",
+  "preview": "Ajustamos el porcentaje de confianza para que cada pick prometa lo que de verdad acierta.",
   "push": {
-    "title": "Cómo usar el Sistema CamiloRey y Mi Bankroll",
-    "body": "No tienes que jugar todos los picks. Toca para ver cómo funciona el sistema y cómo usar tu bankroll."
+    "title": "Actualización del sistema CamiloRey",
+    "body": "Ajustamos la confianza de los picks para que prometa lo que de verdad acierta. Toca para ver qué cambió."
   },
   "sections": [
     {
-      "h": "Cómo funciona el sistema",
-      "t": "El modelo analiza cada partido de la Liga Pro Checa con datos reales de 2026: cruce directo entre los jugadores, forma del día, rating, la cuota de la casa y la tabla del grupo. Con eso da un pick y una confianza (%). Cada pick se vuelve a revisar hasta 5 minutos antes del partido, y si cambia, te avisamos."
+      "h": "Qué cambió",
+      "t": "Revisamos los casi 1.000 picks jugados desde el 17 de octubre y vimos que la confianza prometía un poco más de lo que acertaba (60.6% prometido contra 58.8% real). Desde hoy el sistema ajusta solo el porcentaje con el acierto real: cada franja muestra lo que de verdad acierta. Nunca sube la confianza, solo la baja cuando el sistema promete de más."
     },
     {
-      "h": "No tienes que jugar todos los picks",
-      "t": "El sistema da un pick en cada partido, pero eso no significa que haya que apostarlos todos. Elige los que más te convenzan: los de mayor confianza, el pick destacado o los que coincidan con tu propio análisis. Sigue con el ♥ solo los que vayas a jugar."
+      "h": "Qué vas a notar",
+      "t": "Algunos picks van a mostrar un porcentaje un poco más bajo que antes y habrá algo menos de picks Premium (60% o más). Los que queden ahí son más firmes: en la prueba con los picks ya jugados, los de 60% o más acertaron 65.6% y los de 65% o más, 71%."
     },
     {
-      "h": "Mi Bankroll",
-      "t": "Escribe tu banca inicial y el sistema te dice cuánto apostar en cada pick que sigues, según la confianza y la cuota (criterio de Kelly). Si la cuota no paga el riesgo, te sugiere no apostar. Si igual quieres jugarlo, toca \"Apostar igual\" y escribe el monto, pero queda marcado como no recomendado. Tu banca, tu ganancia y tu historial se actualizan solos con cada resultado."
+      "h": "Por qué los últimos días se acertó menos",
+      "t": "El 17 y el 18 de octubre los picks acertaron 63%. Del 19 al 21 bajaron a 55-57%. Lo revisamos: el favorito de la casa también bajó (de 64-66% a 56-59%), así que fueron días más difíciles de predecir para todos. El modelo actual, probado con los partidos del 17 y 18, vuelve a dar 63%."
+    },
+    {
+      "h": "Cuotas más limpias",
+      "t": "El sistema ya no toma cuotas después de la hora de inicio del partido (pueden ser cuotas en vivo) y guarda la cuota con la que decidió cada pick. Así medimos mejor y seguimos mejorando."
     },
     {
       "h": "Juega con responsabilidad",
-      "t": "Ningún pick es seguro, ni siquiera los de alta confianza. Apuesta solo lo que estés dispuesto a perder, no persigas pérdidas y respeta los montos que te sugiere tu bankroll."
+      "t": "Ningún pick es seguro, ni siquiera los de alta confianza. Usa Mi Bankroll para los montos, apuesta solo lo que estés dispuesto a perder y no persigas pérdidas."
     }
   ]
 }
