@@ -57,6 +57,7 @@ const pct = (h, n) => (n ? `${((h / n) * 100).toFixed(1)}% (${h}/${n})` : '—')
 
 const DAYS = [...new Set(Object.values(picks).filter((p) => matches[p.id]).map((p) => day(matches[p.id].at)))].sort().slice(-4);
 out(`Modelo: ${model.trained} partidos · pesos ${JSON.stringify(model.weights)} · mercado ${JSON.stringify(model.market)}`);
+out(`Generado: ${new Date().toISOString()} · días: ${DAYS.join(", ")}`);
 out(`Holdout: ${JSON.stringify(model.holdout)}`);
 
 const rows = [];
