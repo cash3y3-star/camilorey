@@ -38,6 +38,12 @@ const PAREJO_BELOW = 55;
 const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
 const FEATURED_MIN_CONF = 60;
+// Calibración de la confianza mostrada: el modelo prometía más de lo que
+// daba (medido el 21-oct: 59.8% esperado vs 56.0% real en 588 picks). La
+// confianza se encoge hacia 50% con el factor medido en los picks ya
+// jugados (calibrationK); nunca se infla (factor máximo 1).
+const CALIB_FROM = '2026-10-17'; // picks del modelo v2
+const CALIB_PRIOR = 100; // picks "neutros" que frenan saltos del factor
 // El resumen de destacados de Inicio cuenta desde aquí (el usuario lo
 // reinició el 19-oct al cambiar la regla del destacado).
 const FEATURED_FROM = '2026-10-19T05:30:00Z';
@@ -180,10 +186,25 @@ function trainModel() {
   if (!model) throw new Error(`Muy pocos partidos para entrenar (${fin.length})`);
   currentModel = model;
   fitMarket(model, fin.filter((m) => m.oa && m.ob), modelCtx);
+  model.calK = calibrationK();
   console.log(
-    `Modelo v2: ${model.trained} partidos en ${((Date.now() - t0) / 1000).toFixed(1)}s · pesos ${JSON.stringify(model.weights)} · mercado ${JSON.stringify(model.market)} · acierto en partidos no vistos ${JSON.stringify(model.holdout)}`
+    `Modelo v2: ${model.trained} partidos en ${((Date.now() - t0) / 1000).toFixed(1)}s · pesos ${JSON.stringify(model.weights)} · mercado ${JSON.stringify(model.market)} · calibración ${model.calK} · acierto en partidos no vistos ${JSON.stringify(model.holdout)}`
   );
   return model;
+}
+
+// Factor de calibración: (acierto real - 50) / (confianza sin calibrar - 50)
+// en los picks v2 jugados. cr = confianza sin calibrar (antes del cambio
+// era la misma c). Los de la regla de la casa (fijos en 54) no cuentan.
+function calibrationK() {
+  const list = Object.values(state.picks).filter((p) => p.src === 'v2' && p.pub && p.res !== 'pending' && p.x?.rule !== 'mkt' && state.matches[p.id] && bogotaDay(state.matches[p.id].at) >= CALIB_FROM);
+  if (list.length < 100) return 1;
+  const hit = list.filter((p) => p.res === 'hit').length / list.length;
+  const conf = list.reduce((s, p) => s + (p.cr ?? p.c), 0) / list.length / 100;
+  if (conf <= 0.5) return 1;
+  const k = (hit - 0.5) / (conf - 0.5);
+  const w = list.length / (list.length + CALIB_PRIOR);
+  return Math.round(Math.max(0.5, Math.min(1, 1 + (k - 1) * w)) * 1000) / 1000;
 }
 
 // Pick con el modelo v2 (lib/model-v2.js): historial completo + cuota de
@@ -220,7 +241,9 @@ function generatePick(match, odds, model, prev = null) {
     pFav = 0.54;
     rule = 'mkt';
   }
-  const confidence = Math.round(Math.max(0.5, Math.min(MAX_CONFIDENCE / 100, pFav)) * 100);
+  const cRaw = Math.round(Math.max(0.5, Math.min(MAX_CONFIDENCE / 100, pFav)) * 100);
+  const k = rule === 'mkt' ? 1 : model.calK ?? 1;
+  const confidence = Math.round(50 + (cRaw - 50) * k);
   const formA = tournamentForm(match.a, match.t, match.at);
   const formB = tournamentForm(match.b, match.t, match.at);
 
@@ -228,6 +251,7 @@ function generatePick(match, odds, model, prev = null) {
     id: match.id,
     fav: favA ? match.a : match.b,
     c: confidence,
+    cr: cRaw, // confianza sin calibrar (para volver a medir el factor)
     o: oa && ob ? (favA ? oa : ob) : prev?.o && prev.fav === (favA ? match.a : match.b) ? prev.o : null,
     f,
     // Datos crudos con los que se decidió — base del "Análisis IA".
@@ -244,6 +268,8 @@ function generatePick(match, odds, model, prev = null) {
       pA: pm != null ? Math.round(pm * 1000) / 1000 : null, // según el mercado
       oA: oa, // cuotas de Rushbet de cada jugador; se van actualizando
       oB: ob, // hasta que empieza el partido (= cuota prepartido final)
+      dA: oa, // cuotas con las que se decidió esta revisión (no cambian)
+      dB: ob,
       rule,
       n: model.trained,
       acc: model.holdout
@@ -406,13 +432,16 @@ function backfillOdds(rushbet, model) {
     if (!odds) continue;
     // Cuotas de ambos jugadores mientras el partido no empieza: la última
     // que se guarda es la cuota prepartido (sirve para los picks del admin).
-    if (p.x && m.st === 's') {
+    // Solo antes de la hora de inicio: después Rushbet puede estar dando
+    // cuotas en vivo, que no sirven para el modelo ni para medir el pick.
+    if (p.x && m.st === 's' && new Date(m.at).getTime() > Date.now()) {
       p.x.oA = odds.oddsA;
       p.x.oB = odds.oddsB;
+      p.x.oT = new Date().toISOString();
       m.oa = odds.oddsA; // en el partido: el modelo aprende el peso del mercado
       m.ob = odds.oddsB;
       const pm = marketProb(odds.oddsA, odds.oddsB);
-      if (model && p.pub && pm != null && pm !== 0.5 && (p.fav === m.a) !== pm > 0.5 && new Date(m.at).getTime() > Date.now()) {
+      if (model && p.pub && pm != null && pm !== 0.5 && (p.fav === m.a) !== pm > 0.5) {
         try {
           const pick = generatePick(m, odds, model, p);
           if (p.dst != null) pick.dst = p.dst;
