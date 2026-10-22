@@ -389,6 +389,8 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       sb: played ? m.results.score_two : null,
       w: played ? (m.results.score_one > m.results.score_two ? sideA.player.id : sideB.player.id) : null,
       du: played && m.results.duration ? Math.round(m.results.duration / 1000) : null, // duración en segundos
+      // En juego: sets que publica la liga (respaldo cuando Rushbet no lo transmite)
+      ...(m.status === 2 && m.results ? { la: m.results.score_one ?? null, lb: m.results.score_two ?? null, lu: new Date().toISOString() } : {}),
       // Rating oficial antes del torneo y cuotas de Rushbet (las guarda
       // backfillOdds): el modelo v2 aprende de ellos.
       ra: sideA.rating_before_tournament ?? null,
@@ -561,7 +563,8 @@ function matchView(m) {
     st: m.st,
     sa: m.sa,
     sb: m.sb,
-    w: m.w
+    w: m.w,
+    ...(m.st === 'l' ? { la: m.la ?? null, lb: m.lb ?? null, lu: m.lu ?? null } : {})
   };
 }
 

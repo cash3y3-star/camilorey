@@ -1521,7 +1521,34 @@ function patchLive(box, html) {
 // Punto rojo en la pestaña En vivo cuando hay partidos de la Liga Pro en juego.
 function liveDot(state) {
   const d = document.getElementById('tab-live-dot');
-  if (d && state.at) d.hidden = !state.liga.length;
+  if (d && state.at) d.hidden = !state.liga.length && !fallbackLive().length;
+}
+
+// Respaldo: partidos de la Liga Pro que están en juego (según la liga o
+// porque ya pasó su hora y no terminaron) pero que Rushbet no transmite
+// (ej. algunas finales). Marcador en sets de tt.league-pro, cada ~5 min.
+const FALLBACK_LIVE_MS = 40 * 60e3;
+function fallbackLive() {
+  const now = Date.now();
+  return data.calendar.matches
+    .filter((m) => {
+      const t = new Date(m.at).getTime();
+      // 'l' de hace más de 3 h = dato viejo que no se actualizó: no se muestra
+      return (m.st === 'l' && t > now - 3 * 3600e3) || (m.st === 's' && t <= now && t > now - FALLBACK_LIVE_MS);
+    })
+    .filter((m) => !liveFor(m))
+    .sort((a, b) => (a.at < b.at ? -1 : 1));
+}
+function fallbackCard(m) {
+  const pick = m.pick;
+  const sets = m.st === 'l' && m.la != null ? `${m.la} - ${m.lb}` : '—';
+  const row = (p) => `<div class="live-row"><div class="p">${avatar(p, 'avatar sm')}<span>${esc(p.n)}</span>${pick && !pick.locked && pick.fav === p.id ? '<span class="badge red" style="padding:1px 6px;font-size:10px">PICK</span>' : ''}</div></div>`;
+  // data-ev cambia con el marcador: así patchLive redibuja la tarjeta cuando llegan sets nuevos.
+  return `<article class="card live-card" data-ev="fb${m.id}-${m.st}-${m.la ?? ''}-${m.lb ?? ''}" data-open="${m.id}" style="cursor:pointer">
+    <div class="live-head"><span><span class="badge live">EN JUEGO</span> &nbsp;${esc(m.tn || '')}${m.ph ? ` · ${esc(m.ph)}` : ''}</span><b style="color:var(--text)">${sets}</b></div>
+    ${row(m.a)}${row(m.b)}
+    <p class="note" style="margin:8px 0 0;font-size:12px">${m.st === 'l' ? 'Rushbet no transmite este partido: marcador en sets de la liga, se actualiza cada 5 min.' : `Empezó a las ${fmtTime(m.at)} · Rushbet no lo transmite; el marcador llega de la liga cada 5 min.`}</p>
+  </article>`;
 }
 
 function renderLiveHome(state) {
@@ -1531,6 +1558,15 @@ function renderLiveHome(state) {
   const ours = data.calendar.matches;
   const list = state.liga.length ? state.liga : [];
   if (!state.at) return;
+  const fb = fallbackLive();
+  if (!list.length && fb.length) {
+    const html = fb.map(fallbackCard).join('');
+    if (box.dataset.html !== html) {
+      box.innerHTML = html;
+      box.dataset.html = html;
+    }
+    return;
+  }
   if (!list.length) {
     // Sin partidos en vivo: los campeones de los torneos recientes.
     const html = `<div class="note">No hay partidos de la Liga Pro Checa en vivo en este momento.</div>${championsHtml()}`;
@@ -1541,7 +1577,7 @@ function renderLiveHome(state) {
     return;
   }
   delete box.dataset.html;
-  patchLive(box, list.map((e) => liveCard(e, ourMatchForLive(e))).join(''));
+  patchLive(box, list.map((e) => liveCard(e, ourMatchForLive(e))).join('') + fb.map(fallbackCard).join(''));
 }
 
 function viewCalendario() {
@@ -1703,7 +1739,14 @@ function renderLivePage(state) {
   const ours = data.calendar.matches;
   let list = state.liga.map((e) => ({ e, m: ourMatchForLive(e) }));
   if (ui.liveFilter === 'pick') list = list.filter((x) => x.m?.pick);
-  document.getElementById('live-count').textContent = `Liga Pro Checa · ${state.liga.length} ${state.liga.length === 1 ? 'partido' : 'partidos'} en juego · se actualiza cada 2 s`;
+  let fb = fallbackLive();
+  if (ui.liveFilter === 'pick') fb = fb.filter((m) => m.pick);
+  const n = state.liga.length + fallbackLive().length;
+  document.getElementById('live-count').textContent = `Liga Pro Checa · ${n} ${n === 1 ? 'partido' : 'partidos'} en juego · se actualiza cada 2 s`;
+  if (!list.length && fb.length) {
+    box.innerHTML = `<div class="grid-2">${fb.map(fallbackCard).join('')}</div>`;
+    return;
+  }
   if (!list.length) {
     box.innerHTML = empty(
       'live',
@@ -1712,7 +1755,7 @@ function renderLivePage(state) {
     );
     return;
   }
-  patchLive(box, `<div class="grid-2">${list.map((x) => liveCard(x.e, x.m)).join('')}</div>`);
+  patchLive(box, `<div class="grid-2">${list.map((x) => liveCard(x.e, x.m)).join('')}${fb.map(fallbackCard).join('')}</div>`);
 }
 
 function viewSeguidos() {
