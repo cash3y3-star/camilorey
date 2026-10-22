@@ -734,7 +734,8 @@ function viewInicio() {
   const pend = data.picks;
   const avgOdds = fs?.avgOdds ? odds(fs.avgOdds) : '—';
   const next = upcomingPicks();
-  const featured = next.find((p) => p.ft); // solo el elegido por el sistema (60%+ y cuota > 1.60)
+  // Hasta 3 destacados fijos (60%+ y cuota 1.60-2.50), del más próximo al más lejano
+  const featured = next.filter((p) => p.ft).sort((a, b) => (a.at < b.at ? -1 : 1));
 
   return `
   <section class="hero ${heroFx()}">
@@ -760,8 +761,9 @@ function viewInicio() {
 
   <div id="tipster-home"></div>
   ${
-    featured
-      ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div>${matchCard(featured, featured)}`
+    featured.length
+      ? `<div class="section-h"><h2>${icon('trophy')} Picks destacados</h2>${featured.length > 1 ? `<span class="badge">Desliza · ${featured.length}</span>` : ''}</div>
+        <div class="feat-strip">${featured.map((p) => `<div class="feat-item">${matchCard(p, p)}</div>`).join('')}</div>`
       : data.loaded && next.length
       ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div><p class="note">${icon('info')} Ahora no hay pick destacado: ningún pick de 60% o más tiene cuota mayor a 1,60. Aparece solo en cuanto haya uno.</p>`
       : ''
@@ -2653,10 +2655,10 @@ function notifItems() {
     items.set(x.id, { at: x.at, ic: x.res === 'hit' ? 'trophy' : 'x', t: `⭐ Destacado ${x.res === 'hit' ? '✅ acertado' : '❌ fallado'}: ${x.fav}`, s: `${x.c}% de confianza${x.o ? ` · cuota ${odds(x.o)}` : ''}`, id: x.id });
   }
   // Destacado actual (nuevo)
-  const cur = upcomingPicks().find((p) => p.ft);
-  if (cur && !items.has(cur.id)) {
+  for (const cur of upcomingPicks().filter((p) => p.ft)) {
+    if (items.has(cur.id)) continue;
     const fav = cur.fav === cur.a.id ? cur.a : cur.b;
-    items.set(cur.id, { at: cur.at, ic: 'flame', t: `⭐ Nuevo pick destacado: ${fav.n} gana`, s: `${cur.a.n} vs ${cur.b.n} · ${cur.c}% · ${fmtTime(cur.at)}`, id: cur.id, fresh: true });
+    items.set(cur.id, { at: cur.at, ic: 'flame', t: cur.locked ? '⭐ Nuevo pick destacado Premium' : `⭐ Nuevo pick destacado: ${fav.n} gana`, s: `${cur.a.n} vs ${cur.b.n} · ${cur.c}% · ${fmtTime(cur.at)}`, id: cur.id, fresh: true });
   }
   return [...items.values()].sort((a, b) => (a.fresh ? -1 : b.fresh ? 1 : a.at < b.at ? 1 : -1));
 }

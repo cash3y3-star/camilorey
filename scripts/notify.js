@@ -104,7 +104,7 @@ async function savePush(token, user, push) {
   });
 }
 
-// state: estado de update.js; helpers: { name(pid), featuredId }
+// state: estado de update.js; helpers: { name(pid), featuredIds: [ids] }
 async function runNotifications(state, helpers) {
   if (!process.env.VAPID_PRIVATE_KEY || !process.env.BOT_EMAIL) return console.log('Push: sin llaves/bot configurados, se omite');
   let webpush;
@@ -124,7 +124,7 @@ async function runNotifications(state, helpers) {
       if (m.st === 'f') N[id] = { s: 1, f: 1 };
       else if (m.st === 'l' || new Date(m.at).getTime() <= Date.now()) N[id] = { s: 1 };
     }
-    N._featured = helpers.featuredId || null;
+    N._featured = helpers.featuredIds || [];
     return console.log('Push: primera corrida, se marcan los eventos existentes sin enviar');
   }
 
@@ -165,7 +165,7 @@ async function runNotifications(state, helpers) {
   for (const p of Object.values(state.picks)) {
     const m = state.matches[p.id];
     if (!p.chg || p.res !== 'pending' || !m || m.st !== 's') continue;
-    const isFt = p.id === helpers.featuredId;
+    const isFt = (helpers.featuredIds || []).includes(p.id);
     if (!followed.has(p.id) && !isFt) continue;
     const key = String(p.id);
     N[key] = N[key] || {};
@@ -173,15 +173,19 @@ async function runNotifications(state, helpers) {
     N[key].c = p.chg;
     events.push({ mid: p.id, ft: isFt, lk: locked(p.id), kind: 'change', title: `🔄 ${isFt ? 'Cambió el pick destacado' : 'Pick actualizado'}: ahora ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · revisado antes de empezar`, url: isFt ? SITE : `${SITE}#/seguidos`, tag: `m${p.id}` });
   }
-  // Pick destacado nuevo.
-  if (helpers.featuredId && N._featured !== helpers.featuredId) {
-    const p = state.picks[helpers.featuredId];
-    const m = state.matches[helpers.featuredId];
+  // Picks destacados nuevos (uno por cada destacado que entra; antes era
+  // un solo id en N._featured).
+  const ftSent = new Set(Array.isArray(N._featured) ? N._featured : N._featured ? [N._featured] : []);
+  for (const fid of helpers.featuredIds || []) {
+    if (ftSent.has(fid)) continue;
+    const p = state.picks[fid];
+    const m = state.matches[fid];
     if (p && m) {
-      events.push({ kind: 'featured', lk: locked(p.id), title: `⭐ Nuevo pick destacado: ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza${p.o ? ` · cuota ${p.o.toFixed(2)}` : ''}`, url: SITE, tag: 'featured', teaser: { kind: 'featured', title: '⭐ Nuevo pick destacado Premium', body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · hazte Premium para ver a quién elige`, url: `${SITE}#/premium`, tag: 'featured' } });
+      events.push({ kind: 'featured', lk: locked(p.id), title: `⭐ Nuevo pick destacado: ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza${p.o ? ` · cuota ${p.o.toFixed(2)}` : ''}`, url: SITE, tag: `featured-${p.id}`, teaser: { kind: 'featured', title: '⭐ Nuevo pick destacado Premium', body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · hazte Premium para ver a quién elige`, url: `${SITE}#/premium`, tag: `featured-${p.id}` } });
     }
-    N._featured = helpers.featuredId;
   }
+  // Se recuerdan los destacados actuales (y los ya avisados que siguen pendientes).
+  N._featured = [...new Set([...(helpers.featuredIds || []), ...[...ftSent].filter((id) => state.picks[id]?.res === 'pending')])];
   // Chat de soporte: aviso SOLO al admin cuando alguien pidió hablar con
   // una persona y hay mensajes sin leer (uno por mensaje nuevo).
   const chatEvents = [];

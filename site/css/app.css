@@ -792,3 +792,10 @@ body.locked .tabbar, body.locked #btn-notif { display: none; }
 @keyframes hw-flap { from { transform: scaleY(1); } to { transform: scaleY(.45); } }
 @keyframes hw-fly { 0% { left: -30px; top: 6px; } 30% { top: 2px; } 60% { top: 14px; } 100% { left: 105%; top: 4px; } }
 @keyframes hw-hover { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(8px, -6px); } }
+
+/* Picks destacados en Inicio: hasta 3, se deslizan de lado */
+.feat-strip { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; scrollbar-width: none; }
+.feat-strip::-webkit-scrollbar { display: none; }
+.feat-item { flex: none; width: 88%; scroll-snap-align: start; }
+.feat-item:only-child { width: 100%; }
+@media (min-width: 900px) { .feat-item { width: calc((100% - 24px) / 3); } }

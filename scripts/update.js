@@ -38,6 +38,7 @@ const PAREJO_BELOW = 55;
 const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
 const FEATURED_MIN_CONF = 60;
+const FEATURED_SLOTS = 3; // destacados a la vez (pedido del usuario el 22-oct)
 // Calibración de la confianza mostrada: el modelo prometía más de lo que
 // daba (medido el 21-oct: 59.8% esperado vs 56.0% real en 588 picks). La
 // confianza se encoge hacia 50% con el factor medido en los picks ya
@@ -854,10 +855,19 @@ function writeSite(meta) {
   // resultados se miden aparte (estadísticas de Inicio).
   const pending = published.filter((p) => p.res === 'pending');
   const notStarted = pending.filter((p) => state.matches[p.id].st === 's' && new Date(state.matches[p.id].at).getTime() > now);
-  const pool = notStarted.filter((p) => p.c >= FEATURED_MIN_CONF && p.o && p.o > FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS);
-  const featured = pool.slice().sort((a, b) => b.c - a.c || (state.matches[a.id].at < state.matches[b.id].at ? -1 : 1))[0];
-  for (const p of notStarted) p.dst = p === featured;
-  for (const p of published) p.ft = p === featured;
+  // Desde el 22-oct: hasta 3 destacados FIJOS. El que ya es destacado se
+  // queda hasta que empieza su partido (salvo que deje de cumplir: baja de
+  // 60% o la cuota sale del rango); los cupos libres se llenan con los
+  // próximos en empezar. Antes era uno solo, el de más confianza, y se
+  // reemplazaba cuando aparecía otro mejor (el usuario lo vio cambiar a
+  // 9 minutos de empezar).
+  const qualifies = (p) => p.c >= FEATURED_MIN_CONF && p.o && p.o > FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS;
+  const byStart = (a, b) => (state.matches[a.id].at < state.matches[b.id].at ? -1 : state.matches[a.id].at > state.matches[b.id].at ? 1 : b.c - a.c);
+  const keep = notStarted.filter((p) => p.dst && qualifies(p)).sort(byStart).slice(0, FEATURED_SLOTS);
+  const add = notStarted.filter((p) => !keep.includes(p) && qualifies(p)).sort(byStart).slice(0, FEATURED_SLOTS - keep.length);
+  const featuredSet = new Set([...keep, ...add]);
+  for (const p of notStarted) p.dst = featuredSet.has(p);
+  for (const p of published) p.ft = featuredSet.has(p);
 
   const pendingView = pending
     .map((p) => pickView(p, true))
@@ -1459,8 +1469,8 @@ async function run() {
   prune();
   writeSite({ model: modelInfo, tipster: await tipsterStats(), users: await require('./notify').countUsers() });
   try {
-    const featured = Object.values(state.picks).find((p) => p.ft);
-    await require('./notify').runNotifications(state, { name: (id) => state.players[id]?.n || '?', featuredId: featured?.id || null, isLocked: (p) => Boolean(p) && isLocked(p) });
+    const featuredIds = Object.values(state.picks).filter((p) => p.ft).map((p) => p.id);
+    await require('./notify').runNotifications(state, { name: (id) => state.players[id]?.n || '?', featuredIds, isLocked: (p) => Boolean(p) && isLocked(p) });
   } catch (e) {
     console.error(`Push: ${e.message}`);
   }
