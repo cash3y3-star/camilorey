@@ -433,6 +433,8 @@ out('\n== Picks pendientes con calibración ==');
 {
   const pend = Object.values(picks).filter((p) => p.res === 'pending' && p.pub);
   const w = pend.filter((p) => p.cr != null);
+  const ft = pend.filter((p) => p.dst && matches[p.id]).sort((x, y) => (matches[x.id].at < matches[y.id].at ? -1 : 1));
+  out(`  destacados ahora: ${ft.length} · ${ft.map((p) => `${matches[p.id].at.slice(11, 16)}Z ${players[p.fav]?.n} ${p.c}% @${p.o}`).join(' | ')}`);
   out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
 }
 
