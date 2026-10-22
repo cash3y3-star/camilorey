@@ -453,6 +453,35 @@ out('\n== Picks pendientes con calibración ==');
     const pr0 = predict(model, { ...f, stake: 0 }, p.x?.oA, p.x?.oB);
     out(`    recalculado ahora: stake=${f.stake} P(A)=${(pr.p * 100).toFixed(1)} (sin tabla ${(pr0.p * 100).toFixed(1)}) ph=${(pr.ph * 100).toFixed(1)} pm=${pr.pm}`);
   }
+  // ¿Regla de la casa vs. tabla del grupo? Partidos con cuota y señal de la
+  // tabla: cuando el modelo va CONTRA la casa, ¿acierta más si la tabla
+  // favorece a su elegido?
+  {
+    const bins = {};
+    const add = (k, hitModel) => { const b = (bins[k] ||= [0, 0]); b[1]++; if (hitModel) b[0]++; };
+    for (const m of fin) {
+      if (!m.oa || !m.ob) continue;
+      const k = ctx.stakeOf(m);
+      if (!k) continue;
+      const { f } = featuresOf(m, ctx);
+      const r = predict(model, f, m.oa, m.ob);
+      if (r.pm == null || r.pm === 0.5) continue;
+      const favA = r.p >= 0.5;
+      if (favA === r.pm > 0.5) continue; // solo cuando el modelo va contra la casa
+      const mine = favA ? k.a : k.b;
+      const riv = favA ? k.b : k.a;
+      const hit = (favA ? m.a : m.b) === m.w;
+      const s = favA ? f.stake : -f.stake;
+      add('todos contra la casa', hit);
+      if (!mine.dead && riv.dead) add('rival sin nada en juego, el elegido sí', hit);
+      if (s >= 0.25) add('tabla a favor del elegido (stake >= 0,25)', hit);
+      if (s >= 0.5) add('tabla muy a favor (stake >= 0,5)', hit);
+      if (s <= -0.25) add('tabla en contra del elegido', hit);
+      if (Math.abs(s) < 0.25) add('tabla neutra', hit);
+    }
+    out('  REGLA CASA vs TABLA (acierto del MODELO cuando va contra la casa; la casa acierta el resto):');
+    for (const [k, [h, n]] of Object.entries(bins)) out(`    ${k}: ${pct(h, n)}`);
+  }
   const ft = pend.filter((p) => p.dst && matches[p.id]).sort((x, y) => (matches[x.id].at < matches[y.id].at ? -1 : 1));
   out(`  destacados ahora: ${ft.length} · ${ft.map((p) => `${matches[p.id].at.slice(11, 16)}Z ${players[p.fav]?.n} ${p.c}% @${p.o}`).join(' | ')}`);
   out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
