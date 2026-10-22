@@ -877,7 +877,7 @@ function writeSite(meta) {
   const featuredSet = new Set([...keep, ...add]);
   for (const p of notStarted) p.dst = featuredSet.has(p);
   // Cuota y confianza con las que se destacó (las que vio la gente).
-  for (const p of add) Object.assign(p, { fo: p.o, fc: p.c, fat: new Date(now).toISOString() });
+  for (const p of [...add, ...keep.filter((x) => x.fo == null)]) Object.assign(p, { fo: p.o, fc: p.c, fat: new Date(now).toISOString() });
   for (const [id, fo] of Object.entries(FEATURED_RESTORE)) {
     const p = state.picks[id];
     if (p && !p.dst) Object.assign(p, { dst: true, fo, fc: p.fc ?? p.c });
