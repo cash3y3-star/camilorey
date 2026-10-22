@@ -401,6 +401,33 @@ out('\n== Calibración de la confianza ==');
   }
 }
 
+// Simulación de la calibración (misma fórmula que calibrationK en update.js).
+out('\n== Simulación: confianza calibrada ==');
+{
+  const v2 = Object.values(picks).filter((p) => p.pub && p.src === 'v2' && p.res !== 'pending' && matches[p.id] && day(matches[p.id].at) >= '2026-10-17');
+  const base = v2.filter((p) => p.x?.rule !== 'mkt');
+  const hit = base.filter((p) => p.res === 'hit').length / base.length;
+  const conf = base.reduce((s, p) => s + (p.cr ?? p.c), 0) / base.length / 100;
+  const w = base.length / (base.length + 100);
+  const K = Math.round(Math.max(0.5, Math.min(1, 1 + ((hit - 0.5) / (conf - 0.5) - 1) * w)) * 1000) / 1000;
+  out(`  factor K = ${K} (acierto ${(hit * 100).toFixed(1)}% · confianza media ${(conf * 100).toFixed(1)}% · ${base.length} picks)`);
+  const cal = (p) => (p.x?.rule === 'mkt' ? p.c : Math.round(50 + ((p.cr ?? p.c) - 50) * K));
+  for (const [lab, fn] of [['antes', (p) => p.cr ?? p.c], ['calibrada', cal]]) {
+    const exp = v2.reduce((s, p) => s + fn(p), 0) / v2.length;
+    const real = (v2.filter((p) => p.res === 'hit').length / v2.length) * 100;
+    const parts = [];
+    for (const [lo, hi] of [[50, 54], [55, 59], [60, 64], [65, 100]]) {
+      const x = v2.filter((p) => fn(p) >= lo && fn(p) <= hi);
+      parts.push(`${lo}-${hi}: ${pct(x.filter((p) => p.res === 'hit').length, x.length)} (muestra ${x.length ? (x.reduce((s, p) => s + fn(p), 0) / x.length).toFixed(1) : '—'})`);
+    }
+    const prem = v2.filter((p) => fn(p) >= 60);
+    out(`  ${lab}: promete ${exp.toFixed(1)}% · real ${real.toFixed(1)}% · Premium (60%+) ${prem.length} picks (${((prem.length / v2.length) * 100).toFixed(0)}%) acierta ${pct(prem.filter((p) => p.res === 'hit').length, prem.length)}`);
+    out(`     ${parts.join(' · ')}`);
+    const dst = v2.filter((p) => fn(p) >= 60 && p.o > 1.6 && p.o <= 2.5);
+    out(`     candidatos a destacado (60%+, cuota 1.60-2.50): ${pct(dst.filter((p) => p.res === 'hit').length, dst.length)}`);
+  }
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
