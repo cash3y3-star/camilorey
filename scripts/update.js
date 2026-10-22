@@ -38,6 +38,7 @@ const PAREJO_BELOW = 55;
 const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
 const FEATURED_MIN_CONF = 60;
+const TABLE_OVER_MKT = 0.25; // señal de la tabla que gana a la regla de la casa
 const FEATURED_SLOTS = 3; // destacados a la vez (pedido del usuario el 22-oct)
 // Destacados que el sistema sacó antes de este arreglo (22-oct) y que los
 // miembros sí vieron: id del partido -> cuota con la que se destacó.
@@ -240,7 +241,16 @@ function generatePick(match, odds, model, prev = null) {
   // los picks publicados contra la casa acertaron 42.9% (21/49) y en el
   // historial con cuota 45% (9/20); siguiendo a la casa esos pasan a ~55%.
   // Se marca como parejo (54%): la ventaja que queda es poca.
-  if (pm != null && pm !== 0.5 && favA !== pm > 0.5) {
+  // Excepción (22-oct, caso Huk vs Zeman): si la tabla del grupo favorece
+  // claramente al elegido del modelo (stake >= 0,25 a su favor: él se juega
+  // algo y al rival le importa mucho menos), manda la tabla y no la casa.
+  // Medido el 22-oct en el historial con cuota: contra la casa el modelo
+  // acierta 44% con la tabla neutra, pero 67% (6/9) con la tabla a favor.
+  // Pocos casos: volver a medir (diag.js "REGLA CASA vs TABLA").
+  const tableFor = (favA ? 1 : -1) * (f.stake ?? 0);
+  if (pm != null && pm !== 0.5 && favA !== pm > 0.5 && tableFor >= TABLE_OVER_MKT) {
+    rule = 'tabla';
+  } else if (pm != null && pm !== 0.5 && favA !== pm > 0.5) {
     favA = pm > 0.5;
     pFav = 0.54;
     rule = 'mkt';
@@ -660,6 +670,7 @@ function buildWhyV2(p, m) {
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
   if (x.rule === 'h2h') add(1, `Regla de lógica: ${riv} gana muy poco el cruce directo contra ${fav}, así que el sistema no lo elige aunque otros datos lo favorezcan.`);
+  if (x.rule === 'tabla') add(1, `Tabla del grupo: Rushbet tiene de favorito a ${riv}, pero ${fav} se juega la clasificación y a ${riv} el resultado le importa mucho menos. En estos casos el sistema sigue la tabla y no a la casa.`);
   if (x.rule === 'mkt') add(1, `Regla de la casa: el historial favorecía a ${riv}, pero Rushbet tiene de favorito a ${fav}. Ir contra la casa salió mal (menos de 45% de acierto), así que el sistema sigue a la casa y lo marca como parejo.`);
 
   // Cruce directo completo (la señal más fuerte medida en esta liga).
