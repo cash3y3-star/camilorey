@@ -55,7 +55,7 @@ const lines = [];
 const out = (s = '') => lines.push(s);
 const pct = (h, n) => (n ? `${((h / n) * 100).toFixed(1)}% (${h}/${n})` : '—');
 
-const DAYS = [...new Set(Object.values(picks).filter((p) => matches[p.id]).map((p) => day(matches[p.id].at)))].sort().slice(-4);
+const DAYS = [...new Set(Object.values(picks).filter((p) => matches[p.id]).map((p) => day(matches[p.id].at)))].sort().slice(-7);
 out(`Modelo: ${model.trained} partidos · pesos ${JSON.stringify(model.weights)} · mercado ${JSON.stringify(model.market)}`);
 out(`Generado: ${new Date().toISOString()} · días: ${DAYS.join(", ")}`);
 out(`Holdout: ${JSON.stringify(model.holdout)}`);
@@ -373,6 +373,31 @@ out('\n== Hoy: picks contra el favorito de la casa ==');
     const pmEnd = marketProb(m.oa, m.ob);
     if (pm == null || (pm > 0.5) === (p.fav === m.a)) continue;
     out(`  ${m.at.slice(11, 16)} ${players[p.fav]?.n} ${p.c}% · regla ${p.x?.rule || '-'} · casa al pick ${(pm * 100).toFixed(0)}% A · casa final ${pmEnd == null ? '-' : (pmEnd * 100).toFixed(0) + '% A'} · revisado ${p.upd?.slice(11, 16) || '-'} · ${p.res}`);
+  }
+}
+
+// Calibración: confianza mostrada vs. acierto real (todos los picks v2 jugados)
+// y por semana (antes / después del 19-oct).
+out('\n== Calibración de la confianza ==');
+{
+  const v2 = Object.values(picks).filter((p) => p.pub && p.src === 'v2' && p.res !== 'pending' && matches[p.id]);
+  for (const [lab, fn] of [['todo', () => true], ['hasta el 18-oct', (p) => day(matches[p.id].at) <= '2026-10-18'], ['desde el 19-oct', (p) => day(matches[p.id].at) >= '2026-10-19']]) {
+    const l = v2.filter(fn);
+    const parts = [];
+    for (const [lo, hi] of [[50, 52], [53, 54], [55, 56], [57, 59], [60, 62], [63, 64], [65, 67], [68, 70], [71, 100]]) {
+      const x = l.filter((p) => p.c >= lo && p.c <= hi);
+      parts.push(`${lo}-${hi}: ${pct(x.filter((p) => p.res === 'hit').length, x.length)}`);
+    }
+    out(`  ${lab} (${l.length}): ${parts.join(' · ')}`);
+  }
+  const byDay = new Map();
+  for (const p of v2) { const d = day(matches[p.id].at); (byDay.get(d) || byDay.set(d, []).get(d)).push(p); }
+  for (const [d, l] of [...byDay.entries()].sort()) {
+    const odds = l.filter((p) => p.x?.oA && p.x?.oB);
+    const mk = odds.filter((p) => { const pm = marketProb(p.x.oA, p.x.oB); return pm != null && pm !== 0.5; });
+    const mh = mk.filter((p) => (marketProb(p.x.oA, p.x.oB) > 0.5 ? matches[p.id].a : matches[p.id].b) === matches[p.id].w).length;
+    const r = l.filter((p) => p.x?.rule === 'mkt');
+    out(`  ${d}: picks ${pct(l.filter((p) => p.res === 'hit').length, l.length)} · conf media ${(l.reduce((a, p) => a + p.c, 0) / l.length).toFixed(1)} · con cuota ${odds.length} · casa ${pct(mh, mk.length)} · regla casa ${r.length} · cambiados ${l.filter((p) => p.chg).length}`);
   }
 }
 
