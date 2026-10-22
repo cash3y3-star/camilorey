@@ -984,6 +984,9 @@ async function renderAdminDaily(reload = true) {
   if (!ui.adminDay || (!byDay.has(ui.adminDay) && ui.adminDay !== today)) ui.adminDay = byDay.has(today) || !keys.length ? today : keys[0];
   const sel = ui.adminDay;
   const list = (byDay.get(sel) || []).slice().sort((a, b) => (a.at < b.at ? 1 : -1));
+  // La lista arranca recogida (5 picks) para no empujar el resto del panel.
+  const DAILY_SHORT = 5;
+  const shown = ui.adminDayAll ? list : list.slice(0, DAILY_SHORT);
   const s = sum(list);
   const pending = dailyRows.filter((x) => x.res === 'pending' && dayKey(x.at) === sel).length;
   const band = (lo, hi) => sum(list.filter((x) => x.c >= lo && x.c < hi));
@@ -1039,11 +1042,15 @@ async function renderAdminDaily(reload = true) {
     ${
       list.length
         ? `<div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Hora</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
-      ${list
+      ${shown
         .map(
           (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${fmtTime(x.at)}</td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num ${x.res === 'hit' ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ Ganado' : '✗ Perdido'}</td></tr>`
         )
-        .join('')}</tbody></table></div>`
+        .join('')}</tbody></table></div>${
+          list.length > DAILY_SHORT
+            ? `<button type="button" class="btn ghost" data-adayall="1" style="margin-top:8px;width:100%">${ui.adminDayAll ? 'Ocultar' : `Mostrar más (${list.length - DAILY_SHORT})`}</button>`
+            : ''
+        }`
         : `<p class="note" style="margin-top:12px">Todavía no hay picks jugados este día.</p>`
     }`;
   // La gráfica arranca mostrando el día elegido (por defecto, el más reciente).
@@ -2900,6 +2907,11 @@ document.addEventListener('click', async (ev) => {
   }
   if (t.dataset.aday) {
     ui.adminDay = t.dataset.aday;
+    ui.adminDayAll = false;
+    return renderAdminDaily(false);
+  }
+  if (t.dataset.adayall) {
+    ui.adminDayAll = !ui.adminDayAll;
     return renderAdminDaily(false);
   }
   if (t.dataset.ledgerF) {
