@@ -2263,6 +2263,33 @@ function whyListHtml(why) {
     <p class="an-src">${icon('info')} ${esc(why.src)}.</p>`;
 }
 
+// Ficha de un partido antiguo (abierto desde L5/L10): datos reales que
+// publica tt.league-pro para cualquiera. Los puntos de cada set la liga
+// solo los muestra a usuarios con cuenta en su sitio.
+function oldMatchBlock(m) {
+  const win = m.w === m.a.id ? m.a : m.b;
+  const when = new Intl.DateTimeFormat(LOC(), { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', timeZone: TZ }).format(new Date(m.at));
+  const dur = m.du ? `${Math.floor(m.du / 60)} min ${String(m.du % 60).padStart(2, '0')} s` : '—';
+  const pk = m.pk;
+  const pkFav = pk ? (pk.f === m.a.id ? m.a : m.b) : null;
+  return `<div class="block">
+      <div class="block-h"><span class="overline">Resultado del partido</span></div>
+      <div class="tiles">
+        <div class="tile"><div class="overline">Ganador</div><div class="val pos" style="font-size:18px">${esc(win.n)}</div><div class="hint">${Math.max(m.sa, m.sb)}-${Math.min(m.sa, m.sb)} en sets</div></div>
+        <div class="tile"><div class="overline">Sets</div><div class="val">${m.sa}-${m.sb}</div><div class="hint">${m.sa + m.sb} jugados</div></div>
+        <div class="tile"><div class="overline">Duración</div><div class="val" style="font-size:18px">${dur}</div><div class="hint">del partido</div></div>
+      </div>
+      <p class="note" style="margin:10px 0 0">Se jugó el ${esc(when)} · ${esc(m.ph ? `${m.ph} · ${m.tn}` : m.tn || '')}</p>
+      <div class="overline" style="margin:14px 0 6px">Pick del sistema</div>
+      ${
+        pk
+          ? `<p class="note" style="margin:0">${esc(pkFav.n)} con ${pk.c}% de confianza${pk.o ? ` · cuota ${odds(pk.o)}` : ''} · <b class="${pk.r === 'hit' ? 'pos-t' : 'neg-t'}">${pk.r === 'hit' ? 'Acertó' : 'Falló'}</b></p>`
+          : '<p class="note" style="margin:0">No hay pick publicado registrado para este partido.</p>'
+      }
+      <p class="note" style="margin:10px 0 0">${icon('info')} Los puntos de cada set no están disponibles: la liga solo los muestra a usuarios registrados en su sitio.</p>
+    </div>`;
+}
+
 function noPickBlock(m, lv) {
   const tp = tipsterPickFor(m);
   const tFav = tp ? (tp.fav === m.a.id ? m.a : m.b) : null;
@@ -2329,6 +2356,18 @@ function h2hFull(m, redraw) {
   return { list, full: d.full !== false, since: `${da}/${mo}/${y}` };
 }
 
+// Partidos ya jugados que salen en L5/L10: al tocarlos se abre su ficha con
+// los datos reales (resultado en sets, fecha, torneo, duración y el pick
+// del sistema si lo hubo). id -> { x: fila de players/{id}.json, p: jugador }
+const oldMatches = new Map();
+function oldMatchView(id) {
+  const o = oldMatches.get(Number(id));
+  if (!o) return null;
+  const { x, p } = o;
+  const [s1, s2] = String(x.s || '-').split('-').map(Number);
+  return { id: x.id, at: x.at, tn: x.tn, ph: x.ph, st: 'f', a: { ...p, r: null }, b: { ...x.op, r: null }, sa: s1, sb: s2, w: x.w ? p.id : x.op.id, du: x.du, pk: x.pk, old: true };
+}
+
 // L5 / L10 estilo Sofascore: últimos partidos de cada jugador ANTES de este
 // partido, con fecha, torneo, rival y marcador (data/players/{id}.json).
 const playerCache = new Map();
@@ -2355,7 +2394,8 @@ function formListHtml(p, f, n, last) {
   const rows = list
     .map((x) => {
       const [s1, s2] = String(x.s || '-').split('-');
-      return `<div class="h2h-row one-res" data-player="${x.op.id}" style="cursor:pointer">
+      oldMatches.set(x.id, { x, p });
+      return `<div class="h2h-row one-res" data-open="${x.id}" style="cursor:pointer">
         <div class="h2h-date">${fmtD(x.at)}<small>${esc(x.ph ? `${x.ph} · ${x.tn}` : x.tn)}</small></div>
         <div class="h2h-names"><div class="${x.w ? 'w' : ''}">${esc(p.n)}</div><div class="${x.w ? '' : 'w'}">${esc(x.op.n)}</div></div>
         <div class="h2h-score"><div class="${x.w ? 'w' : ''}">${s1 ?? '-'}</div><div class="${x.w ? '' : 'w'}">${s2 ?? '-'}</div></div>
@@ -2428,8 +2468,11 @@ function groupBlock(m) {
 }
 
 function openMatch(id) {
-  const m = allById().get(Number(id));
+  const prevId = !$sheet.hidden && $sheet._matchId && $sheet._matchId !== Number(id) ? $sheet._matchId : null;
+  const m = allById().get(Number(id)) || oldMatchView(id);
   if (!m) return;
+  // Volver al partido desde el que se abrió (L5/L10)
+  ui.sheetBack = prevId ? [...(ui.sheetBack || []), prevId] : [];
   Object.assign(pickEdit, { side: null, mode: null, open: false });
   ui.h2hMore = false;
   tapFx(); // "tic" y vibración al abrir un partido
@@ -2448,7 +2491,8 @@ function openMatch(id) {
       : lv
       ? `<div class="mid"><span class="badge live">EN VIVO</span><span class="score">${lv.setsHome}-${lv.setsAway}</span><span class="tn">${esc(lv.ptsHome)} : ${esc(lv.ptsAway)}</span></div>`
       : `<div class="mid"><span class="badge red">● ${fmtTime(m.at)}</span><div class="vs">VS</div></div>`;
-    $sheetBody.innerHTML = `
+    const back = ui.sheetBack?.length ? `<button type="button" class="textlink" data-sheetback="1" style="display:inline-flex;align-items:center;gap:4px;margin:0 0 10px;background:none;border:0;padding:0;cursor:pointer">${icon('left')} Volver al partido</button>` : '';
+    $sheetBody.innerHTML = `${back}
     <div class="sheet-hero">
       <div class="side ${favA ? 'fav' : ''}" data-player="${m.a.id}" style="cursor:pointer">${avatar(m.a, 'avatar lg')}<span class="nm" style="font-size:15px">${esc(m.a.n)}</span><span class="sub">Rating ${m.a.r ?? '—'}</span></div>
       ${center}
@@ -2460,6 +2504,7 @@ function openMatch(id) {
       <div><small>Estado</small><b class="red" style="font-size:14px">${m.st === 'f' ? 'FINAL' : lv ? 'EN VIVO' : 'PROGRAMADO'}</b></div>
     </div>
     ${pick && !pick.locked && pick.chg ? `<p class="note" style="margin:12px 0 0">${icon('info')} El sistema cambió este pick al revisarlo antes de empezar (con la forma del día y la cuota más recientes).</p>` : ''}
+    ${m.old ? oldMatchBlock(m) : ''}
     ${pick?.locked ? `<div style="margin-top:12px">${premiumLock('Pick Premium de alta confianza', 'El sistema tiene un pick de 60% o más para este partido. Hazte Premium para ver a quién elige, su confianza, la cuota y el análisis.')}</div>` : ''}
     ${pick && !pick.locked && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
     ${pick && !pick.locked ? `<div class="block">
@@ -2512,9 +2557,12 @@ function openMatch(id) {
         ${pick.res === 'hit' ? '<div class="badge win" style="margin-top:10px">✓ Resultado: acierto</div>' : pick.res === 'miss' ? '<div class="badge loss" style="margin-top:10px">✗ Resultado: fallo</div>' : ''}
       </div>
     </div>`
+        : m.old
+        ? ''
         : noPickBlock(m, lv)
     }`;
   };
+  $sheet._matchId = Number(id);
   draw();
   $sheet.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -2823,6 +2871,19 @@ document.addEventListener('click', async (ev) => {
     }
     await saveBankSettings({ ...cur, force: fm, skip: [...sk] });
     return redrawBank();
+  }
+  if (t.dataset.sheetback) {
+    const back = ui.sheetBack || [];
+    const prev = back.pop();
+    ui.sheetBack = back;
+    if (prev) {
+      $sheet._matchId = null; // así no se apila otra vez
+      const keep = [...back];
+      openMatch(prev);
+      ui.sheetBack = keep;
+      return $sheet._redraw?.();
+    }
+    return;
   }
   if (t.dataset.open) return openMatch(t.dataset.open);
   if (t.dataset.day) {

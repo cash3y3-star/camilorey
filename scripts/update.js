@@ -374,6 +374,7 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       sa: played ? m.results.score_one : null,
       sb: played ? m.results.score_two : null,
       w: played ? (m.results.score_one > m.results.score_two ? sideA.player.id : sideB.player.id) : null,
+      du: played && m.results.duration ? Math.round(m.results.duration / 1000) : null, // duración en segundos
       // Rating oficial antes del torneo y cuotas de Rushbet (las guarda
       // backfillOdds): el modelo v2 aprende de ellos.
       ra: sideA.rating_before_tournament ?? null,
@@ -1137,7 +1138,10 @@ function writePlayers(ids, byPlayer) {
           ph: phaseOf(m),
           op: playerRef(isA ? m.b : m.a),
           s: isA ? `${m.sa}-${m.sb}` : `${m.sb}-${m.sa}`,
-          w: m.w === pid
+          w: m.w === pid,
+          du: m.du ?? null,
+          // Pick publicado del sistema en ese partido (ya jugado): jugador, confianza, resultado
+          pk: state.picks[m.id]?.pub && state.picks[m.id].res !== 'pending' ? { f: state.picks[m.id].fav, c: state.picks[m.id].c, r: state.picks[m.id].res, o: state.picks[m.id].o ?? null } : null
         };
       })
     });
