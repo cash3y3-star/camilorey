@@ -1048,7 +1048,7 @@ async function renderAdminDaily(reload = true) {
         ? `<div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Hora</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
       ${shown
         .map(
-          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${fmtTime(x.at)}</td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td><td class="num ${x.res === 'hit' ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ Ganado' : '✗ Perdido'}</td></tr>`
+          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${fmtTime(x.at)}</td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${x.ft && x.fo && x.fo !== x.o ? `${odds(x.fo)}<small style="display:block;color:var(--muted)">destacado · cerró ${odds(x.o)}</small>` : odds(x.o)}</td><td class="num ${x.res === 'hit' ? 'pos-t' : 'neg-t'}">${x.res === 'hit' ? '✓ Ganado' : '✗ Perdido'}</td></tr>`
         )
         .join('')}</tbody></table></div>${
           list.length > DAILY_SHORT
@@ -1071,7 +1071,8 @@ const FEATURED_SHORT = 10;
 function renderAdminFeatured() {
   const box = document.getElementById('admin-featured');
   if (!box || !dailyRows) return;
-  const list = dailyRows.filter((x) => x.ft).sort((a, b) => (a.at < b.at ? 1 : -1));
+  // Cuota con la que se destacó (fo), no la de cierre.
+  const list = dailyRows.filter((x) => x.ft).map((x) => ({ ...x, oc: x.o, o: x.fo ?? x.o })).sort((a, b) => (a.at < b.at ? 1 : -1));
   if (!list.length) {
     box.innerHTML = '<p class="note">Todavía no hay picks destacados en el historial.</p>';
     return;
@@ -1094,7 +1095,7 @@ function renderAdminFeatured() {
     <div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Fecha</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
       ${shown
         .map(
-          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${esc(dayName(dayKey(x.at)))}<small style="display:block;color:var(--muted)">${fmtTime(x.at)}</small></td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}</td>${resTd(x)}</tr>`
+          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${esc(dayName(dayKey(x.at)))}<small style="display:block;color:var(--muted)">${fmtTime(x.at)}</small></td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}${x.oc && x.oc !== x.o ? `<small style="display:block;color:var(--muted)">cerró ${odds(x.oc)}</small>` : ''}</td>${resTd(x)}</tr>`
         )
         .join('')}</tbody></table></div>
     ${list.length > FEATURED_SHORT ? `<button type="button" class="btn ghost" data-featall="1" style="margin-top:8px;width:100%">${ui.featAll ? 'Ocultar' : `Mostrar más (${list.length - FEATURED_SHORT})`}</button>` : ''}`;

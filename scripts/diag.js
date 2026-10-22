@@ -436,7 +436,7 @@ out('\n== Picks pendientes con calibración ==');
   for (const p of Object.values(picks)) {
     const m = matches[p.id];
     if (!m || !/pavelka/i.test(`${players[m.a]?.n} ${players[m.b]?.n}`) || m.at < '2026-10-22') continue;
-    out(`  BUSCAR ${p.id} ${m.at} ${players[m.a]?.n} vs ${players[m.b]?.n} · pick ${players[p.fav]?.n} ${p.c}% o=${p.o} dst=${p.dst} res=${p.res} upd=${p.upd} chg=${p.chg || 0} x.o=${p.x?.oA}/${p.x?.oB} d=${p.x?.dA}/${p.x?.dB}`);
+    out(`  BUSCAR ${p.id} ${m.at} ${players[m.a]?.n} vs ${players[m.b]?.n} · pick ${players[p.fav]?.n} ${p.c}% o=${p.o} fo=${p.fo} dst=${p.dst} res=${p.res} upd=${p.upd} chg=${p.chg || 0} x.o=${p.x?.oA}/${p.x?.oB} d=${p.x?.dA}/${p.x?.dB}`);
   }
   const ft = pend.filter((p) => p.dst && matches[p.id]).sort((x, y) => (matches[x.id].at < matches[y.id].at ? -1 : 1));
   out(`  destacados ahora: ${ft.length} · ${ft.map((p) => `${matches[p.id].at.slice(11, 16)}Z ${players[p.fav]?.n} ${p.c}% @${p.o}`).join(' | ')}`);

@@ -39,6 +39,9 @@ const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
 const FEATURED_MIN_CONF = 60;
 const FEATURED_SLOTS = 3; // destacados a la vez (pedido del usuario el 22-oct)
+// Destacados que el sistema sacó antes de este arreglo (22-oct) y que los
+// miembros sí vieron: id del partido -> cuota con la que se destacó.
+const FEATURED_RESTORE = { 316825: 1.61 }; // Cerny V vs Pavelka R (Pavelka 1.61, cerró 1.38)
 // Calibración de la confianza mostrada: el modelo prometía más de lo que
 // daba (medido el 21-oct: 59.8% esperado vs 56.0% real en 588 picks). La
 // confianza se encoge hacia 50% con el factor medido en los picks ya
@@ -403,6 +406,7 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       const odds = findOdds(rushbet, state.players[row.a].n, state.players[row.b].n, row.at);
       const pick = generatePick(row, odds, model, prev);
       if (prev?.dst != null) pick.dst = prev.dst;
+      if (prev?.fo != null) Object.assign(pick, { fo: prev.fo, fc: prev.fc, fat: prev.fat });
       // upd: última revisión; chg: veces que el pick cambió de jugador
       // (notify.js avisa a quien sigue el partido).
       pick.upd = new Date().toISOString();
@@ -447,6 +451,7 @@ function backfillOdds(rushbet, model) {
         try {
           const pick = generatePick(m, odds, model, p);
           if (p.dst != null) pick.dst = p.dst;
+          if (p.fo != null) Object.assign(pick, { fo: p.fo, fc: p.fc, fat: p.fat });
           pick.upd = new Date().toISOString();
           pick.chg = (p.chg || 0) + (p.fav !== pick.fav ? 1 : 0);
           pick.late = true; // recalculado por la cuota de los últimos minutos
@@ -863,10 +868,20 @@ function writeSite(meta) {
   // 9 minutos de empezar).
   const qualifies = (p) => p.c >= FEATURED_MIN_CONF && p.o && p.o > FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS;
   const byStart = (a, b) => (state.matches[a.id].at < state.matches[b.id].at ? -1 : state.matches[a.id].at > state.matches[b.id].at ? 1 : b.c - a.c);
-  const keep = notStarted.filter((p) => p.dst && qualifies(p)).sort(byStart).slice(0, FEATURED_SLOTS);
+  // El que ya es destacado se queda SIEMPRE hasta que empieza su partido,
+  // aunque después baje la cuota o la confianza (22-oct: Pavelka se
+  // destacó a 1.61, la cuota cerró en 1.38 y el sistema lo sacaba: los
+  // miembros lo habían visto y no aparecía en el historial).
+  const keep = notStarted.filter((p) => p.dst).sort(byStart).slice(0, FEATURED_SLOTS);
   const add = notStarted.filter((p) => !keep.includes(p) && qualifies(p)).sort(byStart).slice(0, FEATURED_SLOTS - keep.length);
   const featuredSet = new Set([...keep, ...add]);
   for (const p of notStarted) p.dst = featuredSet.has(p);
+  // Cuota y confianza con las que se destacó (las que vio la gente).
+  for (const p of add) Object.assign(p, { fo: p.o, fc: p.c, fat: new Date(now).toISOString() });
+  for (const [id, fo] of Object.entries(FEATURED_RESTORE)) {
+    const p = state.picks[id];
+    if (p && !p.dst) Object.assign(p, { dst: true, fo, fc: p.fc ?? p.c });
+  }
   for (const p of published) p.ft = featuredSet.has(p);
 
   const pendingView = pending
@@ -959,7 +974,7 @@ function writeSite(meta) {
       const m = state.matches[p.id];
       const b = betRow.get(p.id);
       const row = { id: p.id, at: m.at, ph: phaseOf(m), a: name(m.a), b: name(m.b), fav: name(p.fav), c: p.c, o: p.o ?? null, res: p.res };
-      if (p.dst) row.ft = 1; // pick destacado (historial en el panel admin)
+      if (p.dst) Object.assign(row, { ft: 1, fo: p.fo ?? p.o ?? null }); // pick destacado y su cuota al destacarse
       if (b) return { ...row, stake: b.stake, profit: b.profit, bal: b.bal };
       const st = p.res === 'pending' ? (m.st === 'f' ? 'wait' : m.st === 'l' ? 'live' : 'pre') : !p.pub ? 'np' : 'nodds';
       return { ...row, stake: p.res === 'pending' && p.o ? computeStake(p.c) : null, profit: null, bal: null, st };
@@ -1191,13 +1206,15 @@ function champions(now) {
 
 // Estadísticas SOLO de los picks destacados (p.dst), para Inicio.
 function featuredStats(resolved, d) {
-  const list = resolved.filter((p) => p.dst && state.matches[p.id].at >= FEATURED_FROM); // más nuevo primero
+  let list = resolved.filter((p) => p.dst && state.matches[p.id].at >= FEATURED_FROM); // más nuevo primero
   let streak = 0;
   for (const p of list) {
     const s = p.res === 'hit' ? 1 : -1;
     if (streak === 0 || Math.sign(streak) === s) streak += s;
     else break;
   }
+  // Con la cuota con la que se destacó (la que vio la gente), no la de cierre.
+  list = list.map((p) => (p.fo ? { ...p, o: p.fo } : p));
   const withOdds = list.filter((p) => p.o);
   return {
     d7: summarize(list.filter((p) => state.matches[p.id].at >= d(7))),
