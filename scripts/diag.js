@@ -1,5 +1,5 @@
 // ============================================================
-// CamiloRey — diagnóstico del modelo (solo lectura del estado; se corre con cada cambio de este archivo).
+// CamiloRey — diagnóstico del modelo (solo lectura del estado; corre con cada cambio de este archivo).
 //
 // Compara los últimos días: acierto real vs. esperado por la confianza,
 // por franjas, mercado a favor/en contra, regla H2H, y qué habría pasado
