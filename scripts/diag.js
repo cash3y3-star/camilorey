@@ -500,3 +500,4 @@ out('\n== Picks pendientes con calibración ==');
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
+// diag-run 1792794970
