@@ -304,6 +304,14 @@ out('\n== Hoy ==');
   for (const [lab, fn] of [['menos de 55%', (p) => p.c < 55], ['55-59%', (p) => p.c >= 55 && p.c < 60], ['60% o más', (p) => p.c >= 60]]) out(`    ${lab}: ${rate(done.filter(fn))}`);
   const dstNew = Object.values(picks).filter((p) => p.dst && p.res !== 'pending' && matches[p.id] && matches[p.id].at >= '2026-10-19T05:30:00Z');
   out(`  destacados desde el reinicio: ${rate(dstNew)} · ${dstNew.map((p) => `${players[p.fav]?.n} ${p.c}% @${p.o} ${p.res === 'hit' ? 'G' : 'P'}`).join(' | ')}`);
+  const dstToday = Object.values(picks).filter((p) => p.dst && matches[p.id] && day(matches[p.id].at) === today)
+    .sort((x, y) => (matches[x.id].at < matches[y.id].at ? -1 : 1));
+  out(`  DESTACADOS HOY: ${rate(dstToday.filter((p) => p.res !== 'pending'))} · pendientes ${dstToday.filter((p) => p.res === 'pending').length}`);
+  for (const p of dstToday) {
+    const m = matches[p.id], co = new Date(new Date(m.at).getTime() - 5 * 3600e3).toISOString().slice(11, 16);
+    const rival = players[p.fav === m.a ? m.b : m.a]?.n;
+    out(`    ${co} ${players[p.fav]?.n} vs ${rival} · ${p.c}% @${p.fo ?? p.o} · ${p.res === 'hit' ? 'GANADO' : p.res === 'miss' ? 'PERDIDO' : p.res}${m.sa != null ? ` (${m.sa}-${m.sb})` : ''}`);
+  }
   const withStake = done.filter((p) => p.f && Math.abs(p.f.stake || 0) >= 0.05);
   out(`  picks de hoy donde pesó la tabla del grupo: ${rate(withStake)}`);
   const byT = new Map();
