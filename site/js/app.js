@@ -920,7 +920,7 @@ function viewAdmin() {
   <div class="subhead"><a class="back" href="#/perfil">${icon('left')} Atrás</a><h1>Panel admin</h1></div>
   <div class="section-h"><h2>📅 Resumen del día</h2><span class="badge red">Solo admin</span></div>
   <div id="admin-daily">${skeleton(2)}</div>
-  <div class="section-h"><h2>Picks destacados · historial</h2><span class="badge red">Solo admin</span></div>
+  <div class="section-h"><h2>Picks destacados · resumen del día</h2><span class="badge red">Solo admin</span></div>
   <div id="admin-featured">${skeleton(1)}</div>
   <div class="section-h" id="admin-chats"><h2>💬 Soporte en vivo</h2><span class="badge" id="admin-chats-count"></span></div>
   <div id="admin-chats-box">${skeleton(1)}</div>
@@ -1064,41 +1064,97 @@ async function renderAdminDaily(reload = true) {
   if (sc) sc.scrollLeft = on ? on.getBoundingClientRect().left - sc.getBoundingClientRect().left + sc.scrollLeft - sc.clientWidth / 2 + on.clientWidth / 2 : sc.scrollWidth;
 }
 
-// Historial de picks destacados (solo admin): todos los que fueron
-// destacado, del más nuevo al más viejo, con su resultado. Sale del mismo
-// historial privado que el Resumen del día (admin/ledger, ~12 días).
+// Historial de picks destacados (solo admin), día por día igual que el
+// Resumen del día: chips de día, cifras del día elegido, gráfica de los
+// últimos días y la lista. Sale del mismo historial privado (admin/ledger).
 const FEATURED_SHORT = 10;
 function renderAdminFeatured() {
   const box = document.getElementById('admin-featured');
   if (!box || !dailyRows) return;
   // Cuota con la que se destacó (fo), no la de cierre.
-  const list = dailyRows.filter((x) => x.ft).map((x) => ({ ...x, oc: x.o, o: x.fo ?? x.o })).sort((a, b) => (a.at < b.at ? 1 : -1));
-  if (!list.length) {
+  const all = dailyRows.filter((x) => x.ft).map((x) => ({ ...x, oc: x.o, o: x.fo ?? x.o })).sort((a, b) => (a.at < b.at ? 1 : -1));
+  if (!all.length) {
     box.innerHTML = '<p class="note">Todavía no hay picks destacados en el historial.</p>';
     return;
   }
-  const done = list.filter((x) => x.res === 'hit' || x.res === 'miss');
-  const hit = done.filter((x) => x.res === 'hit').length;
-  const withO = done.filter((x) => x.o);
-  const units = Math.round(withO.reduce((s, x) => s + (x.res === 'hit' ? x.o - 1 : -1), 0) * 100) / 100;
-  const rate = done.length ? Math.round((hit / done.length) * 1000) / 10 : null;
+  const sum = (l) => {
+    const done = l.filter((x) => x.res === 'hit' || x.res === 'miss');
+    const hit = done.filter((x) => x.res === 'hit').length;
+    const withO = done.filter((x) => x.o);
+    const units = Math.round(withO.reduce((t, x) => t + (x.res === 'hit' ? x.o - 1 : -1), 0) * 100) / 100;
+    return { n: done.length, hit, miss: done.length - hit, pend: l.length - done.length, pct: done.length ? Math.round((hit / done.length) * 1000) / 10 : null, units, withO: withO.length };
+  };
+  const unitsTxt = (u) => `${u > 0 ? '+' : ''}${String(u).replace('.', ',')}`;
+  const byDay = new Map();
+  for (const x of all) {
+    const k = dayKey(x.at);
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(x);
+  }
+  const today = todayKey();
+  const keys = [...byDay.keys()].sort().reverse();
+  if (!ui.featDay || (!byDay.has(ui.featDay) && ui.featDay !== today)) ui.featDay = byDay.has(today) || !keys.length ? today : keys[0];
+  const sel = ui.featDay;
+  const list = byDay.get(sel) || [];
+  const s = sum(list);
+  const tot = sum(all);
   const shown = ui.featAll ? list : list.slice(0, FEATURED_SHORT);
   const resTd = (x) => (x.res === 'hit' ? '<td class="num pos-t">✓ Ganado</td>' : x.res === 'miss' ? '<td class="num neg-t">✗ Perdido</td>' : '<td class="num">Pendiente</td>');
+
+  const chartDays = keys.slice(0, 14).reverse();
+  const max = Math.max(1, ...chartDays.map((k) => sum(byDay.get(k)).n));
+  const chart = chartDays.length
+    ? `<div class="card pad" style="margin-top:12px">
+      <div class="block-h" style="margin:0 0 6px"><span class="overline">Últimos días</span><div class="legend"><span><i style="background:var(--win)"></i>Ganados</span><span><i style="background:var(--red)"></i>Perdidos</span></div></div>
+      <div class="scroll-x"><div class="dchart" style="min-width:${chartDays.length * 46}px">${chartDays
+        .map((k) => {
+          const d = sum(byDay.get(k));
+          return `<button type="button" class="dcol ${k === sel ? 'on' : ''}" data-fday="${k}">
+            <span class="dpct ${d.pct >= 55 ? 'pos-t' : d.pct != null && d.pct < 50 ? 'neg-t' : ''}">${d.pct == null ? '—' : Math.round(d.pct) + '%'}</span>
+            <span class="dbar"><i class="h" style="height:${(d.hit / max) * 110}px"></i><i class="m" style="height:${(d.miss / max) * 110}px"></i></span>
+            <span class="dname">${esc(dayName(k, { weekday: 'short' }))}</span><span class="ddate">${esc(dayName(k, { day: '2-digit', month: '2-digit' }))}</span>
+          </button>`;
+        })
+        .join('')}</div></div>
+    </div>`
+    : '';
+
   box.innerHTML = `
+    <div class="seg seg-full" style="grid-auto-flow:column;overflow-x:auto;margin-bottom:12px">${[today, ...keys.filter((k) => k !== today)]
+      .slice(0, 7)
+      .map((k) => `<button type="button" data-fday="${k}" class="${k === sel ? 'on' : ''}">${esc(k === today ? 'Hoy' : dayName(k))}</button>`)
+      .join('')}</div>
     <div class="card pad">
-      <div class="tiles">
-        <div class="tile"><div class="overline">Efectividad</div><div class="val ${rate >= 55 ? 'pos' : rate != null && rate < 50 ? 'neg' : ''}">${pct(rate)}</div><div class="hint">${done.length} jugados</div></div>
-        <div class="tile"><div class="overline">Ganados</div><div class="val pos">${hit}</div><div class="hint">de ${done.length}</div></div>
-        <div class="tile"><div class="overline">Unidades</div><div class="val ${units > 0 ? 'pos' : units < 0 ? 'neg' : ''}">${withO.length ? `${units > 0 ? '+' : ''}${String(units).replace('.', ',')}` : '—'}</div><div class="hint">1u a cada uno</div></div>
+      <div class="overline" style="text-transform:none;font-size:13px;color:var(--text)">${esc(dayName(sel, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</div>
+      <div class="tiles" style="margin-top:10px">
+        <div class="tile"><div class="overline">Efectividad</div><div class="val ${s.pct >= 55 ? 'pos' : s.pct != null && s.pct < 50 ? 'neg' : ''}">${pct(s.pct)}</div><div class="hint">${s.n} jugados${s.pend ? ` · ${s.pend} pendientes` : ''}</div></div>
+        <div class="tile"><div class="overline">Ganados</div><div class="val pos">${s.hit}</div><div class="hint">aciertos</div></div>
+        <div class="tile"><div class="overline">Perdidos</div><div class="val neg">${s.miss}</div><div class="hint">fallos</div></div>
+      </div>
+      <div class="tiles" style="margin-top:8px">
+        <div class="tile"><div class="overline">Unidades</div><div class="val ${s.units > 0 ? 'pos' : s.units < 0 ? 'neg' : ''}">${s.withO ? unitsTxt(s.units) : '—'}</div><div class="hint">1u a cada destacado</div></div>
+        <div class="tile"><div class="overline">Total historial</div><div class="val ${tot.pct >= 55 ? 'pos' : tot.pct != null && tot.pct < 50 ? 'neg' : ''}">${pct(tot.pct)}</div><div class="hint">${tot.hit} de ${tot.n}</div></div>
+        <div class="tile"><div class="overline">Unidades total</div><div class="val ${tot.units > 0 ? 'pos' : tot.units < 0 ? 'neg' : ''}">${tot.withO ? unitsTxt(tot.units) : '—'}</div><div class="hint">${byDay.size} días</div></div>
       </div>
     </div>
-    <div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Fecha</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
+    ${chart}
+    ${
+      list.length
+        ? `<div class="card scroll-x" style="margin-top:12px"><table class="ledger"><thead><tr><th>Hora</th><th>Partido</th><th>Pick</th><th class="num">Cuota</th><th class="num">Resultado</th></tr></thead><tbody>
       ${shown
         .map(
-          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${esc(dayName(dayKey(x.at)))}<small style="display:block;color:var(--muted)">${fmtTime(x.at)}</small></td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}${x.oc && x.oc !== x.o ? `<small style="display:block;color:var(--muted)">cerró ${odds(x.oc)}</small>` : ''}</td>${resTd(x)}</tr>`
+          (x) => `<tr data-open="${x.id}" style="cursor:pointer"><td>${fmtTime(x.at)}</td><td class="who">${esc(x.a)} vs ${esc(x.b)}${x.ph ? `<small>${esc(x.ph)}</small>` : ''}</td><td>${esc(x.fav)} <span class="conf${x.c < PAREJO ? ' low' : ''}">${x.c}%</span></td><td class="num">${odds(x.o)}${x.oc && x.oc !== x.o ? `<small style="display:block;color:var(--muted)">cerró ${odds(x.oc)}</small>` : ''}</td>${resTd(x)}</tr>`
         )
-        .join('')}</tbody></table></div>
-    ${list.length > FEATURED_SHORT ? `<button type="button" class="btn ghost" data-featall="1" style="margin-top:8px;width:100%">${ui.featAll ? 'Ocultar' : `Mostrar más (${list.length - FEATURED_SHORT})`}</button>` : ''}`;
+        .join('')}</tbody></table></div>${
+          list.length > FEATURED_SHORT
+            ? `<button type="button" class="btn ghost" data-featall="1" style="margin-top:8px;width:100%">${ui.featAll ? 'Ocultar' : `Mostrar más (${list.length - FEATURED_SHORT})`}</button>`
+            : ''
+        }`
+        : `<p class="note" style="margin-top:12px">No hubo picks destacados este día.</p>`
+    }`;
+  const sc = box.querySelector('.dchart')?.parentElement;
+  const on = box.querySelector('.dcol.on');
+  if (sc) sc.scrollLeft = on ? on.getBoundingClientRect().left - sc.getBoundingClientRect().left + sc.scrollLeft - sc.clientWidth / 2 + on.clientWidth / 2 : sc.scrollWidth;
 }
 
 // Pantalla propia del admin para el chat (la abre el botón flotante).
@@ -3055,6 +3111,11 @@ document.addEventListener('click', async (ev) => {
     ui.adminDay = t.dataset.aday;
     ui.adminDayAll = false;
     return renderAdminDaily(false);
+  }
+  if (t.dataset.fday) {
+    ui.featDay = t.dataset.fday;
+    ui.featAll = false;
+    return renderAdminFeatured();
   }
   if (t.dataset.featall) {
     ui.featAll = !ui.featAll;
