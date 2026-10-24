@@ -115,6 +115,7 @@ function block(title, list) {
   out(`  solo mercado (favorito de la casa): ${pct(mk.filter((r) => r.mktHit).length, mk.length)}`);
   const fav = list.filter((r) => r.pmFav != null && r.pmFav >= 0.6);
   out(`  pick con cuota implícita ≥60%: ${pct(fav.filter((r) => r.hit).length, fav.length)}`);
+  out(`  por regla: ${[...new Set(list.map((r) => r.rule || 'modelo'))].map((k) => { const l = list.filter((r) => (r.rule || 'modelo') === k); return `${k} ${pct(l.filter((r) => r.hit).length, l.length)}`; }).join(' · ')}`);
   const ru = list.filter((r) => r.rule);
   out(`  regla H2H aplicada: ${pct(ru.filter((r) => r.hit).length, ru.length)}`);
   for (const [lo, hi, lab] of [[0, 3, 'H2H <4'], [4, 9, 'H2H 4-9'], [10, 1e9, 'H2H 10+']]) {
@@ -500,4 +501,4 @@ out('\n== Picks pendientes con calibración ==');
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
-// diag-run 1792794970
+// diag-run 1792880000
