@@ -38,7 +38,6 @@ const PAREJO_BELOW = 55;
 const MAX_CONFIDENCE = 80;
 const FEATURED_MIN_ODDS = 1.6;
 const FEATURED_MIN_CONF = 60;
-const TABLE_OVER_MKT = 0.25; // señal de la tabla que gana a la regla de la casa
 const FEATURED_SLOTS = 3; // destacados a la vez (pedido del usuario el 22-oct)
 // Destacados que el sistema sacó antes de este arreglo (22-oct) y que los
 // miembros sí vieron: id del partido -> cuota con la que se destacó.
@@ -227,7 +226,7 @@ function generatePick(match, odds, model, prev = null) {
   // (4+ enfrentamientos y 25% o menos de victorias, ej. 0-6), salvo que el
   // mercado también lo vea favorito. Si el modelo lo eligió igual, se pasa
   // al dominador del H2H y se marca como parejo.
-  // Con cuota no aplica: manda la regla de la casa (abajo).
+  // Con cuota no aplica: la cuota ya entra en p.
   let rule = null;
   if (raw.hT >= 4 && pm == null) {
     const favShare = (favA ? raw.hA : raw.hT - raw.hA) / raw.hT;
@@ -237,26 +236,13 @@ function generatePick(match, odds, model, prev = null) {
       rule = 'h2h';
     }
   }
-  // Regla de la casa: no ir contra el favorito de Rushbet. Medido el 18-oct:
-  // los picks publicados contra la casa acertaron 42.9% (21/49) y en el
-  // historial con cuota 45% (9/20); siguiendo a la casa esos pasan a ~55%.
-  // Se marca como parejo (54%): la ventaja que queda es poca.
-  // Excepción (22-oct, caso Huk vs Zeman): si la tabla del grupo favorece
-  // claramente al elegido del modelo (stake >= 0,25 a su favor: él se juega
-  // algo y al rival le importa mucho menos), manda la tabla y no la casa.
-  // Medido el 22-oct en el historial con cuota: contra la casa el modelo
-  // acierta 44% con la tabla neutra, pero 67% (6/9) con la tabla a favor.
-  // Pocos casos: volver a medir (diag.js "REGLA CASA vs TABLA").
-  const tableFor = (favA ? 1 : -1) * (f.stake ?? 0);
-  if (pm != null && pm !== 0.5 && favA !== pm > 0.5 && tableFor >= TABLE_OVER_MKT) {
-    rule = 'tabla';
-  } else if (pm != null && pm !== 0.5 && favA !== pm > 0.5) {
-    favA = pm > 0.5;
-    pFav = 0.54;
-    rule = 'mkt';
-  }
+  // Contra la casa: se queda el pick del modelo (la cuota ya pesa dentro de
+  // p). La regla que pasaba esos picks al favorito de Rushbet se quitó el
+  // 24-oct: del 19 al 24 acertó 40.6% (28/69) y el elegido del modelo habría
+  // acertado 55.1% (38/69). 'contra' solo marca el caso para medirlo.
+  if (pm != null && pm !== 0.5 && favA !== pm > 0.5) rule = 'contra';
   const cRaw = Math.round(Math.max(0.5, Math.min(MAX_CONFIDENCE / 100, pFav)) * 100);
-  const k = rule === 'mkt' ? 1 : model.calK ?? 1;
+  const k = model.calK ?? 1;
   const confidence = Math.round(50 + (cRaw - 50) * k);
   const formA = tournamentForm(match.a, match.t, match.at);
   const formB = tournamentForm(match.b, match.t, match.at);
@@ -422,7 +408,7 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
       // upd: última revisión; chg: veces que el pick cambió de jugador
       // (notify.js avisa a quien sigue el partido).
       pick.upd = new Date().toISOString();
-      pick.chg = (prev?.chg || 0) + (prev && prev.fav !== pick.fav ? 1 : 0);
+      pick.chg = (prev?.chg || 0) + (prev && prev.fav !== pick.fav && prev.x?.rule !== 'mkt' ? 1 : 0);
       state.picks[m.id] = pick;
       if (!prev) totals.newPicks++;
       else if (prev.fav !== pick.fav) totals.flipped = (totals.flipped || 0) + 1;
@@ -437,7 +423,8 @@ async function processTournament(id, { makePicks, rushbet, model, totals }) {
 //
 // Si el partido todavía no empieza y la casa tiene de favorito al otro
 // jugador (la cuota llegó tarde o cambió después de la última revisión), el
-// pick se recalcula: generatePick sigue a la casa. Medido el 19-oct: los
+// pick se recalcula con la cuota nueva (desde el 24-oct ya no se pasa al
+// favorito de la casa: ver generatePick). Medido el 19-oct: los
 // picks que quedaron contra el favorito final de la casa acertaron 39%
 // (22/56 en 4 días); con la cuota final se habrían acertado 12 picks más.
 function backfillOdds(rushbet, model) {
@@ -465,7 +452,7 @@ function backfillOdds(rushbet, model) {
           if (p.dst != null) pick.dst = p.dst;
           if (p.fo != null) Object.assign(pick, { fo: p.fo, fc: p.fc, fat: p.fat });
           pick.upd = new Date().toISOString();
-          pick.chg = (p.chg || 0) + (p.fav !== pick.fav ? 1 : 0);
+          pick.chg = (p.chg || 0) + (p.fav !== pick.fav && p.x?.rule !== 'mkt' ? 1 : 0);
           pick.late = true; // recalculado por la cuota de los últimos minutos
           state.picks[p.id] = pick;
           continue;
@@ -674,6 +661,7 @@ function buildWhyV2(p, m) {
 
   if (x.rule === 'h2h') add(1, `Regla de lógica: ${riv} gana muy poco el cruce directo contra ${fav}, así que el sistema no lo elige aunque otros datos lo favorezcan.`);
   if (x.rule === 'tabla') add(1, `Tabla del grupo: Rushbet tiene de favorito a ${riv}, pero ${fav} se juega la clasificación y a ${riv} el resultado le importa mucho menos. En estos casos el sistema sigue la tabla y no a la casa.`);
+  if (x.rule === 'contra') add(0.5, `Rushbet tiene de favorito a ${riv}, pero el historial pesa más a favor de ${fav}: el sistema se queda con ${fav}.`);
   if (x.rule === 'mkt') add(1, `Regla de la casa: el historial favorecía a ${riv}, pero Rushbet tiene de favorito a ${fav}. Ir contra la casa salió mal (menos de 45% de acierto), así que el sistema sigue a la casa y lo marca como parejo.`);
 
   // Cruce directo completo (la señal más fuerte medida en esta liga).
