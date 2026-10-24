@@ -137,6 +137,41 @@ function block(title, list) {
 for (const d of DAYS) block(`Día ${d}`, rows.filter((r) => r.d === d));
 block('Todos los días juntos', rows);
 
+// Opciones para los picks publicados de estos días: ¿qué habría acertado
+// cada política? (modelo puro sin regla de la casa, siempre la casa, etc.)
+out('\n== POLÍTICAS (picks publicados de estos días) ==');
+{
+  const pol = {};
+  const add = (k, hit) => { const b = (pol[k] ||= [0, 0]); b[1]++; if (hit) b[0]++; };
+  const bandRows = {};
+  for (const p of Object.values(picks)) {
+    const m = matches[p.id];
+    if (!m || p.res === 'pending' || !p.pub || !DAYS.includes(day(m.at)) || !p.f) continue;
+    const dA = p.x?.dA ?? p.x?.oA ?? null;
+    const dB = p.x?.dB ?? p.x?.oB ?? null;
+    const r = predict(model, p.f, dA, dB);
+    const modelA = r.p >= 0.5;
+    const winA = m.w === m.a;
+    const pickA = p.fav === m.a;
+    add('actual', pickA === winA);
+    add('modelo sin regla de la casa', modelA === winA);
+    if (r.pm != null && r.pm !== 0.5) add('siempre la casa (solo con cuota)', (r.pm > 0.5) === winA);
+    else add('sin cuota (modelo)', modelA === winA);
+    const cm = Math.round(Math.max(r.p, 1 - r.p) * 100);
+    const b = cm < 55 ? '50-54' : cm < 60 ? '55-59' : cm < 65 ? '60-64' : '65+';
+    const k = `${b} ${r.pm == null ? 'sin cuota' : (r.pm > 0.5) === modelA ? 'casa de acuerdo' : 'casa en contra'}`;
+    (bandRows[k] ||= [0, 0, 0]);
+    bandRows[k][1]++;
+    if (modelA === winA) bandRows[k][0]++;
+    if (r.pm != null && (r.pm > 0.5) === winA) bandRows[k][2]++;
+    if (p.c >= 55) add('publicar solo 55%+ (actual)', pickA === winA);
+    if (p.x?.rule === 'mkt') add('regla mkt: el elegido original del modelo', modelA === winA);
+  }
+  for (const [k, [h, n]] of Object.entries(pol)) out(`  ${k}: ${pct(h, n)}`);
+  out('  modelo puro por franja y casa (acierto modelo · acierto casa):');
+  for (const [k, [h, n, c]] of Object.entries(bandRows).sort()) out(`    ${k}: ${pct(h, n)} · casa ${pct(c, n)}`);
+}
+
 out('\n== Por hora (todos los días) ==');
 for (let h = 0; h < 24; h++) {
   const l = rows.filter((r) => r.h === h);
@@ -501,4 +536,4 @@ out('\n== Picks pendientes con calibración ==');
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
-// diag-run 1792880000
+// diag-run 1792880100
