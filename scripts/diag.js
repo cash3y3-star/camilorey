@@ -530,10 +530,11 @@ out('\n== Picks pendientes con calibración ==');
   out(`  REGLA TABLA: ${tb.length} picks · ${tb.map((p) => `${matches[p.id].at.slice(5, 16)} ${players[p.fav]?.n} ${p.c}% ${p.res}`).join(' | ')}`);
   const ft = pend.filter((p) => p.dst && matches[p.id]).sort((x, y) => (matches[x.id].at < matches[y.id].at ? -1 : 1));
   out(`  destacados ahora: ${ft.length} · ${ft.map((p) => `${matches[p.id].at.slice(11, 16)}Z ${players[p.fav]?.n} ${p.c}% @${p.o}`).join(' | ')}`);
+  out(`  pendientes por regla: ${[...new Set(pend.map((p) => p.x?.rule || 'modelo'))].map((k) => `${k} ${pend.filter((p) => (p.x?.rule || 'modelo') === k).length}`).join(' · ')} · cambios de jugador marcados en pendientes ${pend.filter((p) => p.chg).length}`);
   out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
 }
 
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
-// diag-run 1792880100
+// diag-run 1792880200
