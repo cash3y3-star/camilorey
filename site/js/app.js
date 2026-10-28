@@ -734,7 +734,7 @@ function viewInicio() {
   const pend = data.picks;
   const avgOdds = fs?.avgOdds ? odds(fs.avgOdds) : '—';
   const next = upcomingPicks();
-  // Hasta 3 destacados fijos (60%+ y cuota 1.60-2.50), del más próximo al más lejano
+  // Hasta 3 destacados fijos (65%+ con la casa de acuerdo; primero cuota 1.60+, si no desde 1.40), del más próximo al más lejano
   const featured = next.filter((p) => p.ft).sort((a, b) => (a.at < b.at ? -1 : 1));
 
   return `
@@ -765,7 +765,7 @@ function viewInicio() {
       ? `<div class="section-h"><h2>${icon('trophy')} Picks destacados</h2>${featured.length > 1 ? `<span class="badge">Desliza · ${featured.length}</span>` : ''}</div>
         <div class="feat-strip">${featured.map((p) => `<div class="feat-item">${matchCard(p, p)}</div>`).join('')}</div>`
       : data.loaded && next.length
-      ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div><p class="note">${icon('info')} Ahora no hay pick destacado: ningún pick de 60% o más tiene cuota mayor a 1,60. Aparece solo en cuanto haya uno.</p>`
+      ? `<div class="section-h"><h2>${icon('trophy')} Pick destacado</h2></div><p class="note">${icon('info')} Ahora no hay pick destacado: ningún pick de 65% o más tiene a la casa de acuerdo con una cuota de 1,40 o más. Aparece solo en cuanto haya uno.</p>`
       : ''
   }
 

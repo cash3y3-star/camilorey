@@ -36,8 +36,16 @@ const TZ = 'America/Bogota';
 // 50-80%) el partido es parejo y la página lo dice así, sin inflar nada.
 const PAREJO_BELOW = 55;
 const MAX_CONFIDENCE = 80;
-const FEATURED_MIN_ODDS = 1.6;
-const FEATURED_MIN_CONF = 60;
+// Destacado (28-oct, pedido del usuario tras la baja del 24-26 oct): 65%+ y la
+// casa de acuerdo con el elegido. Medido 19-28 oct: 60%+ con cuota > 1.60
+// acertó 59% (23/39 desde el 22-oct; 50% desde el 24) y esa cuota apenas
+// cubre ese acierto; 65%+ con la casa de acuerdo y cuota >= 1.40 acertó 62.5%
+// (80/128), 76.5% desde el 24-oct. Se buscan PRIMERO los de cuota >= 1.60
+// (el usuario la quiere siempre que se pueda; con 65%+ y la casa de acuerdo
+// salen ~1 cada 3 días) y los cupos que sobran se llenan desde 1.40.
+const FEATURED_MIN_ODDS = 1.4;
+const FEATURED_GOOD_ODDS = 1.6;
+const FEATURED_MIN_CONF = 65;
 const FEATURED_SLOTS = 3; // destacados a la vez (pedido del usuario el 22-oct)
 // Destacados que el sistema sacó antes de este arreglo (22-oct) y que los
 // miembros sí vieron: id del partido -> cuota con la que se destacó.
@@ -868,14 +876,22 @@ function writeSite(meta) {
   // próximos en empezar. Antes era uno solo, el de más confianza, y se
   // reemplazaba cuando aparecía otro mejor (el usuario lo vio cambiar a
   // 9 minutos de empezar).
-  const qualifies = (p) => p.c >= FEATURED_MIN_CONF && p.o && p.o > FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS;
+  const houseAgrees = (p) => {
+    const m = state.matches[p.id];
+    const pm = marketProb(p.x?.oA, p.x?.oB);
+    return pm != null && pm !== 0.5 && (p.fav === m.a ? pm : 1 - pm) > 0.5;
+  };
+  const qualifies = (p) => p.c >= FEATURED_MIN_CONF && p.o && p.o >= FEATURED_MIN_ODDS && p.o <= FEATURED_MAX_ODDS && houseAgrees(p);
+  const goodOdds = (p) => (p.o >= FEATURED_GOOD_ODDS ? 1 : 0);
   const byStart = (a, b) => (state.matches[a.id].at < state.matches[b.id].at ? -1 : state.matches[a.id].at > state.matches[b.id].at ? 1 : b.c - a.c);
   // El que ya es destacado se queda SIEMPRE hasta que empieza su partido,
   // aunque después baje la cuota o la confianza (22-oct: Pavelka se
   // destacó a 1.61, la cuota cerró en 1.38 y el sistema lo sacaba: los
   // miembros lo habían visto y no aparecía en el historial).
   const keep = notStarted.filter((p) => p.dst).sort(byStart).slice(0, FEATURED_SLOTS);
-  const add = notStarted.filter((p) => !keep.includes(p) && qualifies(p)).sort(byStart).slice(0, FEATURED_SLOTS - keep.length);
+  const add = notStarted.filter((p) => !keep.includes(p) && qualifies(p))
+    .sort((a, b) => goodOdds(b) - goodOdds(a) || byStart(a, b)) // primero los de cuota >= 1.60
+    .slice(0, FEATURED_SLOTS - keep.length);
   const featuredSet = new Set([...keep, ...add]);
   for (const p of notStarted) p.dst = featuredSet.has(p);
   // Cuota y confianza con las que se destacó (las que vio la gente).

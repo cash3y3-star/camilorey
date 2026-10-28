@@ -1,32 +1,32 @@
 {
-  "id": "confianza-2026-10-22",
-  "audience": "premium",
-  "title": "Actualización del sistema: confianza más honesta",
-  "preview": "Ajustamos el porcentaje de confianza para que cada pick prometa lo que de verdad acierta.",
+  "id": "cuidado-2026-10-28",
+  "audience": "admin",
+  "title": "Picks destacados más seguros y apuesta con cuidado",
+  "preview": "La liga está difícil estos días. Cambiamos los destacados para que acierten más y te contamos cómo cuidar tu dinero.",
   "push": {
-    "title": "Actualización del sistema CamiloRey",
-    "body": "Ajustamos la confianza de los picks para que prometa lo que de verdad acierta. Toca para ver qué cambió."
+    "title": "CamiloRey: cambiamos los picks destacados",
+    "body": "La liga está difícil estos días. Ahora los destacados son más exigentes. Toca para ver qué cambió y cómo cuidar tu dinero."
   },
   "sections": [
     {
-      "h": "Qué cambió",
-      "t": "Revisamos los casi 1.000 picks jugados desde el 17 de octubre y vimos que la confianza prometía un poco más de lo que acertaba (60.6% prometido contra 58.8% real). Desde hoy el sistema ajusta solo el porcentaje con el acierto real: cada franja muestra lo que de verdad acierta. Nunca sube la confianza, solo la baja cuando el sistema promete de más."
+      "h": "Qué pasó",
+      "t": "El 22 de octubre los picks destacados acertaron 10 de 12, pero del 23 al 26 bajaron a 12 de 25 (48%). No fue solo el sistema: en estos días la liga se volvió difícil para todos, y hasta el favorito de la casa acierta menos de lo normal."
     },
     {
-      "h": "Qué vas a notar",
-      "t": "Algunos picks van a mostrar un porcentaje un poco más bajo que antes y habrá algo menos de picks Premium (60% o más). Los que queden ahí son más firmes: en la prueba con los picks ya jugados, los de 60% o más acertaron 65.6% y los de 65% o más, 71%."
+      "h": "Qué cambiamos",
+      "t": "Desde hoy un pick solo es destacado si tiene 65% de confianza o más y la casa de apuestas también da por favorito al mismo jugador. Siempre buscamos primero los que pagan 1,60 o más; si no hay, se destaca desde 1,40. Revisamos los picks ya jugados: con esta regla acertaron 62,5% (80 de 128), y 13 de 17 desde el 24 de octubre."
     },
     {
-      "h": "Por qué los últimos días se acertó menos",
-      "t": "El 17 y el 18 de octubre los picks acertaron 63%. Del 19 al 21 bajaron a 55-57%. Lo revisamos: el favorito de la casa también bajó (de 64-66% a 56-59%), así que fueron días más difíciles de predecir para todos. El modelo actual, probado con los partidos del 17 y 18, vuelve a dar 63%."
+      "h": "Lo que debes saber",
+      "t": "Habrá menos destacados y muchas veces pagarán un poco menos (entre 1,40 y 1,60), porque son partidos más claros. Preferimos que aciertes más seguido a mostrarte cuotas altas que se pierden."
     },
     {
-      "h": "Cuotas más limpias",
-      "t": "El sistema ya no toma cuotas después de la hora de inicio del partido (pueden ser cuotas en vivo) y guarda la cuota con la que decidió cada pick. Así medimos mejor y seguimos mejorando."
+      "h": "Cómo cuidar tu dinero",
+      "t": "Usa Mi Bankroll: te dice cuánto apostar en cada pick. Apuesta montos pequeños (1 a 2% de tu banca por pick), no subas el monto para recuperar lo perdido y no apuestes todos los picks del día: quédate con los destacados."
     },
     {
       "h": "Juega con responsabilidad",
-      "t": "Ningún pick es seguro, ni siquiera los de alta confianza. Usa Mi Bankroll para los montos, apuesta solo lo que estés dispuesto a perder y no persigas pérdidas."
+      "t": "Ningún pick es seguro, ni siquiera los destacados. Apuesta solo lo que estés dispuesto a perder."
     }
   ]
 }
