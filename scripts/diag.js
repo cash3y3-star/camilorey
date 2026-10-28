@@ -593,13 +593,20 @@ out('\n== DESTACADOS A FONDO ==');
     ['solo favorito de la casa con cuota 1.50-1.90', (p) => p.o >= 1.5 && p.o <= 1.9 && finPm(p) != null && finPm(p) > 0.5],
     ['c>=65 y casa de acuerdo', (p) => p.c >= 65 && p.o && finPm(p) != null && finPm(p) > 0.5],
     ['c>=70', (p) => p.c >= 70 && p.o],
+    ['c>=65, casa de acuerdo, cuota >= 1.40', (p) => p.c >= 65 && p.o >= 1.4 && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=65, casa de acuerdo, cuota >= 1.50', (p) => p.c >= 65 && p.o >= 1.5 && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=65, casa de acuerdo, cuota >= 1.60', (p) => p.c >= 65 && p.o > 1.6 && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=68, casa de acuerdo', (p) => p.c >= 68 && p.o && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=60 y modelo cerca de la casa (dif <= 5 pts)', (p) => p.c >= 60 && p.o && finPm(p) != null && p.c / 100 - finPm(p) <= 0.05],
+    ['c>=60 y modelo MUY sobre la casa (dif > 5 pts)', (p) => p.c >= 60 && p.o && finPm(p) != null && p.c / 100 - finPm(p) > 0.05],
+    ['casa >= 65% (favorito claro) y c>=60', (p) => p.c >= 60 && p.o && finPm(p) != null && finPm(p) >= 0.65],
   ];
   for (const [lab, fn] of rules) {
     const l = pool.filter(fn), l24 = pool24.filter(fn);
     out(`    ${lab}: ${pct(hitOf(l), l.length)} · ${roi(l)} | desde 24-oct ${pct(hitOf(l24), l24.length)} · ${roi(l24)}`);
   }
   // Por día para las 3 mejores candidatas (estabilidad).
-  for (const [lab, fn] of [rules[0], rules[3], rules[4], rules[5]]) {
+  for (const [lab, fn] of [rules[0], rules[9], rules[11], rules[12], rules[15], rules[17]]) {
     const parts = [];
     for (const d of [...new Set(pool.map((p) => day(matches[p.id].at)))].sort()) { const l = pool.filter((p) => day(matches[p.id].at) === d && fn(p)); parts.push(`${d.slice(5)} ${l.length ? Math.round((hitOf(l) / l.length) * 100) + '%/' + l.length : '—'}`); }
     out(`    por día · ${lab}: ${parts.join(' ')}`);
