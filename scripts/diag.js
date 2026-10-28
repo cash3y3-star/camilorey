@@ -538,6 +538,103 @@ out('\n== Picks pendientes con calibración ==');
   out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
 }
 
+// ============ RECENCIA (28-oct): ¿acierta más dando más peso a lo reciente? ============
+// Entrena SOLO con partidos antes del 22-oct y mide en 22-28 oct (no vistos).
+out('\n== RECENCIA: más peso a lo reciente (entrena hasta el 21-oct, prueba 22-oct en adelante) ==');
+{
+  const CUT = '2026-10-22T05:00:00Z';
+  const cutT = new Date(CUT).getTime();
+  const sig = (z) => 1 / (1 + Math.exp(-z));
+  const lgt = (q) => Math.log(q / (1 - q));
+  const clp = (q) => Math.min(0.97, Math.max(0.03, q));
+  // Logística con peso por fila (misma idea que lib/model-v2: filas invertidas, L2 = 1).
+  const fitW = (X, y, wt, iters = 10) => {
+    const d = X[0].length;
+    let w = new Array(d).fill(0);
+    for (let it = 0; it < iters; it++) {
+      const g = w.map((wi) => wi);
+      const H = w.map((_, i) => w.map((__, j) => (i === j ? 1 : 0)));
+      for (let r = 0; r < X.length; r++) {
+        const x = X[r], k = wt ? wt[r] : 1;
+        for (const sgn of [1, -1]) {
+          const yy = sgn === 1 ? y[r] : 1 - y[r];
+          let z = 0;
+          for (let i = 0; i < d; i++) z += w[i] * x[i] * sgn;
+          const q = sig(z), s2 = q * (1 - q) * k;
+          for (let i = 0; i < d; i++) { g[i] += (q - yy) * x[i] * sgn * k; for (let j = 0; j < d; j++) H[i][j] += s2 * x[i] * x[j]; }
+        }
+      }
+      const A = H.map((row, i) => [...row, g[i]]);
+      for (let c = 0; c < d; c++) {
+        let pv = c; for (let r = c + 1; r < d; r++) if (Math.abs(A[r][c]) > Math.abs(A[pv][c])) pv = r;
+        [A[c], A[pv]] = [A[pv], A[c]];
+        for (let r = 0; r < d; r++) { if (r === c || !A[c][c]) continue; const k2 = A[r][c] / A[c][c]; for (let j = c; j <= d; j++) A[r][j] -= k2 * A[c][j]; }
+      }
+      w = w.map((wi, i) => wi - (A[i][i] ? A[i][d] / A[i][i] : 0));
+    }
+    return w;
+  };
+  const rowsR = [];
+  for (const m of fin) {
+    const { f, raw } = featuresOf(m, ctx);
+    if (raw.nA < 15 || raw.nB < 15) continue;
+    const t0 = new Date(m.at).getTime();
+    const hl2 = ctx.finishedOf(m.a).filter((x) => x.at < m.at && (x.a === m.b || x.b === m.b));
+    const dec = {};
+    for (const hl of [30, 60]) {
+      let w = 0, n = 0;
+      for (const x of hl2) { const k = Math.pow(0.5, (t0 - new Date(x.at).getTime()) / (hl * 864e5)); n += k; if (x.w === m.a) w += k; }
+      dec[hl] = (w + 1) / (n + 2) - 0.5;
+    }
+    rowsR.push({ m, f, dec, t: t0, y: m.w === m.a ? 1 : 0 });
+  }
+  const train_ = rowsR.filter((r) => r.t < cutT);
+  const test = rowsR.filter((r) => r.t >= cutT);
+  const keys = model.keys;
+  const variants = [
+    ['actual (todo igual)', null, null],
+    ['peso: vida media 60 días', 60, null],
+    ['peso: vida media 30 días', 30, null],
+    ['peso: vida media 14 días', 14, null],
+    ['H2H reciente (60 días)', null, 60],
+    ['H2H reciente (30 días)', null, 30],
+    ['H2H reciente 30 + peso 30', 30, 30],
+  ];
+  out(`  entrenamiento ${train_.length} partidos · prueba ${test.length} (con cuota ${test.filter((r) => r.m.oa && r.m.ob).length})`);
+  const res = [];
+  for (const [lab, hlW, hlH] of variants) {
+    const vecR = (r) => keys.map((k) => (k === 'h2h' && hlH ? r.dec[hlH] : r.f[k] ?? 0));
+    const wt = hlW ? train_.map((r) => Math.pow(0.5, (cutT - r.t) / (hlW * 864e5))) : null;
+    const w = fitW(train_.map(vecR), train_.map((r) => r.y), wt);
+    const ph = (r) => sig(vecR(r).reduce((s, v, i) => s + v * w[i], 0));
+    // Mezcla con la casa, aprendida en el entrenamiento (partidos con cuota antes del corte).
+    const mk = train_.filter((r) => r.m.oa && r.m.ob && marketProb(r.m.oa, r.m.ob) != null);
+    let bl = [1, 0.7];
+    if (mk.length >= 300) { const b = fitW(mk.map((r) => [lgt(clp(ph(r))), lgt(clp(marketProb(r.m.oa, r.m.ob)))]), mk.map((r) => r.y), null); if (b[0] > 0 && b[1] > 0) bl = b; }
+    const pf = (r) => { const pm = marketProb(r.m.oa, r.m.ob); return pm == null ? ph(r) : sig(bl[0] * lgt(clp(ph(r))) + bl[1] * lgt(clp(pm))); };
+    let ok = 0, ll = 0;
+    const band = { 60: [0, 0], 65: [0, 0] };
+    const dst = [0, 0, 0];
+    const byDay = {};
+    for (const r of test) {
+      const q = pf(r), hit = (q >= 0.5) === (r.y === 1), c = Math.max(q, 1 - q);
+      ok += hit; ll -= Math.log(Math.min(0.999, Math.max(0.001, r.y ? q : 1 - q)));
+      for (const th of [60, 65]) if (c >= th / 100) { band[th][1]++; if (hit) band[th][0]++; }
+      const d = day(r.m.at); (byDay[d] ||= [0, 0]); byDay[d][1]++; if (hit) byDay[d][0]++;
+      const pm = marketProb(r.m.oa, r.m.ob);
+      if (pm != null && pm !== 0.5) {
+        const favA = q >= 0.5, o = favA ? r.m.oa : r.m.ob;
+        if (c >= 0.65 && (pm > 0.5) === favA && o >= 1.4 && o <= 2.5) { dst[1]++; if (hit) { dst[0]++; dst[2] += o - 1; } else dst[2] -= 1; }
+      }
+    }
+    res.push(lab);
+    out(`  ${lab.padEnd(28)} acierto ${pct(ok, test.length)} · logloss ${(ll / test.length).toFixed(4)} · 60%+ ${pct(...band[60])} · 65%+ ${pct(...band[65])} · regla destacado ${pct(dst[0], dst[1])} ${dst[2] >= 0 ? '+' : ''}${dst[2].toFixed(1)}u · casa ${bl.map((x) => x.toFixed(2)).join('/')}`);
+    out(`     por día: ${Object.entries(byDay).sort().map(([d, [h, n]]) => `${d.slice(5)} ${((h / n) * 100).toFixed(1)}`).join(' · ')}`);
+  }
+  const mk = test.filter((r) => marketProb(r.m.oa, r.m.ob) != null && marketProb(r.m.oa, r.m.ob) !== 0.5);
+  out(`  referencia · favorito de la casa en la prueba: ${pct(mk.filter((r) => (marketProb(r.m.oa, r.m.ob) > 0.5) === (r.y === 1)).length, mk.length)}`);
+}
+
 // ============ DESTACADOS A FONDO (28-oct: el usuario ve que bajaron mucho) ============
 out('\n== DESTACADOS A FONDO ==');
 {
