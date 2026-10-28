@@ -534,6 +534,78 @@ out('\n== Picks pendientes con calibración ==');
   out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
 }
 
+// ============ DESTACADOS A FONDO (28-oct: el usuario ve que bajaron mucho) ============
+out('\n== DESTACADOS A FONDO ==');
+{
+  const res = Object.values(picks).filter((p) => p.pub && p.res !== 'pending' && matches[p.id] && matches[p.id].w != null);
+  const hitOf = (l) => l.filter((p) => p.res === 'hit').length;
+  // Ganancia con 1 unidad por pick a la cuota mostrada (fo si fue destacado).
+  const roi = (l, oddsOf = (p) => p.fo ?? p.o) => {
+    const w = l.filter((p) => oddsOf(p));
+    const u = w.reduce((s, p) => s + (p.res === 'hit' ? oddsOf(p) - 1 : -1), 0);
+    return `${u >= 0 ? '+' : ''}${u.toFixed(2)} u en ${w.length} (${w.length ? ((u / w.length) * 100).toFixed(1) : '—'}%)`;
+  };
+  const line = (lab, l, oddsOf) => out(`  ${lab}: ${pct(hitOf(l), l.length)} · ${roi(l, oddsOf)}`);
+  const pmPick = (p, a, b) => { const m = matches[p.id]; const pm = marketProb(a, b); return pm == null || pm === 0.5 ? null : p.fav === m.a ? pm : 1 - pm; };
+  const decPm = (p) => pmPick(p, p.x?.dA ?? p.x?.oA, p.x?.dB ?? p.x?.oB);
+  const finPm = (p) => pmPick(p, matches[p.id].oa ?? p.x?.oA, matches[p.id].ob ?? p.x?.oB);
+  const dst = res.filter((p) => p.dst && matches[p.id].at >= '2026-10-19T05:30:00Z');
+  line('destacados desde el 19-oct', dst);
+  const byD = new Map();
+  for (const p of dst) { const d = day(matches[p.id].at); (byD.get(d) || byD.set(d, []).get(d)).push(p); }
+  for (const [d, l] of [...byD.entries()].sort()) line(`  ${d}`, l);
+  line('desde el 22-oct (3 cupos fijos)', dst.filter((p) => day(matches[p.id].at) >= '2026-10-22'));
+  line('desde el 24-oct (sin regla de la casa)', dst.filter((p) => day(matches[p.id].at) >= '2026-10-24'));
+  out('  -- por qué fallan (destacados desde el 22-oct) --');
+  const d22 = dst.filter((p) => day(matches[p.id].at) >= '2026-10-22');
+  for (const [lab, fn] of [['fc 60-62', (p) => (p.fc ?? p.c) <= 62], ['fc 63-65', (p) => (p.fc ?? p.c) >= 63 && (p.fc ?? p.c) <= 65], ['fc 66+', (p) => (p.fc ?? p.c) >= 66]]) line(lab, d22.filter(fn));
+  for (const [lab, fn] of [['cuota 1.61-1.80', (p) => (p.fo ?? p.o) <= 1.8], ['cuota 1.81-2.00', (p) => (p.fo ?? p.o) > 1.8 && (p.fo ?? p.o) <= 2], ['cuota 2.01-2.50', (p) => (p.fo ?? p.o) > 2]]) line(lab, d22.filter(fn));
+  line('casa A FAVOR del elegido al decidir', d22.filter((p) => decPm(p) != null && decPm(p) > 0.5));
+  line('casa EN CONTRA del elegido al decidir', d22.filter((p) => decPm(p) != null && decPm(p) < 0.5));
+  line('sin cuota de la casa al decidir', d22.filter((p) => decPm(p) == null));
+  line('casa en contra con la cuota FINAL', d22.filter((p) => finPm(p) != null && finPm(p) < 0.5));
+  line('regla contra', d22.filter((p) => p.x?.rule === 'contra'));
+  line('cambió de jugador DESPUÉS de destacarse', d22.filter((p) => p.chg && p.fat && p.upd > p.fat));
+  line('confianza final bajó de 60', d22.filter((p) => p.c < 60));
+  const mins = d22.filter((p) => p.fat).map((p) => (new Date(matches[p.id].at) - new Date(p.fat)) / 60e3).sort((a, b) => a - b);
+  if (mins.length) out(`  minutos entre destacarse y empezar: mediana ${mins[Math.floor(mins.length / 2)].toFixed(0)} · min ${mins[0].toFixed(0)} · max ${mins[mins.length - 1].toFixed(0)}`);
+  line('destacado con más de 60 min de anticipación', d22.filter((p) => p.fat && new Date(matches[p.id].at) - new Date(p.fat) > 60 * 60e3));
+  line('destacado con 60 min o menos', d22.filter((p) => p.fat && new Date(matches[p.id].at) - new Date(p.fat) <= 60 * 60e3));
+  out('  -- lista (desde el 22-oct) --');
+  for (const p of d22.sort((a, b) => (matches[a.id].at < matches[b.id].at ? -1 : 1))) {
+    const m = matches[p.id];
+    const dp = decPm(p), fp = finPm(p);
+    out(`    ${m.at.slice(5, 16)}Z ${players[p.fav]?.n} vs ${players[p.fav === m.a ? m.b : m.a]?.n} · fc ${p.fc ?? '-'}→${p.c} · fo ${p.fo ?? '-'} o ${p.o} · casa decisión ${dp == null ? '-' : Math.round(dp * 100)}% final ${fp == null ? '-' : Math.round(fp * 100)}% · regla ${p.x?.rule || '-'} · chg ${p.chg || 0} · ${p.res === 'hit' ? 'G' : 'P'}`);
+  }
+  // ¿Qué regla de destacado habría funcionado? Mismos picks publicados (19-oct en adelante).
+  out('  -- reglas alternativas (todos los picks publicados desde el 19-oct; cuota = la del pick) --');
+  const pool = res.filter((p) => matches[p.id].at >= '2026-10-19T05:30:00Z');
+  const pool24 = pool.filter((p) => day(matches[p.id].at) >= '2026-10-24');
+  const rules = [
+    ['actual: c>=60 y cuota 1.60-2.50', (p) => p.c >= 60 && p.o > 1.6 && p.o <= 2.5],
+    ['c>=60 cualquier cuota', (p) => p.c >= 60 && p.o],
+    ['c>=65 cuota 1.60-2.50', (p) => p.c >= 65 && p.o > 1.6 && p.o <= 2.5],
+    ['c>=60 y casa de acuerdo', (p) => p.c >= 60 && p.o && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=60, casa de acuerdo, cuota >= 1.45', (p) => p.c >= 60 && p.o >= 1.45 && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=60, casa de acuerdo, cuota 1.50-1.90', (p) => p.c >= 60 && p.o >= 1.5 && p.o <= 1.9 && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=55 y casa de acuerdo, cuota >= 1.50', (p) => p.c >= 55 && p.o >= 1.5 && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=60 y casa en contra', (p) => p.c >= 60 && p.o && finPm(p) != null && finPm(p) < 0.5],
+    ['solo favorito de la casa con cuota 1.50-1.90', (p) => p.o >= 1.5 && p.o <= 1.9 && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=65 y casa de acuerdo', (p) => p.c >= 65 && p.o && finPm(p) != null && finPm(p) > 0.5],
+    ['c>=70', (p) => p.c >= 70 && p.o],
+  ];
+  for (const [lab, fn] of rules) {
+    const l = pool.filter(fn), l24 = pool24.filter(fn);
+    out(`    ${lab}: ${pct(hitOf(l), l.length)} · ${roi(l)} | desde 24-oct ${pct(hitOf(l24), l24.length)} · ${roi(l24)}`);
+  }
+  // Por día para las 3 mejores candidatas (estabilidad).
+  for (const [lab, fn] of [rules[0], rules[3], rules[4], rules[5]]) {
+    const parts = [];
+    for (const d of [...new Set(pool.map((p) => day(matches[p.id].at)))].sort()) { const l = pool.filter((p) => day(matches[p.id].at) === d && fn(p)); parts.push(`${d.slice(5)} ${l.length ? Math.round((hitOf(l) / l.length) * 100) + '%/' + l.length : '—'}`); }
+    out(`    por día · ${lab}: ${parts.join(' ')}`);
+  }
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
