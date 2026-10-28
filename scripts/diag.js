@@ -532,6 +532,7 @@ out('\n== Picks pendientes con calibración ==');
   const casaDe = (p) => { const m = matches[p.id]; const pm = marketProb(p.x?.oA, p.x?.oB); return pm == null ? '-' : Math.round((p.fav === m.a ? pm : 1 - pm) * 100) + '%'; };
   out(`  destacados ahora: ${ft.length} · ${ft.map((p) => `${matches[p.id].at.slice(11, 16)}Z ${players[p.fav]?.n} ${p.c}% @${p.o} casa ${casaDe(p)} desde ${p.fat?.slice(11, 16) || '-'}Z`).join(' | ')}`);
   const cand = pend.filter((p) => matches[p.id].st === 's' && p.c >= 65 && p.o >= 1.4 && p.o <= 2.5 && casaDe(p) !== '-' && parseInt(casaDe(p)) > 50);
+  out(`  pendientes 60%+: ${pend.filter((p) => p.c >= 60 && matches[p.id]).map((p) => `${matches[p.id].at.slice(5, 16)}Z ${p.c}% @${p.o ?? '-'} casa ${casaDe(p)} st ${matches[p.id].st}`).join(' | ')}`);
   out(`  candidatos con la regla nueva (65%+, casa de acuerdo, 1.40-2.50): ${cand.length} · con cuota 1.60+: ${cand.filter((p) => p.o >= 1.6).length} · ${cand.slice(0, 10).map((p) => `${matches[p.id].at.slice(11, 16)}Z ${players[p.fav]?.n} ${p.c}% @${p.o} casa ${casaDe(p)}${p.dst ? ' DST' : ''}`).join(' | ')}`);
   out(`  pendientes por regla: ${[...new Set(pend.map((p) => p.x?.rule || 'modelo'))].map((k) => `${k} ${pend.filter((p) => (p.x?.rule || 'modelo') === k).length}`).join(' · ')} · cambios de jugador marcados en pendientes ${pend.filter((p) => p.chg).length}`);
   out(`  pendientes ${pend.length} · con cr ${w.length} · Premium (60%+) ${w.filter((p) => p.c >= 60).length} · ejemplos ${w.slice(0, 8).map((p) => `${p.cr}→${p.c}`).join(' ')}`);
