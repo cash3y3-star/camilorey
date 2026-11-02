@@ -44,6 +44,11 @@
     #splash .sp-zoom { position: absolute; inset: 0; animation: sp-zoom 9s ease-in-out infinite alternate; transform-origin: 50% 55%; }
     #splash .sp-img { position: absolute; inset: 0; width: 100%; height: 100%; }
     #splash .sp-img { background: url(img/splash.webp) center/100% 100%; }
+    #splash .pz { position: absolute; display: block; }
+    #splash .pelota { animation: sp-bote .62s cubic-bezier(.25,.7,.55,1) infinite alternate; }
+    #splash .esfera { animation: sp-flota 1.7s ease-in-out infinite alternate; }
+    #splash .muneco { transform-origin: 50% 100%; animation: sp-mece 1.5s ease-in-out infinite alternate; }
+    #splash .reno { transform-origin: 40% 100%; animation: sp-reno 3.4s ease-in-out infinite; }
     #splash .glow { position: absolute; border-radius: 50%; mix-blend-mode: screen; pointer-events: none; transform: translate(-50%, -50%); }
     #splash .moon { left: 73%; top: 53.6%; width: 78%; aspect-ratio: 1; background: radial-gradient(circle, rgba(150,195,255,0) 44%, rgba(150,195,255,.38) 50%, rgba(120,170,255,.12) 60%, transparent 70%); animation: sp-pulse 4s ease-in-out infinite; }
     #splash .orb { left: 20.1%; top: 54%; width: 27%; aspect-ratio: 1; background: radial-gradient(circle, rgba(255,50,30,.1) 30%, rgba(255,40,20,.8) 48%, rgba(255,30,10,.2) 60%, transparent 72%); animation: sp-pulse 1.8s ease-in-out infinite; }
@@ -62,6 +67,10 @@
     #splash .bar i { position: absolute; inset: 0; width: var(--p, 8%); border-radius: inherit; background: linear-gradient(90deg, #8a0000, #ff1717 70%, #ff8a6a); box-shadow: 0 0 10px 2px rgba(255,23,23,.7); transition: width .5s ease-out; }
     #splash .bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: sp-shine 1.2s linear infinite; }
     @keyframes sp-float { from { transform: translateY(-1.3%); } to { transform: translateY(1.3%); } }
+    @keyframes sp-bote { from { transform: translateY(0) scale(1.05, .95); } 18% { transform: translateY(-12%) scale(1); } to { transform: translateY(-110%) scale(1); } }
+    @keyframes sp-flota { from { transform: translateY(2%); } to { transform: translateY(-12%); } }
+    @keyframes sp-mece { from { transform: rotate(-3.5deg); } to { transform: rotate(3.5deg); } }
+    @keyframes sp-reno { 0%, 30%, 100% { transform: rotate(0); } 42% { transform: rotate(-5deg); } 54% { transform: rotate(1.5deg); } 66% { transform: rotate(-4deg); } 80% { transform: rotate(0); } }
     @keyframes sp-zoom { from { transform: scale(1); } to { transform: scale(1.03); } }
     @keyframes sp-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
     @keyframes sp-tw { 0%, 100% { opacity: .12; transform: translate(-50%, -50%) scale(.6); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); } }
@@ -78,6 +87,10 @@
     <div class="sp-blur"></div>
     <div class="sp-stage"><div class="sp-zoom">
       <div class="sp-img"></div>
+      <img class="pz pelota" src="img/splash-pelota.webp" alt="" style="left:7.06%;top:83.95%;width:11.03%">
+      <img class="pz esfera" src="img/splash-esfera.webp" alt="" style="left:12.65%;top:50.32%;width:14.92%">
+      <img class="pz muneco" src="img/splash-muneco.webp" alt="" style="left:65.86%;top:70.97%;width:24.33%">
+      <img class="pz reno" src="img/splash-reno.webp" alt="" style="left:87.43%;top:71.57%;width:12.57%">
       <i class="glow moon"></i>
       <i class="glow orb"></i>
       <i class="glow star"></i>
