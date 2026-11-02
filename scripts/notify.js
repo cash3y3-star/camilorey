@@ -145,6 +145,8 @@ async function runNotifications(state, helpers) {
   for (const u of users) u.trial = !premium.has(u.email) && u.email !== 'camilosimanca77@gmail.com';
   const locked = (id) => Boolean(helpers.isLocked?.(state.picks[id]));
   if (!users.length) return console.log('Push: nadie suscrito todavía');
+  const ADMIN = 'camilosimanca77@gmail.com';
+  const log = { at: new Date().toISOString(), conPush: users.length, prueba: users.filter((u) => u.trial).length, admin: users.find((u) => u.email === ADMIN)?.push.length || 0, ok: 0, err: {}, adminRes: [] };
 
   // Eventos de partidos seguidos.
   const followed = new Set(users.flatMap((u) => u.follows.map(Number)));
@@ -220,6 +222,10 @@ async function runNotifications(state, helpers) {
   // Chat de soporte: aviso SOLO al admin cuando alguien pidió hablar con
   // una persona y hay mensajes sin leer (uno por mensaje nuevo).
   const chatEvents = [];
+  if (N._test !== 1) {                     // prueba única, solo para el admin
+    N._test = 1;
+    chatEvents.push({ kind: 'chat', title: 'Prueba de notificación CamiloRey', body: 'Si ves esto, las notificaciones llegan a este celular.', url: SITE, tag: 'prueba-1' });
+  }
   try {
     N._chats = N._chats || {};
     for (const c of await pendingChats(token)) {
@@ -266,7 +272,12 @@ async function runNotifications(state, helpers) {
           const { lk, teaser, ...payload } = e; // lk/teaser: solo para decidir aquí
           await webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 3600 });
           sent++;
+          log.ok++;
+          if (u.email === ADMIN) log.adminRes.push([String(sub.endpoint || '').split('/')[2], 'ok']);
         } catch (err) {
+          const c = err.statusCode || String(err.message).slice(0, 60);
+          log.err[c] = (log.err[c] || 0) + 1;
+          if (u.email === ADMIN) log.adminRes.push([String(sub.endpoint || '').split('/')[2], c]);
           if (err.statusCode === 404 || err.statusCode === 410) ok = false; // suscripción vencida
         }
       }
@@ -277,6 +288,7 @@ async function runNotifications(state, helpers) {
   if (ann?.id) N._ann = { [ann.id]: [...annSent] }; // solo se recuerda el aviso actual
   // Limpia avisos viejos (partidos que ya no están en el estado).
   for (const k of Object.keys(N)) if (!k.startsWith('_') && !state.matches[k]) delete N[k];
+  N._logs = [...(N._logs || []), { ...log, eventos: [...events, ...chatEvents].map((e) => e.kind), aviso: annSent.size }].slice(-12);
   console.log(`Push: ${events.length + chatEvents.length} eventos, ${sent} notificaciones enviadas`);
 }
 

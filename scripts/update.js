@@ -91,6 +91,7 @@ const state = {
   matches: readJson(path.join(STATE_DIR, 'matches.json'), {}),
   picks: readJson(path.join(STATE_DIR, 'picks.json'), {}),
   notified: readJson(path.join(STATE_DIR, 'notified.json'), {}), // avisos push ya enviados (scripts/notify.js)
+  tipsterLog: readJson(path.join(STATE_DIR, 'tipsterLog.json'), {}), // resultados del tipster, permanentes
   history: readJson(path.join(STATE_DIR, 'history.json'), {}) // días viejos ya cargados completos { 'YYYY-MM-DD': true }
 };
 
