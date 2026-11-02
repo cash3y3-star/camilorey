@@ -49,7 +49,7 @@ const OPEN_ROUTES = new Set(['login', 'registro', 'ayuda', 'privacidad', 'termin
 // Rellena los picks bloqueados y agrega el Análisis IA con el contenido
 // Premium (solo llega si la cuenta tiene membresía, por reglas).
 function applyPremium() {
-  if (!premiumData) return;
+  if (!premiumData) return applyTipster();
   const fill = (p) => {
     const x = p && premiumData[p.id];
     if (!x) return;
@@ -64,6 +64,30 @@ function applyPremium() {
     if (m.pick.locked) Object.assign(m.pick, { fav: x.fav, c: x.c, o: x.o, locked: false, premium: true });
     m.pick.why = x.why;
   }
+  applyTipster();
+}
+
+// Los picks que sigue el admin muestran una confianza fija. La del modelo
+// queda en c0: Mi Bankroll la sigue usando para sugerir el monto.
+const TIPSTER_CONF = 63;
+const isTipsterMatch = (id) => (tipsterCache || []).some((t) => Number(t.mid) === Number(id));
+function applyTipster() {
+  const fix = (p, id) => {
+    if (!p) return;
+    if (isTipsterMatch(id)) {
+      if (p.locked || p.c == null) return;
+      if (p.c0 == null) p.c0 = p.c;
+      p.c = TIPSTER_CONF;
+      p.tip = true;
+    } else if (p.c0 != null) {
+      p.c = p.c0;
+      delete p.c0;
+      delete p.tip;
+    }
+  };
+  data.picks.forEach((p) => fix(p, p.id));
+  data.results.forEach((p) => fix(p, p.id));
+  for (const m of data.calendar.matches) fix(m.pick, m.id);
 }
 
 // Partidos sin pick: análisis de ambos lados y cuotas prepartido (solo admin).
@@ -74,7 +98,7 @@ let adminNoPick = {};
 function tipsterPickFor(m) {
   const t = (tipsterCache || []).find((x) => Number(x.mid) === m.id);
   if (!t) return null;
-  return { fav: t.fav, c: null, o: t.odds ?? null, tipster: true, mode: t.mode || 'pre', note: t.note || '', res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' };
+  return { fav: t.fav, c: TIPSTER_CONF, o: t.odds ?? null, tipster: true, mode: t.mode || 'pre', note: t.note || '', res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' };
 }
 
 async function refreshPremium() {
@@ -84,7 +108,10 @@ async function refreshPremium() {
   // venció antes del lanzamiento de la prueba).
   trial = account && !isPremiumUser() ? await FB.loadTrial(canStartTrial()).catch(() => trial) : null;
   if (!hasAccess()) return clearData();
-  if (FB.enabled) await loadTipster(true);
+  if (FB.enabled) {
+    await loadTipster(true);
+    renderTipsterHome();
+  }
   if (isPremiumUser()) premiumData = await FB.loadPremiumContent().catch(() => premiumData);
   applyPremium();
   maybePremiumWelcome();
@@ -569,7 +596,7 @@ async function syncTipsterFollow(id) {
       if (t || started || !m.fav) return;
       const fav = m.fav === m.a.id ? m.a : m.b;
       const op = fav === m.a ? m.b : m.a;
-      await FB.saveTipster({ mid: id, fav: fav.id, favName: fav.n, opName: op.n, at: m.at, tn: m.tn, note: '', odds: m.o ?? null, c: m.c ?? null, mode: 'pre', src: 'follow' });
+      await FB.saveTipster({ mid: id, fav: fav.id, favName: fav.n, opName: op.n, at: m.at, tn: m.tn, note: '', odds: m.o ?? null, c: m.c0 ?? m.c ?? null, mode: 'pre', src: 'follow' });
       toast('Publicado en Picks Destacados Tipster. El aviso a Premium sale en unos minutos');
     } else {
       if (!t || t.src !== 'follow' || started) return;
@@ -577,7 +604,8 @@ async function syncTipsterFollow(id) {
       toast('Retirado de Picks Destacados Tipster');
     }
     await loadTipster(true);
-    renderTipsterHome();
+    if (/^#\/(picks|inicio)?$/.test(location.hash || '#/')) route();
+    else renderTipsterHome();
   } catch (e) {
     toast(e.code === 'permission-denied' ? 'Sin permiso: revisa las reglas de Firestore' : FB.errorText(e));
   }
@@ -647,7 +675,7 @@ function matchCard(m, pick = m.pick || (m.c || m.locked ? m : null) || tipsterPi
       pick
         ? `<div class="pickbar">
         <span class="who">Pick: <b>${esc(fav?.n)}</b> gana</span>
-        ${pick.tipster ? '<span class="badge red">👑 TIPSTER</span>' : `${pick.premium ? '<span class="badge red" title="Pick Premium">⭐</span>' : ''}<span class="conf${pick.c < PAREJO ? ' low' : ''}" ${pick.c < PAREJO ? 'title="Partido parejo: baja confianza"' : ''}>${pick.c}%</span>`}
+        ${pick.tipster || pick.tip ? `<span class="badge red">👑 TIPSTER</span><span class="conf">${TIPSTER_CONF}%</span>` : `${pick.premium ? '<span class="badge red" title="Pick Premium">⭐</span>' : ''}<span class="conf${pick.c < PAREJO ? ' low' : ''}" ${pick.c < PAREJO ? 'title="Partido parejo: baja confianza"' : ''}>${pick.c}%</span>`}
         <span class="odds">${odds(pick.o)}</span>
         ${res}
         ${pick.res === 'pending' ? `<button class="follow ${isFollowed(m.id) ? 'on' : ''}" data-follow="${m.id}" aria-label="Seguir pick">${icon('heart')}</button>` : ''}
@@ -927,6 +955,7 @@ async function pushOff() {
 
 // ---------- Panel de administrador (solo la cuenta admin) ----------
 let tipsterCache = null; // picks del tipster leídos de Firestore
+let tipsterAt = 0;
 
 async function loadTipster(force = false) {
   if (!FB.enabled || !hasAccess()) return [];
@@ -934,8 +963,10 @@ async function loadTipster(force = false) {
   try {
     // Solo miembros (reglas): va con la sesión, por la librería de Firebase.
     tipsterCache = await FB.listTipster();
+    tipsterAt = Date.now();
+    applyTipster();
   } catch {
-    tipsterCache = [];
+    tipsterCache = tipsterCache || [];
   }
   return tipsterCache;
 }
@@ -1485,30 +1516,33 @@ function renderTipsterStats() {
 async function renderTipsterHome() {
   const box = document.getElementById('tipster-home');
   if (!box) return;
-  const tips = await loadTipster();
+  const tips = await loadTipster(Date.now() - tipsterAt > 60e3); // el pick nuevo debe verse sin recargar la página
   const byId = allById();
   const now = Date.now();
   const upcoming = tips.filter((t) => new Date(t.at).getTime() > now - 3 * 3600e3).sort((a, b) => (a.at < b.at ? -1 : 1));
   const st = data.stats?.tipster;
   const head = `<div class="section-h"><h2>${icon('crown')} Picks Destacados CamiloRey Tipster</h2>${st && st.hit + st.miss ? `<span class="badge win">${st.hit}/${st.hit + st.miss} aciertos</span>` : ''}</div>`;
-  if (!upcoming.length) {
-    box.innerHTML = '';
-    return;
-  }
+  // Solo se repinta si cambió algo: así no parpadean las fotos cada minuto.
+  const pintar = (html) => {
+    if (box.dataset.h === html) return;
+    box.innerHTML = html;
+    box.dataset.h = html;
+  };
+  if (!upcoming.length) return pintar('');
   if (!isPremiumUser() && !isAdmin()) {
-    box.innerHTML = head + premiumLock('Los picks del tipster son Premium', 'Con Premium ves los picks que sigue CamiloRey y recibes el aviso en tu celular.');
-    return;
+    return pintar(head + premiumLock('Los picks del tipster son Premium', 'Con Premium ves los picks que sigue CamiloRey y recibes el aviso en tu celular.'));
   }
-  box.innerHTML =
+  pintar(
     head +
     upcoming
       .map((t) => {
         const m = byId.get(Number(t.mid));
         if (!m) return '';
-        const card = matchCard(m, { fav: t.fav, c: null, tipster: true, o: t.odds ?? m.pick?.o ?? m.o, res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' });
+        const card = matchCard(m, { fav: t.fav, c: TIPSTER_CONF, tipster: true, o: t.odds ?? m.pick?.o ?? m.o, res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' });
         return `<div class="tipster-wrap">${card}${t.note ? `<p class="tipster-note">💬 ${esc(t.note)}</p>` : ''}</div>`;
       })
-      .join('');
+      .join('')
+  );
 }
 
 // ---------- Perfil de jugador ----------
@@ -1770,7 +1804,7 @@ function viewCalendario() {
 // Calendario y a la pestaña En vivo).
 function upcomingPicks() {
   const now = Date.now();
-  return data.picks.filter((p) => p.st === 's' && new Date(p.at).getTime() > now && !liveFor(p));
+  return data.picks.filter((p) => p.st === 's' && new Date(p.at).getTime() > now && !liveFor(p) && !isTipsterMatch(p.id)); // los del tipster van solo en su sección de Inicio
 }
 
 function viewPicks() {
@@ -2085,7 +2119,7 @@ function userBank() {
   const fm = forcedMap(s);
   const skip = new Set((s.skip || []).map(Number));
   for (const p of items) {
-    const kf = kellyFraction(p.c, p.o, m);
+    const kf = kellyFraction(p.c0 ?? p.c, p.o, m);
     // low: la cuota paga poco para esta confianza. Se apuesta el monto que
     // eligió la persona o, desde LOW_FROM, la apuesta mínima sugerida.
     const low = !kf && p.o > 1;

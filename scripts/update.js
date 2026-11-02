@@ -828,7 +828,10 @@ function buildWhyV1(p, m) {
 // Modelo v2: con 60% o más de confianza acertó ~67% en partidos que no vio.
 const PREMIUM_MIN = 60;
 const FEATURED_MAX_ODDS = 2.5; // cuotas más altas = el mercado lo ve perdedor: ahí se perdía casi todo
-const isLocked = (p) => p.res === 'pending' && p.c >= PREMIUM_MIN;
+// Los picks que sigue el admin (colección tipster) son solo para Premium,
+// sea cual sea su confianza. tipMids se llena en tipsterStats().
+let tipMids = new Set();
+const isLocked = (p) => p.res === 'pending' && (p.c >= PREMIUM_MIN || tipMids.has(Number(p.id)));
 let premiumContent = null;
 
 function pickView(p, detailed = false) {
@@ -1272,6 +1275,7 @@ async function tipsterStats() {
     const r = await fetch(url, { headers });
     if (!r.ok) return null;
     const docs = (await r.json()).documents || [];
+    tipMids = new Set(docs.map((d) => Number(d.fields?.mid?.integerValue ?? d.fields?.mid?.doubleValue)).filter(Boolean));
     // Historial permanente: los partidos viejos salen del estado, los
     // resultados del tipster no. Borrar el pick en el panel lo quita de aquí.
     state.tipsterLog = state.tipsterLog || {};
@@ -1529,7 +1533,7 @@ async function run() {
 
 // --site-only: regenera site/data con el estado guardado, sin internet.
 async function siteOnly() {
-  writeSite({ model: modelSummary(trainModel()) });
+  writeSite({ model: modelSummary(trainModel()), tipster: await tipsterStats() });
   console.log('site/data regenerado');
 }
 
