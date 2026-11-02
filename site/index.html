@@ -38,6 +38,10 @@
   <style>
     #splash { position: fixed; inset: 0; z-index: 9999; background: #070c1c; overflow: hidden; transition: opacity .7s ease, visibility .7s; }
     #splash.out { opacity: 0; visibility: hidden; }
+    #splash.normal { background: radial-gradient(ellipse 120% 75% at 50% 100%, #c40d12 0%, #6d0509 38%, #1c0204 72%, #050304 100%); }
+    #splash.normal .sp-blur, #splash.normal .sp-stage, #splash.normal .fl { display: none; }
+    #splash.normal .sp-foot { top: 50%; bottom: auto; width: min(70vw, 340px); transform: translate(-50%, -50%); }
+    #splash.normal .sp-load { font-size: clamp(38px, 7vh, 58px); }
     #splash .sp-blur { position: absolute; inset: -60px; background: url(img/splash.webp) center/cover; filter: blur(30px) brightness(.4) saturate(1.2); }
     #splash .sp-stage { position: absolute; left: 50%; top: 50%; width: max(100vw, 49.7vh); aspect-ratio: 1233 / 2480; transform: translate(-50%, -50%); overflow: hidden; }
     @media (min-aspect-ratio: 1233/2480) { #splash .sp-stage { width: 49.7vh; } }
@@ -84,6 +88,7 @@
     @media (prefers-reduced-motion: reduce) { #splash *, #splash *::after { animation: none !important; } }
   </style>
   <div id="splash" role="status" aria-label="Cargando">
+    <script>if (Date.now() >= Date.parse('2027-01-07T05:00:00Z')) document.getElementById('splash').className = 'normal'; // fin de la Navidad: 7 de enero, 12:00 a. m. en Colombia</script>
     <div class="sp-blur"></div>
     <div class="sp-stage"><div class="sp-zoom">
       <div class="sp-img"></div>
