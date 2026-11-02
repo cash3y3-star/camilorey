@@ -714,7 +714,12 @@ out('\n== DESTACADOS A FONDO ==');
   }
 }
 
+// Notificaciones: últimos envíos y a quién les llegó el aviso actual.
+{
+  const nt = read('notified.json');
+  lines.unshift('PUSH envíos: ' + JSON.stringify(nt._logs || []), 'PUSH aviso: ' + JSON.stringify(Object.fromEntries(Object.entries(nt._ann || {}).map(([k, v]) => [k, (v || []).length]))), 'PUSH tips: ' + JSON.stringify(nt._tips || null), 'PUSH prueba: ' + nt._test, '');
+}
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
 console.log('Diagnóstico listo (cifrado aparte).');
-// diag-run 1792880200
+// diag-run 1792880201
