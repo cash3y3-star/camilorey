@@ -42,7 +42,7 @@
     #splash .sp-stage { position: absolute; left: 50%; top: 50%; width: max(100vw, 49.7vh); aspect-ratio: 1233 / 2480; transform: translate(-50%, -50%); overflow: hidden; }
     @media (min-aspect-ratio: 1233/2480) { #splash .sp-stage { width: 49.7vh; } }
     #splash .sp-zoom { position: absolute; inset: 0; animation: sp-zoom 9s ease-in-out infinite alternate; transform-origin: 50% 55%; }
-    #splash .sp-img, #splash canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #splash .sp-img { position: absolute; inset: 0; width: 100%; height: 100%; }
     #splash .sp-img { background: url(img/splash.webp) center/100% 100%; }
     #splash .glow { position: absolute; border-radius: 50%; mix-blend-mode: screen; pointer-events: none; transform: translate(-50%, -50%); }
     #splash .moon { left: 73%; top: 53.6%; width: 78%; aspect-ratio: 1; background: radial-gradient(circle, rgba(150,195,255,0) 44%, rgba(150,195,255,.38) 50%, rgba(120,170,255,.12) 60%, transparent 70%); animation: sp-pulse 4s ease-in-out infinite; }
@@ -50,8 +50,9 @@
     #splash .tw { width: 3.8%; aspect-ratio: 1; background: radial-gradient(circle, #fff 4%, rgba(255,215,130,.9) 16%, rgba(255,170,60,.3) 42%, transparent 70%); animation: sp-tw var(--d, 2s) ease-in-out var(--w, 0s) infinite; }
     #splash .star { left: 14.2%; top: 47.4%; width: 18%; aspect-ratio: 1; background: conic-gradient(from 0deg, transparent 0 7%, rgba(255,226,140,.85) 12.5%, transparent 18% 32%, rgba(255,226,140,.85) 37.5%, transparent 43% 57%, rgba(255,226,140,.85) 62.5%, transparent 68% 82%, rgba(255,226,140,.85) 87.5%, transparent 93%); -webkit-mask-image: radial-gradient(circle, #000 8%, transparent 68%); mask-image: radial-gradient(circle, #000 8%, transparent 68%); animation: sp-spin 6s linear infinite; }
     #splash .win { width: 7%; aspect-ratio: 1; background: radial-gradient(circle, rgba(255,190,90,.75), rgba(255,130,30,.2) 45%, transparent 70%); animation: sp-flick 1.7s infinite; }
+    #splash .txt { position: absolute; left: 18.98%; top: 12.1%; width: 62%; aspect-ratio: 620 / 703; animation: sp-float 3.4s ease-in-out infinite alternate; }
+    #splash .txt img { display: block; width: 100%; height: 100%; }
     #splash .shine { position: absolute; inset: 0; background: linear-gradient(112deg, transparent 44%, rgba(255,255,255,.98) 50%, transparent 56%) no-repeat; background-size: 280% 100%; -webkit-mask: url(img/splash-brillo.webp) center/100% 100%; mask: url(img/splash-brillo.webp) center/100% 100%; animation: sp-shine2 3s ease-in-out infinite; }
-    #splash .crown { position: absolute; left: 29.6%; top: 46%; width: 15%; height: 4.4%; background: linear-gradient(112deg, transparent 42%, rgba(255,245,200,.9) 50%, transparent 58%) no-repeat; background-size: 300% 100%; mix-blend-mode: screen; border-radius: 40%; animation: sp-shine2 3s ease-in-out -1.1s infinite; }
     #splash .spark { position: absolute; left: var(--x); top: 58.2%; width: .8%; aspect-ratio: 1; border-radius: 50%; background: #ffb060; box-shadow: 0 0 6px 2px rgba(255,70,20,.85); opacity: 0; animation: sp-spark var(--d, 2.2s) ease-out var(--w, 0s) infinite; }
     #splash .trn { position: absolute; left: 0; top: 0; width: 42%; opacity: 0; animation: sp-trn 5.5s linear infinite; filter: drop-shadow(0 0 3px rgba(190,220,255,.6)); }
     #splash .fl { position: absolute; top: -3vh; left: var(--x); width: var(--s); height: var(--s); border-radius: 50%; background: #fff; opacity: var(--o); animation: sp-snow var(--d) linear var(--w) infinite; will-change: transform; }
@@ -60,6 +61,7 @@
     #splash .bar { position: relative; width: 100%; height: 8px; margin-top: 6px; border-radius: 99px; background: #3a3a3c; overflow: hidden; box-shadow: 0 0 8px #000; }
     #splash .bar i { position: absolute; inset: 0; width: var(--p, 8%); border-radius: inherit; background: linear-gradient(90deg, #8a0000, #ff1717 70%, #ff8a6a); box-shadow: 0 0 10px 2px rgba(255,23,23,.7); transition: width .5s ease-out; }
     #splash .bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: sp-shine 1.2s linear infinite; }
+    @keyframes sp-float { from { transform: translateY(-1.3%); } to { transform: translateY(1.3%); } }
     @keyframes sp-zoom { from { transform: scale(1); } to { transform: scale(1.03); } }
     @keyframes sp-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
     @keyframes sp-tw { 0%, 100% { opacity: .12; transform: translate(-50%, -50%) scale(.6); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); } }
@@ -76,7 +78,6 @@
     <div class="sp-blur"></div>
     <div class="sp-stage"><div class="sp-zoom">
       <div class="sp-img"></div>
-      <canvas id="splash-gl" width="620" height="1247"></canvas>
       <i class="glow moon"></i>
       <i class="glow orb"></i>
       <i class="glow star"></i>
@@ -94,8 +95,7 @@
       <i class="glow tw" style="left:33.4%;top:48.4%;--d:1.8s;--w:-1s;width:2.4%"></i>
       <i class="glow tw" style="left:92%;top:89.7%;--d:2s;--w:-.8s"></i>
       <i class="glow tw" style="left:4%;top:82%;--d:1.7s;--w:-1.4s"></i>
-      <div class="shine"></div>
-      <div class="crown"></div>
+      <div class="txt"><img src="img/splash-texto.webp" alt=""><div class="shine"></div></div>
       <i class="spark" style="--x:16%;--d:2s;--dx:-14px"></i>
       <i class="spark" style="--x:19%;--d:2.5s;--w:.5s;--dx:10px"></i>
       <i class="spark" style="--x:21%;--d:2.2s;--w:1.1s;--dx:-6px"></i>
@@ -120,34 +120,6 @@
         fl.style.cssText = '--x:' + Math.random() * 100 + '%;--s:' + (2 + z * 4) + 'px;--o:' + (.35 + z * .6) + ';--d:' + (9 - z * 4.5) + 's;--w:-' + Math.random() * 9 + 's;--dx:' + (Math.random() * 60 - 30) + 'px';
         sp.appendChild(fl);
       }
-      // Movimiento real de la imagen: cada zona gira o se desplaza con caída suave. Sin WebGL queda la imagen quieta.
-      (function () {
-        var c = document.getElementById('splash-gl'), g = c.getContext('webgl', { alpha: true, antialias: false, powerPreference: 'low-power' }); if (!g) return;
-        // pivote x,y · centro x,y · radio · giro · dx · dy · vel · fase
-        var Z = [[450,1480,450,1480,370,0,0,9,1.7,0],[245,1340,245,1340,185,0,3,16,1.5,.6],[440,1395,440,1270,200,.05,0,0,1,0],[510,1195,560,1295,90,.3,0,0,2.2,0],
-                 [560,1640,775,1870,240,.06,0,0,2,.4],[990,2140,990,1900,215,.04,0,0,1.4,1],[1120,1990,1150,1890,125,.12,0,0,1.2,2],[802,357,916,492,95,.26,0,0,2.4,1],
-                 [616,720,616,720,500,0,0,8,1.3,0],[170,1700,170,1430,340,.016,0,0,1.3,2]], n = Z.length;
-        function sh(t, s) { var o = g.createShader(t); g.shaderSource(o, s); g.compileShader(o); return o; }
-        var p = g.createProgram();
-        g.attachShader(p, sh(g.VERTEX_SHADER, 'attribute vec2 a;varying vec2 v;void main(){v=vec2(a.x*.5+.5,.5-a.y*.5);gl_Position=vec4(a,0.,1.);}'));
-        g.attachShader(p, sh(g.FRAGMENT_SHADER, 'precision highp float;varying vec2 v;uniform sampler2D T;uniform vec4 P[' + n + '];uniform vec4 Q[' + n + '];const vec2 S=vec2(1233.,2480.);void main(){vec2 q=v*S;for(int i=0;i<' + n + ';i++){float w=smoothstep(P[i].z,P[i].z*.32,distance(q,P[i].xy));float a=P[i].w*w,co=cos(a),si=sin(a);vec2 r=q-Q[i].xy;q=Q[i].xy+vec2(co*r.x+si*r.y,-si*r.x+co*r.y)-Q[i].zw*w;}gl_FragColor=texture2D(T,q/S);}'));
-        g.linkProgram(p); if (!g.getProgramParameter(p, g.LINK_STATUS)) return; g.useProgram(p);
-        g.bindBuffer(g.ARRAY_BUFFER, g.createBuffer()); g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), g.STATIC_DRAW);
-        var a = g.getAttribLocation(p, 'a'); g.enableVertexAttribArray(a); g.vertexAttribPointer(a, 2, g.FLOAT, false, 0, 0);
-        var uP = g.getUniformLocation(p, 'P'), uQ = g.getUniformLocation(p, 'Q'), im = new Image(), A = new Float32Array(n * 4), B = new Float32Array(n * 4);
-        im.onload = function () {
-          var t = g.createTexture(); g.bindTexture(g.TEXTURE_2D, t); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, im);
-          g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
-          var d = Math.min(devicePixelRatio || 1, 2), r = c.getBoundingClientRect(); c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); g.viewport(0, 0, c.width, c.height);
-          (function dib(ms) {
-            if (!document.getElementById('splash')) return;
-            var s = ms / 1000;
-            for (var i = 0; i < n; i++) { var z = Z[i], k = Math.sin(s * z[8] + z[9]); A[i * 4] = z[2]; A[i * 4 + 1] = z[3]; A[i * 4 + 2] = z[4]; A[i * 4 + 3] = z[5] * k; B[i * 4] = z[0]; B[i * 4 + 1] = z[1]; B[i * 4 + 2] = z[6] * k; B[i * 4 + 3] = z[7] * k; }
-            g.uniform4fv(uP, A); g.uniform4fv(uQ, B); g.drawArrays(g.TRIANGLES, 0, 3); requestAnimationFrame(dib);
-          })(0);
-        };
-        im.src = 'img/splash.webp';
-      })();
       var tick = setInterval(function () {
         p += (90 - p) * 0.08;
         bar.style.setProperty('--p', p + '%');
