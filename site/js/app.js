@@ -55,6 +55,7 @@ function applyPremium() {
     if (!x) return;
     if (p.locked) Object.assign(p, { fav: x.fav, c: x.c, o: x.o, locked: false, premium: true });
     p.why = x.why;
+    if (x.adm) p.adm = 1;
   };
   data.picks.forEach(fill);
   for (const m of data.calendar.matches) {
@@ -63,6 +64,7 @@ function applyPremium() {
     if (!x) continue;
     if (m.pick.locked) Object.assign(m.pick, { fav: x.fav, c: x.c, o: x.o, locked: false, premium: true });
     m.pick.why = x.why;
+    if (x.adm) m.pick.adm = 1;
   }
   applyTipster();
 }
@@ -70,24 +72,39 @@ function applyPremium() {
 // Los picks que sigue el admin muestran una confianza fija. La del modelo
 // queda en c0: Mi Bankroll la sigue usando para sugerir el monto.
 const TIPSTER_CONF = 63;
-const isTipsterMatch = (id) => (tipsterCache || []).some((t) => Number(t.mid) === Number(id));
+const tipDe = (id) => (tipsterCache || []).find((t) => Number(t.mid) === Number(id));
+// Un doc con "cambio" solo cambia el ganador: no es un pick del tipster.
+const isTipsterMatch = (id) => {
+  const t = tipDe(id);
+  return Boolean(t && !t.cambio);
+};
 function applyTipster() {
-  const fix = (p, id) => {
+  const fix = (p, id, match) => {
     if (!p) return;
-    if (isTipsterMatch(id)) {
-      if (p.locked || p.c == null) return;
-      if (p.c0 == null) p.c0 = p.c;
+    if (p.orig) {
+      Object.assign(p, p.orig);
+      for (const k of ['orig', 'c0', 'tip']) delete p[k];
+    }
+    const t = tipDe(id);
+    if (!t || p.locked || p.c == null) return;
+    p.orig = { fav: p.fav, c: p.c, o: p.o, why: p.why, adm: p.adm };
+    if (t.fav !== p.fav && p.res === 'pending') {
+      const np = adminNoPick[id];                    // análisis del nuevo ganador (solo admin, el resto en la siguiente corrida)
+      p.fav = t.fav;
+      p.c = 100 - p.c;
+      p.o = t.odds ?? null;
+      p.adm = 1;
+      p.why = np ? (t.fav === match.a.id ? np.whyA : np.whyB) || p.why : null;
+    }
+    if (!t.cambio) {
+      p.c0 = p.c;
       p.c = TIPSTER_CONF;
       p.tip = true;
-    } else if (p.c0 != null) {
-      p.c = p.c0;
-      delete p.c0;
-      delete p.tip;
     }
   };
-  data.picks.forEach((p) => fix(p, p.id));
-  data.results.forEach((p) => fix(p, p.id));
-  for (const m of data.calendar.matches) fix(m.pick, m.id);
+  data.picks.forEach((p) => fix(p, p.id, p));
+  data.results.forEach((p) => fix(p, p.id, p));
+  for (const m of data.calendar.matches) fix(m.pick, m.id, m);
 }
 
 // Partidos sin pick: análisis de ambos lados y cuotas prepartido (solo admin).
@@ -593,6 +610,12 @@ async function syncTipsterFollow(id) {
   const started = (m.st && m.st !== 's') || new Date(m.at).getTime() <= Date.now();
   try {
     if (follows.has(id)) {
+      if (t?.cambio && !started) {                   // ya tenía el ganador cambiado: pasa a ser pick del tipster con ese ganador
+        await FB.saveTipster({ ...t, cambio: false, src: 'follow' });
+        await loadTipster(true);
+        if (/^#\/(picks|inicio)?$/.test(location.hash || '#/')) route();
+        return toast('Publicado en Picks Destacados Tipster. El aviso a Premium sale en unos minutos');
+      }
       if (t || started || !m.fav) return;
       const fav = m.fav === m.a.id ? m.a : m.b;
       const op = fav === m.a ? m.b : m.a;
@@ -600,7 +623,8 @@ async function syncTipsterFollow(id) {
       toast('Publicado en Picks Destacados Tipster. El aviso a Premium sale en unos minutos');
     } else {
       if (!t || t.src !== 'follow' || started) return;
-      await FB.deleteTipster(id);
+      if (m.orig && m.orig.fav !== t.fav) await FB.saveTipster({ ...t, cambio: true, src: 'cambio' }); // conserva el ganador que elegiste
+      else await FB.deleteTipster(id);
       toast('Retirado de Picks Destacados Tipster');
     }
     await loadTipster(true);
@@ -1379,7 +1403,7 @@ async function renderAdminPanel() {
   renderAdminChats();
   // Picks del tipster publicados
   const tbox = document.getElementById('admin-tipster');
-  const tips = (await loadTipster(true)).sort((a, b) => (a.at < b.at ? 1 : -1));
+  const tips = (await loadTipster(true)).filter((t) => !t.cambio).sort((a, b) => (a.at < b.at ? 1 : -1));
   const byId = allById();
   if (tbox)
     tbox.innerHTML = tips.length
@@ -1497,7 +1521,7 @@ function renderTipsterStats() {
     if (racha && Math.sign(racha) !== v) break;
     racha += v;
   }
-  const pend = (tipsterCache || []).filter((t) => new Date(t.at).getTime() > Date.now() - 3 * 3600e3 && !rows.some((r) => Number(r.mid) === Number(t.mid))).length;
+  const pend = (tipsterCache || []).filter((t) => !t.cambio && new Date(t.at).getTime() > Date.now() - 3 * 3600e3 && !rows.some((r) => Number(r.mid) === Number(t.mid))).length;
   const signo = (n) => `${n > 0 ? '+' : ''}${n.toFixed(2).replace('.', ',')}`;
   const tile = (t, v, h, cl = '') => `<div class="tile"><div class="overline">${t}</div><div class="val ${cl}">${v}</div><div class="hint">${h}</div></div>`;
   box.innerHTML = `<div class="seg seg-full" style="margin-top:8px">${TIP_RANGES.map((r) => `<button type="button" class="${r === range ? 'on' : ''}" data-trange="${r[0]}">${r[1]}</button>`).join('')}</div>
@@ -1516,7 +1540,7 @@ function renderTipsterStats() {
 async function renderTipsterHome() {
   const box = document.getElementById('tipster-home');
   if (!box) return;
-  const tips = await loadTipster(Date.now() - tipsterAt > 60e3); // el pick nuevo debe verse sin recargar la página
+  const tips = (await loadTipster(Date.now() - tipsterAt > 60e3)).filter((t) => !t.cambio); // el pick nuevo debe verse sin recargar la página
   const byId = allById();
   const now = Date.now();
   const upcoming = tips.filter((t) => new Date(t.at).getTime() > now - 3 * 3600e3).sort((a, b) => (a.at < b.at ? -1 : 1));
@@ -2535,6 +2559,28 @@ function oldMatchBlock(m) {
     </div>`;
 }
 
+// Cambiar el ganador de un pick que no ha empezado (solo admin).
+function cambioBlock(m, pick) {
+  if (!isAdmin() || pick.res !== 'pending' || m.st !== 's' || new Date(m.at).getTime() <= Date.now()) return '';
+  if (!pickEdit.open) return `<button class="btn ghost" style="margin-top:8px" data-pe-open="1">${icon('crown')} Cambiar ganador</button>`;
+  const np = adminNoPick[m.id] || {};
+  const cur = pick.fav === m.a.id ? 'a' : 'b';
+  const side = pickEdit.side || cur;
+  const btn = (k, p, o) => `<button type="button" class="pe-side ${side === k ? 'on' : ''}" data-pe-side="${k}">${avatar(p, 'avatar sm')}<b>${esc(p.n)}</b><small>Cuota <b>${o ? odds(o) : '—'}</b></small>${k === cur ? '<small>Ganador actual</small>' : ''}</button>`;
+  const nuevo = side !== cur ? (side === 'a' ? m.a : m.b) : null;
+  const o = side === 'a' ? np.oA : np.oB;
+  return `<div class="block pe-box">
+    <div class="block-h"><span class="overline">${icon('crown')} Cambiar ganador (solo admin)</span><button class="mini-btn" data-pe-close="1">Cancelar</button></div>
+    <div class="pe-sides">${btn('a', m.a, np.oA)}${btn('b', m.b, np.oB)}</div>
+    ${
+      nuevo
+        ? `<div class="analysis" style="margin-top:12px"><div class="an-head">${icon('bolt')}<div><b>Análisis IA</b><small>Argumentos a favor y en contra de ${esc(nuevo.n)}</small></div></div>${whyListHtml(side === 'a' ? np.whyA : np.whyB)}</div>
+           <button class="btn primary" style="margin-top:10px" data-pc-save="${m.id}">Cambiar a ${esc(nuevo.n)}${o ? ` · cuota ${odds(o)}` : ''}</button>`
+        : '<p class="note" style="margin-top:10px">Toca al otro jugador para ver su análisis y cambiar el pick.</p>'
+    }
+  </div>`;
+}
+
 function noPickBlock(m, lv) {
   const tp = tipsterPickFor(m);
   const tFav = tp ? (tp.fav === m.a.id ? m.a : m.b) : null;
@@ -2752,11 +2798,12 @@ function openMatch(id) {
     ${m.old ? oldMatchBlock(m) : ''}
     ${pick?.locked ? `<div style="margin-top:12px">${premiumLock('Pick Premium de alta confianza', 'El sistema tiene un pick de 60% o más para este partido. Hazte Premium para ver a quién elige, su confianza, la cuota y el análisis.')}</div>` : ''}
     ${pick && !pick.locked && pick.res === 'pending' ? `<button class="btn ${isFollowed(m.id) ? 'ghost' : 'primary'}" style="margin:12px 0 2px" data-follow-btn="${m.id}">${icon('heart')} ${isFollowed(m.id) ? 'Dejar de seguir' : 'Seguir este pick'}</button>` : ''}
+    ${pick && !pick.locked ? cambioBlock(m, pick) : ''}
     ${pick && !pick.locked ? `<div class="block">
       <div class="block-h"><span class="overline">Probabilidad de victoria</span><span style="font-size:11px;color:var(--muted)">según el modelo</span></div>
       <div class="prob"><b>${cA}%</b><div class="meter"><span style="width:${cA}%"></span><span class="other" style="width:${100 - cA}%"></span></div><b>${100 - cA}%</b></div>
       <div class="prob-x"><span>${esc(m.a.n)}</span><span>${esc(m.b.n)}</span></div>
-      ${pick.c < PAREJO ? `<p class="note" style="margin:10px 0 0">${icon('info')} Partido parejo: el modelo ve poca ventaja (menos de ${PAREJO}%). Es un pick de baja confianza.</p>` : ''}
+      ${pick.adm ? `<p class="note" style="margin:10px 0 0">${icon('info')} Ganador elegido por CamiloRey, distinto al del modelo.</p>` : pick.c < PAREJO ? `<p class="note" style="margin:10px 0 0">${icon('info')} Partido parejo: el modelo ve poca ventaja (menos de ${PAREJO}%). Es un pick de baja confianza.</p>` : ''}
     </div>` : ''}
     ${
       lv
@@ -2789,7 +2836,7 @@ function openMatch(id) {
         : pick
         ? `<div class="block">
       <div class="analysis">
-        <div class="an-head">${icon('bolt')}<div><b>Análisis IA</b><small>Por qué el sistema elige a ${esc(fav.n)}</small></div><span class="conf" style="font-size:20px">${pick.c}%</span></div>
+        <div class="an-head">${icon('bolt')}<div><b>Análisis IA</b><small>${pick.adm ? `Argumentos a favor y en contra de ${esc(fav.n)}` : `Por qué el sistema elige a ${esc(fav.n)}`}</small></div><span class="conf" style="font-size:20px">${pick.c}%</span></div>
         ${
           !isPremiumUser() && pick.res === 'pending'
             ? `<p class="an-src" style="font-size:13px">🔒 El análisis completo de por qué el sistema elige a este jugador (rating, mercado, cruce directo, patrón de rachas y forma del día) es parte de <a class="textlink" href="#/premium">Premium</a>.</p>`
@@ -3379,8 +3426,31 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   // Editor de pick del admin en la ficha del partido
-  const pe = ev.target.closest('[data-pe-open], [data-pe-close], [data-pe-side], [data-pe-mode], [data-pe-save]');
+  const pe = ev.target.closest('[data-pe-open], [data-pe-close], [data-pe-side], [data-pe-mode], [data-pe-save], [data-pc-save]');
   if (pe && isAdmin()) {
+    if (pe.dataset.pcSave) {
+      const id = Number(pe.dataset.pcSave);
+      const m = allById().get(id);
+      const np = adminNoPick[id] || {};
+      const a = pickEdit.side === 'a';
+      const fav = a ? m.a : m.b;
+      const op = a ? m.b : m.a;
+      const t = tipDe(id);
+      const sistema = m.orig?.fav ?? m.fav;
+      try {
+        pe.disabled = true;
+        if (t?.cambio && fav.id === sistema) await FB.deleteTipster(id); // volvió al del sistema
+        else await FB.saveTipster({ ...(t || { note: '', mode: 'pre', c: m.c0 ?? m.c ?? null, src: 'cambio', cambio: true }), mid: id, fav: fav.id, favName: fav.n, opName: op.n, at: m.at, tn: m.tn, odds: (a ? np.oA : np.oB) ?? null });
+        await loadTipster(true);
+        route();
+        openMatch(id);
+        toast(`Ganador cambiado: ${fav.n}. Los demás lo ven en unos minutos`);
+      } catch (e) {
+        pe.disabled = false;
+        toast(e.code === 'permission-denied' ? 'Sin permiso: revisa las reglas de Firestore' : FB.errorText(e));
+      }
+      return;
+    }
     if (pe.dataset.peOpen) pickEdit.open = true;
     if (pe.dataset.peClose) Object.assign(pickEdit, { open: false, side: null });
     if (pe.dataset.peSide) pickEdit.side = pe.dataset.peSide;

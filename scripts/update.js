@@ -831,6 +831,16 @@ const FEATURED_MAX_ODDS = 2.5; // cuotas más altas = el mercado lo ve perdedor:
 // Los picks que sigue el admin (colección tipster) son solo para Premium,
 // sea cual sea su confianza. tipMids se llena en tipsterStats().
 let tipMids = new Set();
+// Ganador cambiado por el admin: {idPartido: {fav, odds}}. Se aplica al
+// publicar; state.picks sigue con el pick del modelo y sus estadísticas.
+let cambiosAdmin = {};
+function efectivo(p) {
+  const k = cambiosAdmin[p.id];
+  if (!k || k.fav === p.fav) return p;
+  const m = state.matches[p.id];
+  const res = m?.st === 'f' && m.w ? (m.w === k.fav ? 'hit' : 'miss') : p.res;
+  return { ...p, fav: k.fav, c: 100 - p.c, o: k.odds > 1 ? k.odds : null, res, adm: 1, x: p.x ? { ...p.x, rule: null } : p.x };
+}
 const isLocked = (p) => p.res === 'pending' && (p.c >= PREMIUM_MIN || tipMids.has(Number(p.id)));
 let premiumContent = null;
 
@@ -838,7 +848,8 @@ function pickView(p, detailed = false) {
   const m = state.matches[p.id];
   const base = detailed ? detailView(m) : matchView(m);
   if (isLocked(p)) return { ...base, fav: null, c: null, o: null, res: p.res, ft: Boolean(p.ft), locked: true };
-  return { ...base, fav: p.fav, c: p.c, o: p.o, res: p.res, ft: Boolean(p.ft), chg: p.chg || 0 };
+  const e = efectivo(p);
+  return { ...base, fav: e.fav, c: e.c, o: e.o, res: e.res, ft: Boolean(p.ft), chg: p.chg || 0, ...(e.adm ? { adm: 1 } : {}) };
 }
 
 function summarize(list) {
@@ -948,7 +959,8 @@ function writeSite(meta) {
     .map((m) => {
       const p = state.picks[m.id];
       if (!p || !p.pub) return { ...detailView(m), pick: null };
-      return { ...detailView(m), pick: isLocked(p) ? { fav: null, c: null, o: null, res: p.res, locked: true } : { fav: p.fav, c: p.c, o: p.o, res: p.res } };
+      const e = efectivo(p);
+      return { ...detailView(m), pick: isLocked(p) ? { fav: null, c: null, o: null, res: p.res, locked: true } : { fav: e.fav, c: e.c, o: e.o, res: e.res, ...(e.adm ? { adm: 1 } : {}) } };
     });
 
   // Bankroll: banca simulada que apuesta a cada pick publicado CON cuota,
@@ -1012,15 +1024,15 @@ function writeSite(meta) {
   adminNoPick = {};
   for (const p of Object.values(state.picks)) {
     const m = state.matches[p.id];
-    if (p.pub || p.res !== 'pending' || !p.x || !m || m.st === 'f') continue;
+    if (p.res !== 'pending' || !p.x || !m || m.st === 'f') continue;
     if (new Date(m.at).getTime() < now - 4 * 3600e3) continue;
     adminNoPick[p.id] = {
       c: p.c,
       fav: p.fav,
       oA: p.x.oA ?? null,
       oB: p.x.oB ?? null,
-      whyA: buildWhy({ ...p, fav: m.a }, m),
-      whyB: buildWhy({ ...p, fav: m.b }, m)
+      whyA: buildWhy({ ...p, fav: m.a, x: m.a === p.fav ? p.x : { ...p.x, rule: null } }, m),
+      whyB: buildWhy({ ...p, fav: m.b, x: m.b === p.fav ? p.x : { ...p.x, rule: null } }, m)
     };
   }
 
@@ -1029,7 +1041,8 @@ function writeSite(meta) {
   premiumContent = {};
   for (const p of pending) {
     const m = state.matches[p.id];
-    premiumContent[p.id] = { fav: p.fav, c: p.c, o: p.o ?? null, why: buildWhy(p, m) };
+    const e = efectivo(p);
+    premiumContent[p.id] = { fav: e.fav, c: e.c, o: e.o ?? null, why: buildWhy(e, m), ...(e.adm ? { adm: 1 } : {}) };
   }
 
   const byPlayer = finishedByPlayer();
@@ -1274,8 +1287,12 @@ async function tipsterStats() {
     const headers = process.env.BOT_EMAIL ? { Authorization: `Bearer ${await require('./notify').botToken()}` } : {};
     const r = await fetch(url, { headers });
     if (!r.ok) return null;
-    const docs = (await r.json()).documents || [];
-    tipMids = new Set(docs.map((d) => Number(d.fields?.mid?.integerValue ?? d.fields?.mid?.doubleValue)).filter(Boolean));
+    const todos = (await r.json()).documents || [];
+    const n_ = (v) => Number(v?.doubleValue ?? v?.integerValue ?? NaN);
+    cambiosAdmin = Object.fromEntries(todos.map((d) => [n_(d.fields?.mid), { fav: n_(d.fields?.fav), odds: n_(d.fields?.odds) }]));
+    // "cambio": solo se cambió el ganador; no es un pick del tipster.
+    const docs = todos.filter((d) => !d.fields?.cambio?.booleanValue);
+    tipMids = new Set(docs.map((d) => n_(d.fields?.mid)).filter(Boolean));
     // Historial permanente: los partidos viejos salen del estado, los
     // resultados del tipster no. Borrar el pick en el panel lo quita de aquí.
     state.tipsterLog = state.tipsterLog || {};

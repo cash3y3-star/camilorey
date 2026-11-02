@@ -202,19 +202,23 @@ async function runNotifications(state, helpers) {
   try {
     const tips = await listTips(token);
     if (tips) {
+      const propios = tips.filter((t) => !t.cambio);        // "cambio": no es un pick del tipster
       const primera = !Array.isArray(N._tips);
-      const vistos = new Set(primera ? tips.map((t) => Number(t.mid)) : N._tips);
-      for (const t of tips) {
+      const clave = (t) => `${Number(t.mid)}:${Number(t.fav)}`;  // con el ganador: si lo cambian, se avisa otra vez
+      const viejos = new Set(N._tips || []);
+      const vistos = new Set(propios.filter((t) => primera || viejos.has(Number(t.mid)) || viejos.has(clave(t))).map(clave));
+      for (const t of propios) {
         const mid = Number(t.mid);
-        if (vistos.has(mid)) continue;
-        vistos.add(mid);
+        const k = clave(t);
+        if (vistos.has(k)) continue;
+        vistos.add(k);
+        const cambio = [...viejos].some((v) => String(v).startsWith(`${mid}:`));
         const m = state.matches[mid];
         if (!m || m.st !== 's' || new Date(m.at).getTime() <= now) continue;
         const cuota = Number(t.odds) > 1 ? ` · cuota ${Number(t.odds).toFixed(2)}` : '';
-        events.push({ kind: 'tipster', title: `Pick Destacado CamiloRey Tipster: ${t.favName} gana`, body: `${t.favName} vs ${t.opName}${cuota}`, url: SITE, tag: `tip-${mid}` });
+        events.push({ kind: 'tipster', title: `${cambio ? 'Cambio en Pick' : 'Pick'} Destacado CamiloRey Tipster: ${t.favName} gana`, body: `${t.favName} vs ${t.opName}${cuota}`, url: SITE, tag: `tip-${mid}` });
       }
-      const ids = new Set(tips.map((t) => Number(t.mid)));
-      N._tips = [...vistos].filter((id) => ids.has(id));
+      N._tips = [...vistos];
     }
   } catch (e) {
     console.error(`Push tipster: ${e.message}`);
