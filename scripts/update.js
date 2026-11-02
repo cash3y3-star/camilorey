@@ -260,7 +260,9 @@ function generatePick(match, odds, model, prev = null) {
     fav: favA ? match.a : match.b,
     c: confidence,
     cr: cRaw, // confianza sin calibrar (para volver a medir el factor)
-    o: oa && ob ? (favA ? oa : ob) : prev?.o && prev.fav === (favA ? match.a : match.b) ? prev.o : null,
+    // Cuota fija: la primera que se establece para ese jugador no cambia, aunque Rushbet la mueva
+    // (la cuota real de la casa se sigue guardando en x.oA/x.oB). La del destacado manda.
+    o: prev?.fav === (favA ? match.a : match.b) && (prev.fo ?? prev.o) ? prev.fo ?? prev.o : oa && ob ? (favA ? oa : ob) : null,
     f,
     // Datos crudos con los que se decidió — base del "Análisis IA".
     x: {
@@ -1264,26 +1266,33 @@ let adminNoPick = null; // partidos sin pick: análisis de ambos lados y cuotas 
 // resultados oficiales.
 async function tipsterStats() {
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/tipster?pageSize=500&key=${FIREBASE_API_KEY}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/tipster?pageSize=1000&key=${FIREBASE_API_KEY}`;
     const headers = process.env.BOT_EMAIL ? { Authorization: `Bearer ${await require('./notify').botToken()}` } : {};
     const r = await fetch(url, { headers });
     if (!r.ok) return null;
     const docs = (await r.json()).documents || [];
-    let hit = 0;
-    let miss = 0;
-    const last = [];
+    // Historial permanente: los partidos viejos salen del estado, los
+    // resultados del tipster no. Borrar el pick en el panel lo quita de aquí.
+    state.tipsterLog = state.tipsterLog || {};
+    const log = state.tipsterLog;
+    const vivos = new Set();
+    const num = (v) => Number(v?.doubleValue ?? v?.integerValue ?? NaN);
     for (const d of docs) {
       const f = d.fields || {};
-      const mid = Number(f.mid?.integerValue ?? f.mid?.doubleValue);
-      const fav = Number(f.fav?.integerValue ?? f.fav?.doubleValue);
+      const mid = num(f.mid);
+      const fav = num(f.fav);
+      vivos.add(String(mid));
       const m = state.matches[mid];
-      if (!m || m.st !== 'f') continue;
-      const won = m.w === fav;
-      won ? hit++ : miss++;
-      last.push({ at: m.at, res: won ? 'hit' : 'miss' });
+      if (!m || m.st !== 'f' || log[mid]) continue;
+      const o = num(f.odds);
+      const c = num(f.c);
+      log[mid] = { mid, at: m.at, res: m.w === fav ? 'hit' : 'miss', favName: f.favName?.stringValue || '', opName: f.opName?.stringValue || '', odds: o > 1 ? o : state.picks[mid]?.o ?? null, c: c > 0 ? c : null };
     }
-    last.sort((a, b) => (a.at < b.at ? 1 : -1));
-    return { hit, miss, pct: hit + miss ? Math.round((hit / (hit + miss)) * 1000) / 10 : null, last: last.slice(0, 10).map((x) => x.res) };
+    for (const k of Object.keys(log)) if (!vivos.has(k)) delete log[k];
+    const rows = Object.values(log).sort((a, b) => (a.at < b.at ? 1 : -1));
+    const hit = rows.filter((x) => x.res === 'hit').length;
+    const miss = rows.length - hit;
+    return { hit, miss, pct: hit + miss ? Math.round((hit / (hit + miss)) * 1000) / 10 : null, last: rows.slice(0, 10).map((x) => x.res), rows: rows.slice(0, 400) };
   } catch {
     return null;
   }

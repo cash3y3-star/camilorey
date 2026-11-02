@@ -1,32 +1,24 @@
 {
-  "id": "cuidado-2026-10-28",
-  "audience": "admin",
-  "title": "Picks destacados más seguros y apuesta con cuidado",
-  "preview": "La liga está difícil estos días. Cambiamos los destacados para que acierten más y te contamos cómo cuidar tu dinero.",
+  "id": "novedades-2026-11-02",
+  "audience": "all",
+  "title": "Novedades en CamiloRey",
+  "preview": "Nueva sección de Picks Destacados CamiloRey Tipster, cuotas fijas y pantalla de Navidad.",
   "push": {
-    "title": "CamiloRey: cambiamos los picks destacados",
-    "body": "La liga está difícil estos días. Ahora los destacados son más exigentes. Toca para ver qué cambió y cómo cuidar tu dinero."
+    "title": "CamiloRey se actualizó",
+    "body": "Nuevos Picks Destacados Tipster, cuotas fijas y pantalla de Navidad. Toca para ver qué cambió."
   },
   "sections": [
     {
-      "h": "Qué pasó",
-      "t": "El 22 de octubre los picks destacados acertaron 10 de 12, pero del 23 al 26 bajaron a 12 de 25 (48%). No fue solo el sistema: en estos días la liga se volvió difícil para todos, y hasta el favorito de la casa acierta menos de lo normal."
+      "h": "Picks Destacados CamiloRey Tipster",
+      "t": "Abajo en Inicio hay una sección nueva con los picks que sigue Camilo Rey. Los miembros Premium los ven ahí y reciben una notificación en el celular cuando sale uno nuevo. Puede tardar unos minutos en llegar."
     },
     {
-      "h": "Qué cambiamos",
-      "t": "Desde hoy un pick solo es destacado si tiene 65% de confianza o más y la casa de apuestas también da por favorito al mismo jugador. Siempre buscamos primero los que pagan 1,60 o más; si no hay, se destaca desde 1,40. Revisamos los picks ya jugados: con esta regla acertaron 62,5% (80 de 128), y 13 de 17 desde el 24 de octubre."
+      "h": "Cuotas fijas",
+      "t": "La cuota que ves en un pick ya no cambia: cuando se establece, se queda. Rushbet sí puede mover la suya, así que revisa allá la cuota antes de apostar."
     },
     {
-      "h": "Lo que debes saber",
-      "t": "Habrá menos destacados y muchas veces pagarán un poco menos (entre 1,40 y 1,60), porque son partidos más claros. Preferimos que aciertes más seguido a mostrarte cuotas altas que se pierden."
-    },
-    {
-      "h": "Cómo cuidar tu dinero",
-      "t": "Usa Mi Bankroll: te dice cuánto apostar en cada pick. Apuesta montos pequeños (1 a 2% de tu banca por pick), no subas el monto para recuperar lo perdido y no apuestes todos los picks del día: quédate con los destacados."
-    },
-    {
-      "h": "Juega con responsabilidad",
-      "t": "Ningún pick es seguro, ni siquiera los destacados. Apuesta solo lo que estés dispuesto a perder."
+      "h": "Pantalla de Navidad",
+      "t": "La pantalla de carga se vistió de Navidad y estará hasta el 6 de enero. Gracias por ser parte de la familia Camilo Rey."
     }
   ]
 }

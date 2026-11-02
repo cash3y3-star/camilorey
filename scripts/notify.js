@@ -96,6 +96,14 @@ async function activeTrials(token) {
   return out;
 }
 
+// Picks del tipster publicados (colección "tipster"). Sin permiso o sin
+// respuesta devuelve null, para no confundirlo con "no hay picks".
+async function listTips(token) {
+  const r = await fetch(`${DOCS}/tipster?pageSize=1000`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return null;
+  return ((await r.json()).documents || []).map((d) => Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, fromFs(v)])));
+}
+
 async function savePush(token, user, push) {
   await fetch(`https://firestore.googleapis.com/v1/${user.path}?updateMask.fieldPaths=push`, {
     method: 'PATCH',
@@ -186,6 +194,29 @@ async function runNotifications(state, helpers) {
   }
   // Se recuerdan los destacados actuales (y los ya avisados que siguen pendientes).
   N._featured = [...new Set([...(helpers.featuredIds || []), ...[...ftSent].filter((id) => state.picks[id]?.res === 'pending')])];
+  // Picks Destacados CamiloRey Tipster: uno por pick nuevo, solo a Premium y
+  // al admin, y solo si el partido no ha empezado. La primera vez se marcan
+  // los que ya existen para no mandar picks viejos.
+  try {
+    const tips = await listTips(token);
+    if (tips) {
+      const primera = !Array.isArray(N._tips);
+      const vistos = new Set(primera ? tips.map((t) => Number(t.mid)) : N._tips);
+      for (const t of tips) {
+        const mid = Number(t.mid);
+        if (vistos.has(mid)) continue;
+        vistos.add(mid);
+        const m = state.matches[mid];
+        if (!m || m.st !== 's' || new Date(m.at).getTime() <= now) continue;
+        const cuota = Number(t.odds) > 1 ? ` · cuota ${Number(t.odds).toFixed(2)}` : '';
+        events.push({ kind: 'tipster', title: `Pick Destacado CamiloRey Tipster: ${t.favName} gana`, body: `${t.favName} vs ${t.opName}${cuota}`, url: SITE, tag: `tip-${mid}` });
+      }
+      const ids = new Set(tips.map((t) => Number(t.mid)));
+      N._tips = [...vistos].filter((id) => ids.has(id));
+    }
+  } catch (e) {
+    console.error(`Push tipster: ${e.message}`);
+  }
   // Chat de soporte: aviso SOLO al admin cuando alguien pidió hablar con
   // una persona y hay mensajes sin leer (uno por mensaje nuevo).
   const chatEvents = [];
@@ -218,7 +249,7 @@ async function runNotifications(state, helpers) {
     // En prueba: el destacado de 60%+ llega sin el jugador y los cambios de
     // esos picks no se mandan (son contenido Premium).
     const mine = events
-      .filter((e) => (e.kind === 'featured' ? prefs.featured : prefs[e.kind] && (e.ft || u.follows.map(Number).includes(e.mid))))
+      .filter((e) => (e.kind === 'tipster' ? !u.trial && prefs.featured : e.kind === 'featured' ? prefs.featured : prefs[e.kind] && (e.ft || u.follows.map(Number).includes(e.mid))))
       .filter((e) => !(u.trial && e.lk && e.kind === 'change'))
       .map((e) => (u.trial && e.lk && e.teaser ? e.teaser : e));
     if (u.email === 'camilosimanca77@gmail.com') mine.push(...chatEvents);
@@ -276,4 +307,4 @@ async function countUsers() {
   }
 }
 
-module.exports = { runNotifications, botToken, toFs, countUsers, activeMembers, activeTrials, DOCS };
+module.exports = { runNotifications, botToken, toFs, countUsers, activeMembers, activeTrials, listTips, DOCS };

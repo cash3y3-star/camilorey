@@ -552,6 +552,35 @@ async function toggleFollow(id) {
   if (FB.user()) FB.saveFollows([...follows]).catch(() => {});
   document.querySelectorAll(`[data-follow="${id}"]`).forEach((b) => b.classList.toggle('on', follows.has(id)));
   toast(follows.has(id) ? 'Agregado a Seguidos' : 'Quitado de Seguidos');
+  if (isAdmin()) syncTipsterFollow(id);
+}
+
+// Lo que el admin sigue antes de que empiece se publica como Pick Destacado
+// CamiloRey Tipster. Al dejar de seguirlo se retira, pero solo si no ha
+// empezado: un pick que ya está en juego cuenta en las estadísticas.
+async function syncTipsterFollow(id) {
+  const m = allById().get(id);
+  if (!m?.a || !m?.b) return;
+  const tips = await loadTipster(true);
+  const t = tips.find((x) => Number(x.mid) === id);
+  const started = (m.st && m.st !== 's') || new Date(m.at).getTime() <= Date.now();
+  try {
+    if (follows.has(id)) {
+      if (t || started || !m.fav) return;
+      const fav = m.fav === m.a.id ? m.a : m.b;
+      const op = fav === m.a ? m.b : m.a;
+      await FB.saveTipster({ mid: id, fav: fav.id, favName: fav.n, opName: op.n, at: m.at, tn: m.tn, note: '', odds: m.o ?? null, c: m.c ?? null, mode: 'pre', src: 'follow' });
+      toast('Publicado en Picks Destacados Tipster. El aviso a Premium sale en unos minutos');
+    } else {
+      if (!t || t.src !== 'follow' || started) return;
+      await FB.deleteTipster(id);
+      toast('Retirado de Picks Destacados Tipster');
+    }
+    await loadTipster(true);
+    renderTipsterHome();
+  } catch (e) {
+    toast(e.code === 'permission-denied' ? 'Sin permiso: revisa las reglas de Firestore' : FB.errorText(e));
+  }
 }
 
 // ---------------- piezas ----------------
@@ -759,7 +788,6 @@ function viewInicio() {
       : ''
   }
 
-  <div id="tipster-home"></div>
   ${
     featured.length
       ? `<div class="section-h"><h2>${icon('trophy')} Picks destacados</h2>${featured.length > 1 ? `<span class="badge">Desliza · ${featured.length}</span>` : ''}</div>
@@ -772,6 +800,7 @@ function viewInicio() {
   <div class="section-h"><h2><i class="live-dot red"></i> En vivo ahora</h2><a class="link" href="#/envivo">Ver todo</a></div>
   <div id="live-home">${skeleton(1)}</div>
   ${hotHtml()}
+  <div id="tipster-home"></div>
   ${data.loaded && !next.length ? empty('clock', 'Sin picks por ahora', 'Los picks se generan unas horas antes de cada torneo. Vuelve en un rato.') : ''}
   ${footer()}`;
 }
@@ -936,6 +965,8 @@ function viewAdmin() {
     <button class="btn primary" type="submit">Publicar pick</button>
   </form>
   <div id="admin-tipster">${skeleton(1)}</div>
+  <div class="section-h"><h2>${icon('crown')} Estadísticas · Picks Destacados Tipster</h2></div>
+  <div id="admin-tipster-stats"></div>
   <div class="section-h"><h2>⭐ Miembros · acceso al sitio</h2></div>
   <form class="card pad" id="member-form">
     <label class="field"><span>Correo de la cuenta del usuario (sirve si entra con Google o con correo)</span>
@@ -1330,6 +1361,7 @@ async function renderAdminPanel() {
           })
           .join('')}</div>`
       : '<p class="note" style="margin-top:10px">Aún no has publicado picks del tipster.</p>';
+  renderTipsterStats();
   // Miembros (acceso al sitio)
   renderMembers();
   renderAdminRatings();
@@ -1414,7 +1446,42 @@ document.addEventListener('submit', async (ev) => {
   }
 });
 
-// Tarjeta del pick del tipster en Inicio (el próximo que no ha empezado).
+// Panel admin: estadísticas de todos los picks del tipster. Las filas vienen
+// del historial permanente que guarda update.js (a 1 unidad por pick).
+const TIP_RANGES = [['d7', '7 días', 7], ['d30', '30 días', 30], ['all', 'Todo', null]];
+function renderTipsterStats() {
+  const box = document.getElementById('admin-tipster-stats');
+  if (!box) return;
+  const range = TIP_RANGES.find((r) => r[0] === ui.tipRange) || TIP_RANGES[2];
+  const desde = range[2] ? Date.now() - range[2] * 864e5 : 0;
+  const rows = (data.stats?.tipster?.rows || []).filter((r) => new Date(r.at).getTime() >= desde);
+  const hit = rows.filter((r) => r.res === 'hit').length;
+  const miss = rows.length - hit;
+  const conCuota = rows.filter((r) => r.odds > 1);
+  const u = conCuota.reduce((s, r) => s + (r.res === 'hit' ? r.odds - 1 : -1), 0);
+  const prom = conCuota.length ? conCuota.reduce((s, r) => s + r.odds, 0) / conCuota.length : null;
+  let racha = 0;
+  for (const r of rows) {
+    const v = r.res === 'hit' ? 1 : -1;
+    if (racha && Math.sign(racha) !== v) break;
+    racha += v;
+  }
+  const pend = (tipsterCache || []).filter((t) => new Date(t.at).getTime() > Date.now() - 3 * 3600e3 && !rows.some((r) => Number(r.mid) === Number(t.mid))).length;
+  const signo = (n) => `${n > 0 ? '+' : ''}${n.toFixed(2).replace('.', ',')}`;
+  const tile = (t, v, h, cl = '') => `<div class="tile"><div class="overline">${t}</div><div class="val ${cl}">${v}</div><div class="hint">${h}</div></div>`;
+  box.innerHTML = `<div class="seg seg-full" style="margin-top:8px">${TIP_RANGES.map((r) => `<button type="button" class="${r === range ? 'on' : ''}" data-trange="${r[0]}">${r[1]}</button>`).join('')}</div>
+    <div class="tiles" style="margin-top:8px">
+      ${tile('Efectividad', rows.length ? `${Math.round((hit / rows.length) * 1000) / 10}%`.replace('.', ',') : '—', `${hit} de ${rows.length}`)}
+      ${tile('Ganancia', conCuota.length ? `${signo(u)} u` : '—', conCuota.length ? `ROI ${signo((u / conCuota.length) * 100)}%` : 'sin cuotas', u > 0 ? 'pos' : u < 0 ? 'neg' : '')}
+      ${tile('Racha', racha > 0 ? `${racha}W` : racha < 0 ? `${-racha}L` : '—', 'últimos seguidos', racha > 0 ? 'pos' : racha < 0 ? 'neg' : '')}
+      ${tile('Aciertos', hit, 'ganados', 'pos')}
+      ${tile('Fallos', miss, 'perdidos', miss ? 'neg' : '')}
+      ${tile('Cuota prom.', prom ? odds(prom) : '—', `${pend} pendientes`)}
+    </div>
+    ${rows.length ? `<div class="list" style="margin-top:10px">${rows.slice(0, 30).map((r) => `<div class="row"><span class="ic">${r.res === 'hit' ? '✅' : '❌'}</span><span class="tx"><b>${esc(r.favName || '—')}</b><small>${esc(dayLabel(dayKey(r.at)))} · vs ${esc(r.opName || '—')}${r.c ? ` · ${r.c}%` : ''}</small></span><span class="badge">${r.odds ? odds(r.odds) : '—'}</span></div>`).join('')}</div>` : '<p class="note" style="margin-top:10px">Aún no hay picks resueltos en este rango.</p>'}`;
+}
+
+// Picks Destacados CamiloRey Tipster, abajo en Inicio. Solo para Premium.
 async function renderTipsterHome() {
   const box = document.getElementById('tipster-home');
   if (!box) return;
@@ -1423,19 +1490,22 @@ async function renderTipsterHome() {
   const now = Date.now();
   const upcoming = tips.filter((t) => new Date(t.at).getTime() > now - 3 * 3600e3).sort((a, b) => (a.at < b.at ? -1 : 1));
   const st = data.stats?.tipster;
-  const head = `<div class="section-h"><h2>👑 Pick del tipster</h2>${st && st.hit + st.miss ? `<span class="badge win">${st.hit}/${st.hit + st.miss} aciertos</span>` : ''}</div>`;
+  const head = `<div class="section-h"><h2>${icon('crown')} Picks Destacados CamiloRey Tipster</h2>${st && st.hit + st.miss ? `<span class="badge win">${st.hit}/${st.hit + st.miss} aciertos</span>` : ''}</div>`;
   if (!upcoming.length) {
     box.innerHTML = '';
+    return;
+  }
+  if (!isPremiumUser() && !isAdmin()) {
+    box.innerHTML = head + premiumLock('Los picks del tipster son Premium', 'Con Premium ves los picks que sigue CamiloRey y recibes el aviso en tu celular.');
     return;
   }
   box.innerHTML =
     head +
     upcoming
-      .slice(0, 3)
       .map((t) => {
         const m = byId.get(Number(t.mid));
         if (!m) return '';
-        const card = matchCard(m, { fav: t.fav, c: null, tipster: true, o: m.pick?.o ?? m.o, res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' });
+        const card = matchCard(m, { fav: t.fav, c: null, tipster: true, o: t.odds ?? m.pick?.o ?? m.o, res: m.st === 'f' ? (m.w === t.fav ? 'hit' : 'miss') : 'pending' });
         return `<div class="tipster-wrap">${card}${t.note ? `<p class="tipster-note">💬 ${esc(t.note)}</p>` : ''}</div>`;
       })
       .join('');
@@ -3254,6 +3324,11 @@ document.addEventListener('change', (ev) => {
   });
 });
 document.addEventListener('click', async (ev) => {
+  const tr = ev.target.closest('[data-trange]');
+  if (tr) {
+    ui.tipRange = tr.dataset.trange;
+    return renderTipsterStats();
+  }
   const sideBtn = ev.target.closest('#tipster-side [data-side]');
   if (sideBtn) {
     tipsterSide = sideBtn.dataset.side;
