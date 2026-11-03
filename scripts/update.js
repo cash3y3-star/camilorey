@@ -43,7 +43,10 @@ const MAX_CONFIDENCE = 80;
 // (80/128), 76.5% desde el 24-oct. Se buscan PRIMERO los de cuota >= 1.60
 // (el usuario la quiere siempre que se pueda; con 65%+ y la casa de acuerdo
 // salen ~1 cada 3 días) y los cupos que sobran se llenan desde 1.40.
-const FEATURED_MIN_ODDS = 1.4;
+// 03-nov (pedido del usuario): mínimo 1.50. Medido 28-oct a 03-nov: los
+// destacados de 1.40-1.49 acertaron 67.9% (19/28) y necesitaban 69.9%
+// (-0.89 u); un fallo borraba más de dos aciertos.
+const FEATURED_MIN_ODDS = 1.5;
 const FEATURED_GOOD_ODDS = 1.6;
 const FEATURED_MIN_CONF = 65;
 const FEATURED_SLOTS = 3; // destacados a la vez (pedido del usuario el 22-oct)

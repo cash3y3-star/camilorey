@@ -2122,6 +2122,10 @@ const PAREJO = 60;
 // Desde aquí, si la cuota paga poco se sugiere la apuesta mínima en vez de
 // "No apostar" (los picks anteriores no cambian la banca ya calculada).
 const LOW_FROM = '2026-10-19T06:00:00Z';
+// 03-nov (pedido del usuario): desde aquí ya NO se sugiere la apuesta mínima
+// cuando la cuota paga poco: sale "No apostar" (medido: con cuota baja el
+// acierto real no cubre la cuota). La persona puede tocar "Apostar" igual.
+const LOW_UNTIL = '2026-11-03T19:00:00Z';
 const forcedMap = (s) => (Array.isArray(s?.force) ? Object.fromEntries(s.force.map((id) => [id, 0])) : { ...(s?.force || {}) });
 const forcedStake = (amt, bal) => Math.max(0, Math.min(bal, amt || roundStake(bal * FORCED_PCT)));
 // Solo se puede apostar igual o quitar antes de que empiece el partido.
@@ -2176,7 +2180,7 @@ function userBank() {
     // low: la cuota paga poco para esta confianza. Se apuesta el monto que
     // eligió la persona o, desde LOW_FROM, la apuesta mínima sugerida.
     const low = !kf && p.o > 1;
-    const force = low && !skip.has(p.id) && (String(p.id) in fm || p.at >= LOW_FROM);
+    const force = low && !skip.has(p.id) && (String(p.id) in fm || (p.at >= LOW_FROM && p.at < LOW_UNTIL));
     const f = force ? FORCED_PCT : kf;
     if (p.res === 'hit' || p.res === 'miss') {
       const stake = force ? forcedStake(fm[p.id], bal) : roundStake(bal * f);
@@ -2281,7 +2285,7 @@ function kellyBodyHtml() {
           .join('')
       : '<div class="stake-row"><span class="who"><small>Cuando terminen los partidos que sigues, aquí ves cuánto ganaste o perdiste en cada uno.</small></span></div>'
   }</div>
-  <p class="note" style="margin-top:14px">${icon('info', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:14px;height:14px;vertical-align:-2px"')} <b>Criterio de Kelly:</b> calcula qué porcentaje de tu banca apostar según la confianza del pick y la cuota. Usa el acierto real de los picks con esa confianza. Si la cuota paga poco, sugiere una <b>apuesta mínima</b> (1% de tu banca) marcada como riesgo alto; puedes cambiar el monto o tocar <b>No apostar</b>. Tope: 10% de la banca por apuesta. Es una simulación con los picks que sigues; apuesta con responsabilidad.</p>`;
+  <p class="note" style="margin-top:14px">${icon('info', 'icon').replace('class="icon"', 'class="icon" style="display:inline;width:14px;height:14px;vertical-align:-2px"')} <b>Criterio de Kelly:</b> calcula qué porcentaje de tu banca apostar según la confianza del pick y la cuota. Usa el acierto real de los picks con esa confianza. Si la cuota paga poco para el acierto real, sale <b>No apostar</b>: a la larga esa apuesta pierde. Si igual quieres apostar, toca <b>Apostar</b> y elige el monto. Tope: 10% de la banca por apuesta. Es una simulación con los picks que sigues; apuesta con responsabilidad.</p>`;
 }
 
 function viewBankroll() {
