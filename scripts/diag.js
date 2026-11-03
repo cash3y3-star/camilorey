@@ -714,6 +714,46 @@ out('\n== DESTACADOS A FONDO ==');
   }
 }
 
+
+// ============ CUOTAS BAJAS (03-nov: el usuario pierde con destacados 1.40-1.48) ============
+out('\n== CUOTAS BAJAS (desde el 28-oct) ==');
+{
+  const res = Object.values(picks).filter((p) => p.pub && p.res !== 'pending' && matches[p.id] && matches[p.id].w != null);
+  const hitOf = (l) => l.filter((p) => p.res === 'hit').length;
+  const oddsOf = (p) => p.fo ?? p.o;
+  const u = (l, of = oddsOf) => l.filter((p) => of(p)).reduce((s, p) => s + (p.res === 'hit' ? of(p) - 1 : -1), 0);
+  const need = (l, of = oddsOf) => { const w = l.filter((p) => of(p)); return w.length ? (w.reduce((s, p) => s + 1 / of(p), 0) / w.length) * 100 : 0; };
+  const line = (lab, l, of = oddsOf) => out(`  ${lab}: ${pct(hitOf(l), l.length)} · necesita ${need(l, of).toFixed(1)}% · ${u(l, of) >= 0 ? '+' : ''}${u(l, of).toFixed(2)} u`);
+  const finPm = (p) => { const m = matches[p.id]; const pm = marketProb(m.oa ?? p.x?.oA, m.ob ?? p.x?.oB); return pm == null || pm === 0.5 ? null : p.fav === m.a ? pm : 1 - pm; };
+  const dst = res.filter((p) => p.dst && matches[p.id].at >= '2026-10-28T20:00:00Z');
+  line('destacados desde 28-oct', dst);
+  const bands = [['1.40-1.49', 1.4, 1.495], ['1.50-1.59', 1.495, 1.595], ['1.60-1.79', 1.595, 1.795], ['1.80-2.50', 1.795, 9]];
+  for (const [lab, a, b] of bands) line(`  cuota ${lab}`, dst.filter((p) => oddsOf(p) >= a && oddsOf(p) < b));
+  const byD = new Map();
+  for (const p of dst) { const d = day(matches[p.id].at); (byD.get(d) || byD.set(d, []).get(d)).push(p); }
+  for (const [d, l] of [...byD.entries()].sort()) line(`  día ${d}`, l);
+  line('  con cuota FINAL de Rushbet en vez de la fija', dst, (p) => (p.fav === matches[p.id].a ? matches[p.id].oa : matches[p.id].ob) || null);
+  out('  -- todos los picks publicados desde 28-oct (cuota del pick) --');
+  const pool = res.filter((p) => matches[p.id].at >= '2026-10-28T20:00:00Z' && p.o);
+  const pool19 = res.filter((p) => matches[p.id].at >= '2026-10-19T05:30:00Z' && p.o);
+  const rules = [
+    ['regla actual (c65+, casa de acuerdo, 1.40-2.50)', (p) => p.c >= 65 && p.o >= 1.4 && p.o <= 2.5 && finPm(p) > 0.5],
+    ['c65+, casa de acuerdo, 1.40-1.49', (p) => p.c >= 65 && p.o >= 1.4 && p.o < 1.495 && finPm(p) > 0.5],
+    ['c65+, casa de acuerdo, 1.50-2.50', (p) => p.c >= 65 && p.o >= 1.495 && p.o <= 2.5 && finPm(p) > 0.5],
+    ['c65+, casa de acuerdo, 1.60-2.50', (p) => p.c >= 65 && p.o >= 1.595 && p.o <= 2.5 && finPm(p) > 0.5],
+    ['c60+, casa de acuerdo, 1.50-2.50', (p) => p.c >= 60 && p.o >= 1.495 && p.o <= 2.5 && finPm(p) > 0.5],
+    ['c60+, 1.60-2.50', (p) => p.c >= 60 && p.o >= 1.595 && p.o <= 2.5],
+    ['valor: c/100*cuota >= 1.05', (p) => (p.c / 100) * p.o >= 1.05 && p.o <= 2.5],
+    ['valor: c/100*cuota >= 1.10', (p) => (p.c / 100) * p.o >= 1.1 && p.o <= 2.5],
+    ['todos los picks', () => true],
+    ['todos con cuota 1.40-1.49', (p) => p.o >= 1.4 && p.o < 1.495],
+    ['todos con cuota 1.50-1.69', (p) => p.o >= 1.495 && p.o < 1.695],
+    ['todos con cuota 1.70-1.99', (p) => p.o >= 1.695 && p.o < 1.995],
+    ['todos con cuota 2.00-2.50', (p) => p.o >= 1.995 && p.o <= 2.5],
+  ];
+  for (const [lab, fn] of rules) { out(`    ${lab}:`); line('      desde 28-oct', pool.filter(fn), (p) => p.o); line('      desde 19-oct', pool19.filter(fn), (p) => p.o); }
+}
+
 // Notificaciones: últimos envíos y a quién les llegó el aviso actual.
 {
   const nt = read('notified.json');
