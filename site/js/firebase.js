@@ -276,6 +276,18 @@ export async function listTipster() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+// Escucha la colección en vivo: lee todo una vez y después solo lo que
+// cambia (mucho más barato que releerla cada minuto). Devuelve la función
+// para dejar de escuchar.
+export async function watchTipster(onData, onErr) {
+  const f = await load();
+  return f.F.onSnapshot(
+    f.F.collection(f.db, 'tipster'),
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onErr
+  );
+}
+
 export async function saveTipster(pick) {
   const f = await load();
   await f.F.setDoc(f.F.doc(f.db, 'tipster', String(pick.mid)), { ...pick, created: new Date().toISOString() });

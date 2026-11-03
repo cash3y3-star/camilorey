@@ -1533,7 +1533,16 @@ async function run() {
   // El historial viejo se carga DESPUÉS de publicar (paso aparte del
   // workflow: --history), para no demorar resultados ni picks nuevos.
   prune();
-  writeSite({ model: modelInfo, tipster: await tipsterStats(), users: await require('./notify').countUsers() });
+  // El número de cuentas se cuenta una vez por hora: leer todos los usuarios
+  // cada 5 min agotaba la cuota gratis diaria de Firestore.
+  // Se guarda en state.notified (ese archivo ya persiste entre corridas).
+  state.notified = state.notified || {};
+  const uc = state.notified._uc || {};
+  if (!uc.at || Date.now() - uc.at > 3600e3 || uc.n == null) {
+    const n = await require('./notify').countUsers();
+    state.notified._uc = n == null ? { ...uc, at: Date.now() - 3300e3 } : { n, at: Date.now() }; // si falla, reintenta en ~5 min
+  }
+  writeSite({ model: modelInfo, tipster: await tipsterStats(), users: state.notified._uc.n ?? null });
   try {
     const featuredIds = Object.values(state.picks).filter((p) => p.ft).map((p) => p.id);
     await require('./notify').runNotifications(state, { name: (id) => state.players[id]?.n || '?', featuredIds, isLocked: (p) => Boolean(p) && isLocked(p) });

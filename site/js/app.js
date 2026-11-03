@@ -236,6 +236,7 @@ function clearData() {
   Object.assign(data, { stats: null, picks: [], results: [], calendar: { days: [], matches: [] }, bankroll: null, loaded: false, error: null });
   premiumData = null;
   tipsterCache = null;
+  stopTipsterWatch();
   Vault.forget();
 }
 
@@ -979,15 +980,43 @@ async function pushOff() {
 
 // ---------- Panel de administrador (solo la cuenta admin) ----------
 let tipsterCache = null; // picks del tipster leídos de Firestore
-let tipsterAt = 0;
+// Escucha en vivo de la colección: un pick nuevo o cambiado llega solo, sin
+// releer todo cada minuto (eso agotaba la cuota gratis diaria de Firestore
+// y entonces ni Inicio ni los avisos funcionaban).
+let tipsterWatch = null; // { stop } mientras se escucha
+
+function stopTipsterWatch() {
+  const w = tipsterWatch;
+  tipsterWatch = null;
+  w?.stop?.();
+}
+
+function onTipsterData(list) {
+  tipsterCache = list;
+  applyTipster();
+  renderTipsterHome();
+  if (/^#\/picks$/.test(location.hash) && !document.activeElement?.matches?.('#view textarea, #view input, #view select')) route();
+}
+
+function startTipsterWatch() {
+  if (tipsterWatch) return;
+  const w = { stop: null };
+  tipsterWatch = w;
+  FB.watchTipster(onTipsterData, () => {
+    if (tipsterWatch === w) tipsterWatch = null; // sin permiso o caída: la próxima carga vuelve a intentar
+  })
+    .then((stop) => (tipsterWatch === w ? (w.stop = stop) : stop()))
+    .catch(() => tipsterWatch === w && (tipsterWatch = null));
+}
 
 async function loadTipster(force = false) {
   if (!FB.enabled || !hasAccess()) return [];
-  if (tipsterCache && !force) return tipsterCache;
+  startTipsterWatch();
+  // Con la escucha activa el caché siempre está al día: no se relee.
+  if (tipsterCache && (!force || tipsterWatch?.stop)) return tipsterCache;
   try {
     // Solo miembros (reglas): va con la sesión, por la librería de Firebase.
     tipsterCache = await FB.listTipster();
-    tipsterAt = Date.now();
     applyTipster();
   } catch {
     tipsterCache = tipsterCache || [];
@@ -1540,7 +1569,7 @@ function renderTipsterStats() {
 async function renderTipsterHome() {
   const box = document.getElementById('tipster-home');
   if (!box) return;
-  const tips = (await loadTipster(Date.now() - tipsterAt > 60e3)).filter((t) => !t.cambio); // el pick nuevo debe verse sin recargar la página
+  const tips = (await loadTipster()).filter((t) => !t.cambio); // la escucha en vivo trae el pick nuevo sin recargar la página
   const byId = allById();
   const now = Date.now();
   const upcoming = tips.filter((t) => new Date(t.at).getTime() > now - 3 * 3600e3).sort((a, b) => (a.at < b.at ? -1 : 1));
@@ -3639,8 +3668,12 @@ function updateBellDot() {
 }
 updateBellDot();
 
-// Datos nuevos cada minuto (el sync corre cada ~5 min).
+// Datos nuevos cada minuto (el sync corre cada ~5 min). La membresía se
+// revisa cada 5 min: leerla cada minuto en cada celular gastaba la cuota
+// gratis de Firestore. Los picks del tipster llegan solos (escucha en vivo).
+let tick = 0;
 setInterval(async () => {
+  tick++;
   if (document.visibilityState === 'hidden') return;
   // Con la ficha de un partido abierta no se redibuja todo (se perdería lo
   // que la persona está mirando): solo se actualiza la tabla del grupo, para
@@ -3652,10 +3685,13 @@ setInterval(async () => {
   }
   // Revisa el acceso cada minuto: si el admin lo acaba de activar, se
   // desbloquea sin recargar (con la bienvenida); si venció, se bloquea.
-  if (account) await refreshPremium();
+  if (account && tick % 5 === 0) await refreshPremium();
   await loadData();
   // No redibujar si la persona está escribiendo (ej. respondiendo un chat).
   if (document.activeElement?.matches?.('#view textarea, #view input, #view select')) return;
+  // El panel admin relee usuarios, miembros y visitas al dibujarse: solo se
+  // actualiza al entrar o con sus botones, no cada minuto.
+  if (/^#\/admin/.test(location.hash)) return;
   const y = window.scrollY;
   route();
   window.scrollTo(0, y);

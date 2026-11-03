@@ -63,6 +63,29 @@ async function listUsers(token) {
   return users;
 }
 
+// Solo los usuarios que siguen alguno de estos partidos (consulta, no toda la
+// colección: cada documento leído gasta cuota gratis de Firestore).
+async function usersFollowing(token, mids) {
+  const users = new Map();
+  const vals = [...new Set(mids.map(Number))];
+  for (let i = 0; i < vals.length; i += 15) {
+    const part = vals.slice(i, i + 15);
+    const values = part.flatMap((id) => [{ integerValue: String(id) }, { stringValue: String(id) }]); // por si alguno quedó guardado como texto
+    const r = await fetch(`${DOCS}:runQuery`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'users' }], where: { fieldFilter: { field: { fieldPath: 'follows' }, op: 'ARRAY_CONTAINS_ANY', value: { arrayValue: { values } } } } } })
+    });
+    if (!r.ok) throw new Error(`buscar seguidores: HTTP ${r.status}`);
+    for (const { document: d } of await r.json()) {
+      if (!d) continue;
+      const f = Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, fromFs(v)]));
+      users.set(d.name, { path: d.name, email: String(f.email || '').toLowerCase(), follows: f.follows || [], push: f.push || [], notify: f.notify || {} });
+    }
+  }
+  return [...users.values()];
+}
+
 async function activeMembers(token) {
   const out = new Set();
   const r = await fetch(`${DOCS}/members?pageSize=300`, { headers: { Authorization: `Bearer ${token}` } });
@@ -137,54 +160,31 @@ async function runNotifications(state, helpers) {
   }
 
   const token = await botToken();
-  // Notificaciones gratis para quien tiene acceso: membresía activa
-  // (colección "members", id = correo), prueba vigente o la cuenta admin.
-  const premium = await activeMembers(token);
-  const trials = await activeTrials(token);
-  const users = (await listUsers(token)).filter((u) => u.push.length && (premium.has(u.email) || trials.has(u.email) || u.email === 'camilosimanca77@gmail.com'));
-  for (const u of users) u.trial = !premium.has(u.email) && u.email !== 'camilosimanca77@gmail.com';
-  const locked = (id) => Boolean(helpers.isLocked?.(state.picks[id]));
-  if (!users.length) return console.log('Push: nadie suscrito todavía');
   const ADMIN = 'camilosimanca77@gmail.com';
-  const log = { at: new Date().toISOString(), conPush: users.length, prueba: users.filter((u) => u.trial).length, admin: users.find((u) => u.email === ADMIN)?.push.length || 0, ok: 0, err: {}, adminRes: [] };
-
-  // Eventos de partidos seguidos.
-  const followed = new Set(users.flatMap((u) => u.follows.map(Number)));
-  const events = []; // { mid?, kind, title, body, url, tag }
+  const locked = (id) => Boolean(helpers.isLocked?.(state.picks[id]));
   const now = Date.now();
-  for (const mid of followed) {
-    const m = state.matches[mid];
-    const p = state.picks[mid];
-    if (!m || !p) continue;
-    const key = String(mid);
-    N[key] = N[key] || {};
-    const label = `${helpers.name(m.a)} vs ${helpers.name(m.b)}`;
-    const fav = helpers.name(p.fav);
-    if (m.st === 'f' && !N[key].f) {
-      const won = m.w === p.fav;
-      events.push({ mid, kind: 'end', title: won ? `✅ ¡Pick acertado! ${fav}` : `❌ Pick fallado: ${fav}`, body: `${label} · ${m.sa}-${m.sb}`, url: `${SITE}#/seguidos`, tag: `m${mid}` });
-      N[key].f = 1;
-      N[key].s = 1;
-    }
-    // El pick se revisa hasta 1 min antes del inicio: si cambió de jugador,
-    // se avisa (una vez por cambio) para que nadie juegue el pick viejo.
-    // Por pedido: no se avisa cuando empieza el partido, solo el resultado.
+  // Ahorro de cuota de Firestore: antes se leían TODOS los usuarios, miembros
+  // y pruebas cada 5 min aunque no hubiera nada que avisar, y la cuota gratis
+  // diaria se agotaba (HTTP 429): desde ahí no salía ningún aviso. Ahora
+  // primero se buscan los eventos y solo se leen los usuarios necesarios.
+  const events = []; // { mid?, kind, title, body, url, tag }
+
+  // Partidos que terminaron y aún no se revisaron. Los de hace más de 6 h se
+  // marcan sin avisar (no se manda un resultado viejo).
+  const finCand = [];
+  for (const [id, m] of Object.entries(state.matches)) {
+    if (m.st !== 'f' || !state.picks[id] || N[id]?.f) continue;
+    if (new Date(m.at).getTime() < now - 6 * 3600e3) N[id] = { ...N[id], s: 1, f: 1 };
+    else finCand.push(Number(id));
   }
-  // Picks que cambiaron de jugador al revisarlos antes de empezar: aviso a
-  // quien sigue el partido y, si es el destacado, a todos (una vez por cambio).
-  for (const p of Object.values(state.picks)) {
+  // Picks que cambiaron de jugador al revisarlos antes de empezar.
+  const chgCand = Object.values(state.picks).filter((p) => {
     const m = state.matches[p.id];
-    if (!p.chg || p.res !== 'pending' || !m || m.st !== 's') continue;
-    const isFt = (helpers.featuredIds || []).includes(p.id);
-    if (!followed.has(p.id) && !isFt) continue;
-    const key = String(p.id);
-    N[key] = N[key] || {};
-    if ((N[key].c || 0) >= p.chg) continue;
-    N[key].c = p.chg;
-    events.push({ mid: p.id, ft: isFt, lk: locked(p.id), kind: 'change', title: `🔄 ${isFt ? 'Cambió el pick destacado' : 'Pick actualizado'}: ahora ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · revisado antes de empezar`, url: isFt ? SITE : `${SITE}#/seguidos`, tag: `m${p.id}` });
-  }
-  // Picks destacados nuevos (uno por cada destacado que entra; antes era
-  // un solo id en N._featured).
+    return p.chg && p.res === 'pending' && m && m.st === 's' && (N[String(p.id)]?.c || 0) < p.chg;
+  });
+  const isFt = (id) => (helpers.featuredIds || []).includes(id);
+
+  // Picks destacados nuevos (uno por cada destacado que entra).
   const ftSent = new Set(Array.isArray(N._featured) ? N._featured : N._featured ? [N._featured] : []);
   for (const fid of helpers.featuredIds || []) {
     if (ftSent.has(fid)) continue;
@@ -194,11 +194,11 @@ async function runNotifications(state, helpers) {
       events.push({ kind: 'featured', lk: locked(p.id), title: `⭐ Nuevo pick destacado: ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza${p.o ? ` · cuota ${p.o.toFixed(2)}` : ''}`, url: SITE, tag: `featured-${p.id}`, teaser: { kind: 'featured', title: '⭐ Nuevo pick destacado Premium', body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · hazte Premium para ver a quién elige`, url: `${SITE}#/premium`, tag: `featured-${p.id}` } });
     }
   }
-  // Se recuerdan los destacados actuales (y los ya avisados que siguen pendientes).
-  N._featured = [...new Set([...(helpers.featuredIds || []), ...[...ftSent].filter((id) => state.picks[id]?.res === 'pending')])];
+  const newFeatured = [...new Set([...(helpers.featuredIds || []), ...[...ftSent].filter((id) => state.picks[id]?.res === 'pending')])];
+
   // Picks Destacados CamiloRey Tipster: uno por pick nuevo, solo a Premium y
-  // al admin, y solo si el partido no ha empezado. La primera vez se marcan
-  // los que ya existen para no mandar picks viejos.
+  // al admin, y solo si el partido no ha empezado.
+  let newTips = null;
   try {
     const tips = await listTips(token);
     if (tips) {
@@ -218,28 +218,29 @@ async function runNotifications(state, helpers) {
         const cuota = Number(t.odds) > 1 ? ` · cuota ${Number(t.odds).toFixed(2)}` : '';
         events.push({ kind: 'tipster', title: `${cambio ? 'Cambio en Pick' : 'Pick'} Destacado CamiloRey Tipster: ${t.favName} gana`, body: `${t.favName} vs ${t.opName}${cuota}`, url: SITE, tag: `tip-${mid}` });
       }
-      N._tips = [...vistos];
+      newTips = [...vistos];
     }
   } catch (e) {
     console.error(`Push tipster: ${e.message}`);
   }
+
   // Chat de soporte: aviso SOLO al admin cuando alguien pidió hablar con
   // una persona y hay mensajes sin leer (uno por mensaje nuevo).
   const chatEvents = [];
+  const newChats = { ...(N._chats || {}) };
   if (N._test !== 1) {                     // prueba única, solo para el admin
-    N._test = 1;
     chatEvents.push({ kind: 'chat', title: 'Prueba de notificación CamiloRey', body: 'Si ves esto, las notificaciones llegan a este celular.', url: SITE, tag: 'prueba-1' });
   }
   try {
-    N._chats = N._chats || {};
     for (const c of await pendingChats(token)) {
-      if (N._chats[c.uid] === c.lastAt) continue;
-      N._chats[c.uid] = c.lastAt;
+      if (newChats[c.uid] === c.lastAt) continue;
+      newChats[c.uid] = c.lastAt;
       chatEvents.push({ kind: 'chat', title: `Chat en vivo: ${c.name || c.email || 'un usuario'} quiere hablar contigo`, body: String(c.last || '').slice(0, 120), url: `${SITE}#/admin`, tag: `chat${c.uid}` });
     }
   } catch (e) {
     console.error(`Push chat: ${e.message}`);
   }
+
   // Aviso para los miembros (site/announce.json): una notificación por
   // persona y por aviso. audience "admin" = prueba, solo al admin;
   // "premium" = solo miembros Premium (no los de prueba).
@@ -247,10 +248,64 @@ async function runNotifications(state, helpers) {
   try {
     ann = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'site', 'announce.json'), 'utf8'));
   } catch {}
+  const annPending = Boolean(ann?.id && ann.push) && N._annOk !== ann.id;
+
+  // ¿A quién hay que leer? Avisos para todos → todos los usuarios; solo
+  // resultados o cambios de partidos seguidos → solo quien los sigue.
+  const broadcast = events.length || chatEvents.length || annPending || chgCand.some((p) => isFt(p.id));
+  const porSeguir = [...finCand, ...chgCand.map((p) => p.id)];
+  if (!broadcast && !porSeguir.length) {
+    N._featured = newFeatured;
+    if (newTips) N._tips = newTips;
+    return console.log('Push: sin eventos nuevos');
+  }
+  const premium = await activeMembers(token);
+  const trials = await activeTrials(token);
+  const leidos = broadcast ? await listUsers(token) : await usersFollowing(token, porSeguir);
+  // Todo se leyó bien: desde aquí ya se puede marcar lo avisado.
+  for (const id of finCand) {
+    if (!leidos.some((u) => u.follows.map(Number).includes(id))) N[String(id)] = { ...N[String(id)], s: 1, f: 1 }; // nadie lo sigue: revisado
+  }
+  N._featured = newFeatured;
+  if (newTips) N._tips = newTips;
+  N._chats = newChats;
+  N._test = 1;
+  // Notificaciones gratis para quien tiene acceso: membresía activa
+  // (colección "members", id = correo), prueba vigente o la cuenta admin.
+  const users = leidos.filter((u) => u.push.length && (premium.has(u.email) || trials.has(u.email) || u.email === ADMIN));
+  for (const u of users) u.trial = !premium.has(u.email) && u.email !== ADMIN;
+  if (!users.length) return console.log('Push: nadie suscrito todavía');
+  const log = { at: new Date().toISOString(), conPush: users.length, prueba: users.filter((u) => u.trial).length, admin: users.find((u) => u.email === ADMIN)?.push.length || 0, ok: 0, err: {}, adminRes: [] };
+
+  // Eventos de partidos seguidos (los seguidores ya están en "leidos").
+  const followed = new Set(leidos.flatMap((u) => u.follows.map(Number)));
+  for (const mid of finCand) {
+    if (!followed.has(mid)) continue;
+    const m = state.matches[mid];
+    const p = state.picks[mid];
+    const key = String(mid);
+    N[key] = N[key] || {};
+    const won = m.w === p.fav;
+    events.push({ mid, kind: 'end', title: won ? `✅ ¡Pick acertado! ${helpers.name(p.fav)}` : `❌ Pick fallado: ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${m.sa}-${m.sb}`, url: `${SITE}#/seguidos`, tag: `m${mid}` });
+    N[key].f = 1;
+    N[key].s = 1;
+  }
+  // Picks que cambiaron de jugador: aviso a quien sigue el partido y, si es
+  // el destacado, a todos (una vez por cambio).
+  for (const p of chgCand) {
+    const ft = isFt(p.id);
+    if (!followed.has(p.id) && !ft) continue;
+    const m = state.matches[p.id];
+    const key = String(p.id);
+    N[key] = N[key] || {};
+    N[key].c = p.chg;
+    events.push({ mid: p.id, ft, lk: locked(p.id), kind: 'change', title: `🔄 ${ft ? 'Cambió el pick destacado' : 'Pick actualizado'}: ahora ${helpers.name(p.fav)}`, body: `${helpers.name(m.a)} vs ${helpers.name(m.b)} · ${p.c}% de confianza · revisado antes de empezar`, url: ft ? SITE : `${SITE}#/seguidos`, tag: `m${p.id}` });
+  }
   N._ann = N._ann || {};
   const annSent = new Set(ann?.id ? N._ann[ann.id] || [] : []);
-  const annFor = (u) => Boolean(ann?.id && ann.push) && (ann.audience === 'all' || (ann.audience === 'premium' && !u.trial) || u.email === 'camilosimanca77@gmail.com') && !annSent.has(u.email);
+  const annFor = (u) => annPending && broadcast && (ann.audience === 'all' || (ann.audience === 'premium' && !u.trial) || u.email === ADMIN) && !annSent.has(u.email);
   const annEvent = ann?.push ? { kind: 'announce', title: ann.push.title, body: ann.push.body, url: `${SITE}#/aviso`, tag: `ann-${ann.id}` } : null;
+  if (annPending && broadcast) N._annOk = ann.id; // ya pasó por todos los usuarios
   if (!events.length && !chatEvents.length && !users.some(annFor)) return console.log('Push: sin eventos nuevos');
 
   let sent = 0;
@@ -297,12 +352,18 @@ async function runNotifications(state, helpers) {
 }
 
 // Chats donde el usuario pidió una persona y el admin no ha leído.
+// Consulta solo esos chats (antes se leían todos cada 5 min).
 async function pendingChats(token) {
-  const r = await fetch(`${DOCS}/chats?pageSize=300`, { headers: { Authorization: `Bearer ${token}` } });
+  const eq = (fieldPath) => ({ fieldFilter: { field: { fieldPath }, op: 'EQUAL', value: { booleanValue: true } } });
+  const r = await fetch(`${DOCS}:runQuery`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'chats' }], where: { compositeFilter: { op: 'AND', filters: [eq('human'), eq('unreadAdmin')] } } } })
+  });
   if (r.status === 403 || r.status === 404) return []; // reglas aún sin "chats" para el bot
   if (!r.ok) throw new Error(`leer chats: HTTP ${r.status}`);
   const out = [];
-  for (const d of (await r.json()).documents || []) {
+  for (const d of (await r.json()).map((x) => x.document).filter(Boolean)) {
     const f = Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, fromFs(v)]));
     if (!f.human || !f.unreadAdmin) continue;
     const msgs = Array.isArray(f.msgs) ? f.msgs : [];
