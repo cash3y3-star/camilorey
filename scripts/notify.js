@@ -248,7 +248,9 @@ async function runNotifications(state, helpers) {
   try {
     ann = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'site', 'announce.json'), 'utf8'));
   } catch {}
-  const annPending = Boolean(ann?.id && ann.push) && N._annOk !== ann.id;
+  // Aviso pendiente: si no había nadie a quién enviarlo, se reintenta como
+  // máximo una vez por hora (leer todos los usuarios gasta cuota de Firestore).
+  const annPending = Boolean(ann?.id && ann.push) && N._annOk !== ann.id && !(N._annTry?.id === ann.id && Date.now() - N._annTry.at < 3600e3);
 
   // ¿A quién hay que leer? Avisos para todos → todos los usuarios; solo
   // resultados o cambios de partidos seguidos → solo quien los sigue.
@@ -274,7 +276,10 @@ async function runNotifications(state, helpers) {
   // (colección "members", id = correo), prueba vigente o la cuenta admin.
   const users = leidos.filter((u) => u.push.length && (premium.has(u.email) || trials.has(u.email) || u.email === ADMIN));
   for (const u of users) u.trial = !premium.has(u.email) && u.email !== ADMIN;
-  if (!users.length) return console.log('Push: nadie suscrito todavía');
+  if (!users.length) {
+    if (annPending) N._annTry = { id: ann.id, at: Date.now() };
+    return console.log('Push: nadie suscrito todavía');
+  }
   const log = { at: new Date().toISOString(), conPush: users.length, prueba: users.filter((u) => u.trial).length, admin: users.find((u) => u.email === ADMIN)?.push.length || 0, ok: 0, err: {}, adminRes: [] };
 
   // Eventos de partidos seguidos (los seguidores ya están en "leidos").
