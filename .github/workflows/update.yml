@@ -87,7 +87,9 @@ jobs:
           git config user.email "camilorey-bot@users.noreply.github.com"
           git add -A
           git commit -q -m "estado $(date -u +%FT%TZ)"
-          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state
+          # Si GitHub no deja reemplazar el commit anterior (por ejemplo porque
+          # una publicación de Pages lo usa), se sube encima en vez de reemplazarlo.
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state || { git fetch -q --depth=1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state && git reset -q --soft FETCH_HEAD && git commit -q -m "estado $(date -u +%FT%TZ)" && git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state; }
 
       # Número de versión en los archivos: el navegador descarga siempre la
       # versión recién publicada en vez de una copia vieja.
@@ -118,9 +120,13 @@ jobs:
           ART: ${{ steps.art.outputs.artifact_id }}
         run: |
           set -e
-          # Versión = commit recién subido a la rama state (es un commit real y
-          # nuevo en cada corrida; Pages exige un commit que exista).
-          VER=$(git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" refs/heads/state | cut -f1)
+          # Versión = commit vacío nuevo en la rama "pages-ver", que solo crece
+          # (nunca se reemplaza: Pages exige un commit real y GitHub protege el
+          # commit que usa la publicación en línea).
+          git fetch -q --depth=1 origin pages-ver 2>/dev/null && P=$(git rev-parse FETCH_HEAD) || P=""
+          T=$(git hash-object -t tree -w /dev/null)
+          VER=$(GIT_AUTHOR_NAME=camilorey-bot GIT_AUTHOR_EMAIL=camilorey-bot@users.noreply.github.com                 GIT_COMMITTER_NAME=camilorey-bot GIT_COMMITTER_EMAIL=camilorey-bot@users.noreply.github.com                 git commit-tree "$T" ${P:+-p "$P"} -m "versión ${GITHUB_RUN_ID}")
+          git push -q origin "$VER:refs/heads/pages-ver"
           echo "versión: $VER"
           [ -n "$VER" ] || exit 1
           [ -n "$ART" ] || ART=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
@@ -165,4 +171,6 @@ jobs:
           git add -A
           git diff --cached --quiet && exit 0
           git commit -q -m "estado (historial) $(date -u +%FT%TZ)"
-          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state
+          # Si GitHub no deja reemplazar el commit anterior (por ejemplo porque
+          # una publicación de Pages lo usa), se sube encima en vez de reemplazarlo.
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state || { git fetch -q --depth=1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state && git reset -q --soft FETCH_HEAD && git commit -q -m "estado (historial) $(date -u +%FT%TZ)" && git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state; }
