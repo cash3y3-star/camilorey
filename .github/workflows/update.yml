@@ -118,7 +118,11 @@ jobs:
           ART: ${{ steps.art.outputs.artifact_id }}
         run: |
           set -e
-          VER="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          # Versión = commit recién subido a la rama state (es un commit real y
+          # nuevo en cada corrida; Pages exige un commit que exista).
+          VER=$(git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" refs/heads/state | cut -f1)
+          echo "versión: $VER"
+          [ -n "$VER" ] || exit 1
           [ -n "$ART" ] || ART=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=github-pages" | jq -r '.artifacts[0].id')
           echo "paquete: $ART"
