@@ -1,24 +1,24 @@
 {
-  "id": "novedades-2026-11-02-b",
+  "id": "mejoras-2026-11-05",
   "audience": "all",
-  "title": "Novedades en CamiloRey",
-  "preview": "Nueva sección de Picks Destacados CamiloRey Tipster, cuotas fijas y pantalla de Navidad.",
+  "title": "Estamos trabajando en mejoras",
+  "preview": "Esta madrugada hicimos importantes actualizaciones internas en CamiloRey.",
   "push": {
-    "title": "CamiloRey se actualizó",
-    "body": "Nuevos Picks Destacados Tipster, cuotas fijas y pantalla de Navidad. Toca para ver qué cambió."
+    "title": "🔄 Estamos trabajando en mejoras",
+    "body": "Esta madrugada hicimos importantes actualizaciones internas en CamiloRey. Gracias por tu paciencia ⭐"
   },
   "sections": [
     {
-      "h": "Picks Destacados CamiloRey Tipster",
-      "t": "Abajo en Inicio hay una sección nueva con los picks que sigue Camilo Rey. Los miembros Premium los ven ahí y reciben una notificación en el celular cuando sale uno nuevo. Puede tardar unos minutos en llegar."
+      "h": "Actualizaciones internas",
+      "t": "Esta madrugada estuve realizando importantes actualizaciones internas en CAMILOREY. Estamos renovando y optimizando algunos procesos del apartado de tenis de mesa para mejorar el rendimiento y la estabilidad de nuestros servicios."
     },
     {
-      "h": "Cuotas fijas",
-      "t": "La cuota que ves en un pick ya no cambia: cuando se establece, se queda. Rushbet sí puede mover la suya, así que revisa allá la cuota antes de apostar."
+      "h": "Cada vez mejor",
+      "t": "Estamos afinando detalles para ofrecerles algo cada vez mejor. Gracias por acompañarnos y tener paciencia."
     },
     {
-      "h": "Pantalla de Navidad",
-      "t": "La pantalla de carga se vistió de Navidad y estará hasta el 6 de enero. Gracias por ser parte de la familia Camilo Rey."
+      "h": "CAMILOREY",
+      "t": "En constante evolución."
     }
   ]
 }
