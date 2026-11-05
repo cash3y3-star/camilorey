@@ -797,7 +797,7 @@ function maybeAnnounce() {
   $sheet.hidden = false;
   document.body.style.overflow = 'hidden';
 }
-const annVisible = () => Boolean(announce?.id) && (announce.audience === 'all' || (announce.audience === 'premium' && isPremiumUser()) || isAdmin());
+const annVisible = () => Boolean(announce?.id) && !(announce.until && Date.now() > Date.parse(announce.until)) && (announce.audience === 'all' || (announce.audience === 'premium' && isPremiumUser()) || isAdmin());
 function viewAviso() {
   if (!annVisible()) return `<div class="subhead"><a class="back" href="#/">${icon('left')} Inicio</a><h1>Aviso</h1></div>${empty('bell', 'Sin avisos', 'No hay avisos nuevos por ahora.')}`;
   writeLocal('cr_ann_seen', announce.id);

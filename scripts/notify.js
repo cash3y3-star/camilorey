@@ -248,9 +248,8 @@ async function runNotifications(state, helpers) {
   try {
     ann = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'site', 'announce.json'), 'utf8'));
   } catch {}
-  // Aviso pendiente: si no había nadie a quién enviarlo, se reintenta como
-  // máximo una vez por hora (leer todos los usuarios gasta cuota de Firestore).
-  const annPending = Boolean(ann?.id && ann.push) && N._annOk !== ann.id && !(N._annTry?.id === ann.id && Date.now() - N._annTry.at < 3600e3);
+  // Aviso pendiente: se intenta UNA vez (pedido del usuario) y nunca después de "until".
+  const annPending = Boolean(ann?.id && ann.push) && N._annOk !== ann.id && !(ann.until && Date.now() > Date.parse(ann.until));
 
   // ¿A quién hay que leer? Avisos para todos → todos los usuarios; solo
   // resultados o cambios de partidos seguidos → solo quien los sigue.
@@ -277,7 +276,7 @@ async function runNotifications(state, helpers) {
   const users = leidos.filter((u) => u.push.length && (premium.has(u.email) || trials.has(u.email) || u.email === ADMIN));
   for (const u of users) u.trial = !premium.has(u.email) && u.email !== ADMIN;
   if (!users.length) {
-    if (annPending) N._annTry = { id: ann.id, at: Date.now() };
+    if (annPending) N._annOk = ann.id; // un solo intento: el aviso no se reintenta
     return console.log('Push: nadie suscrito todavía');
   }
   const log = { at: new Date().toISOString(), conPush: users.length, prueba: users.filter((u) => u.trial).length, admin: users.find((u) => u.email === ADMIN)?.push.length || 0, ok: 0, err: {}, adminRes: [] };
