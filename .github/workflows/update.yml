@@ -101,10 +101,45 @@ jobs:
           [ -n "$GEMINI_KEY" ] && sed -i "s/__GEMINI_KEY__/${GEMINI_KEY}/" site/js/config.js || true
 
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - id: art
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
+      # Publicar con una versión ÚNICA por corrida. Desde el 04-nov-2026
+      # GitHub Pages ignora (da "success" sin publicar) una publicación con
+      # la misma versión que la anterior, y deploy-pages usa el commit, que
+      # no cambia entre corridas: el sitio se quedó congelado ~19 h.
+      - name: Publicar (versión única)
+        id: pub
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ART: ${{ steps.art.outputs.artifact_id }}
+        run: |
+          set -e
+          VER="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          OIDC=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/deployments"
+          R=$(jq -n --argjson a "$ART" --arg v "$VER" --arg o "$OIDC" '{artifact_id:$a, pages_build_version:$v, oidc_token:$o}' \
+            | curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API" -d @-)
+          ID=$(echo "$R" | jq -r '.id // empty')
+          [ -n "$ID" ] || { echo "No se creó la publicación: $R"; exit 1; }
+          echo "Publicación $ID (versión $VER)"
+          for i in $(seq 1 60); do
+            sleep 5
+            S=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/$ID" | jq -r .status)
+            echo "estado: $S"
+            case "$S" in
+              succeed) exit 0 ;;
+              deployment_failed|deployment_content_failed|deployment_cancelled|deployment_lost|deployment_perms_error|deployment_attempt_error) exit 1 ;;
+            esac
+          done
+          exit 1
+
+      # Respaldo: si la publicación directa falla, la acción oficial.
       - id: deploy
+        if: steps.pub.outcome != 'success'
         uses: actions/deploy-pages@v4
 
       # Historial viejo (2026 completo) DESPUÉS de publicar: así los
