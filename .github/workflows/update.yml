@@ -119,7 +119,11 @@ jobs:
         run: |
           set -e
           VER="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [ -n "$ART" ] || ART=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=github-pages" | jq -r '.artifacts[0].id')
+          echo "paquete: $ART"
           OIDC=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+          echo "token OIDC: ${#OIDC} caracteres"
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/deployments"
           R=$(jq -n --argjson a "$ART" --arg v "$VER" --arg o "$OIDC" '{artifact_id:$a, pages_build_version:$v, oidc_token:$o}' \
             | curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API" -d @-)
